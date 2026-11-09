@@ -2,6 +2,7 @@
 // concert, journal des changements.
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { journal } from '../store/journal';
 import { load } from '../store/persist';
 import { listSessions } from '../store/sessions';
@@ -54,7 +55,7 @@ export function ChecklistSheet({ client, theme, visible, onClose }: { client: XA
   const okCount = checks.filter((c) => c.ok).length;
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Avant le concert</Text>
@@ -85,7 +86,7 @@ export function JournalSheet({ theme, visible, onClose }: { theme: Theme; visibl
   const entries = journal.entries;
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Journal</Text>

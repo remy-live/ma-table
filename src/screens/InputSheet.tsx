@@ -11,7 +11,7 @@ import { ChannelDrawer, DrawerActions } from './ChannelDrawer';
 export type InputActions = DrawerActions;
 
 export function InputSheet({ client, ch, theme, onClose, actions }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void; actions?: DrawerActions }) {
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   // une action qui mène ailleurs (égaliseur, copie) ferme d'abord le tiroir
   const wrapped: DrawerActions | undefined = actions && {
     onDetail: actions.onDetail && ((c) => { onClose(); actions.onDetail!(c); }),
@@ -23,7 +23,7 @@ export function InputSheet({ client, ch, theme, onClose, actions }: { client: XA
       <View style={styles.backdrop}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Fermer" />
         {ch !== null && (
-          <View style={[styles.sheet, { backgroundColor: theme.panel, borderColor: color, height: Math.min(420, height * 0.6) + readInset(), paddingBottom: 14 + readInset() }]}>
+          <View style={[styles.sheet, { backgroundColor: theme.panel, borderColor: color, height: (width >= 900 ? Math.min(300, height * 0.5) : Math.min(540, height * 0.72)) + readInset(), paddingBottom: 14 + readInset() }]}>
             <ChannelDrawer client={client} theme={theme} ch={ch} actions={wrapped} onClose={onClose} />
           </View>
         )}

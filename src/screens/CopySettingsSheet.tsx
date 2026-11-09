@@ -9,7 +9,7 @@ import { readInset } from '../ui/immersive';
 import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
-import { CATEGORIES, Category, copyChannel, pasteChannel } from '../xair/clipboard';
+import { CATEGORIES, Category, copySettings } from '../xair/clipboard';
 import { colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 
@@ -35,11 +35,7 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
     setBusy(true);
     try {
       await safetyBackup(client, `avant de copier des réglages sur ${dsts.length} voie${dsts.length > 1 ? 's' : ''}`).catch(() => null);
-      // on lit toutes les sources d'abord, puis on colle
-      const clips = new Map<number, Awaited<ReturnType<typeof copyChannel>>>();
-      for (const s of srcs) clips.set(s, await copyChannel(client, s));
-      if (many) dsts.forEach((d, k) => pasteChannel(client, clips.get(srcs[k])!, [d], cats));
-      else pasteChannel(client, clips.get(srcs[0])!, dsts, cats);
+      await copySettings(client, srcs, dsts, cats);
     } finally { setBusy(false); }
     props.onClose();
   };
@@ -100,7 +96,7 @@ const styles = StyleSheet.create({
   scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   sheet: { width: '100%', maxWidth: 860, maxHeight: '100%', borderWidth: 2, borderRadius: 20, padding: 14, gap: 10 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  tile: { width: '12%', minWidth: 84, minHeight: 50, borderRadius: 10, borderWidth: 2, padding: 6 },
+  tile: { width: '11.8%', minWidth: 80, minHeight: 50, borderRadius: 10, borderWidth: 2, padding: 6 },
   badge: { position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   cat: { minHeight: 40, paddingHorizontal: 12, borderRadius: 20, borderWidth: 2, justifyContent: 'center' },
 });

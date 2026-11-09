@@ -29,3 +29,6 @@ export function useBottomInset(immersive: boolean): number {
   }, [immersive]);
   return inset;
 }
+
+/** Marge basse des fenêtres plein écran (elles s'ouvrent par-dessus la barre Android) : au moins 12. */
+export const bottomPad = () => Math.max(12, readInset() + 8);

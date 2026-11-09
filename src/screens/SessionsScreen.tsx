@@ -3,6 +3,7 @@
 // (sauvegardes automatiques, copie dans la table).
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import {
   Auto, clearAutos, Current, current, deleteAuto, deleteSession, exportSession, freeTableSlot, importText, listAutos, listSessions, loadFromTable, renameCurrent,
   renameSession, safetyBackup, saveCurrentSession, saveToTable, Session, StartFrom, startNewSession, tableSnapPaths,
@@ -98,7 +99,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
 
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <ScreenHeader theme={theme} title="Soirées et sauvegardes" sub="Une soirée = tout le réglage de la table, gardé dans l’appli" style={{ paddingHorizontal: 0 }}>
           {!props.embedded && <Btn theme={theme} kind="primary" label="Fermer" onPress={props.onClose} />}
         </ScreenHeader>

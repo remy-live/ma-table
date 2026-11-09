@@ -2,6 +2,7 @@
 // et lecture d'une adresse OSC à la main.
 import React, { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { clearLog, Entry, getEntries, onLog, stamp } from '../debug/log';
 import { APP_VERSION, runDiagnostic } from '../debug/diagnostic';
 import { XAirClient } from '../xair/XAirClient';
@@ -73,7 +74,7 @@ export function DebugScreen({ client, theme, visible, onClose }: { client: XAirC
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', flex: 1 }}>Débogage</Text>
           <Pressable onPress={onClose} style={[styles.small, { borderColor: theme.line2 }]}>

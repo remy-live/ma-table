@@ -172,7 +172,7 @@ function PanRow({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: n
   const pan = Number(client.get(panPath(ch)) ?? 0.5);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View style={{ flex: 1 }}><HSlider label="Gauche ↔ droite" value={pan} center valueText={formatPan(pan)} onChange={(v) => client.set(panPath(ch), f(v))} color={theme.text} theme={theme} /></View>
+      <View style={{ flex: 1 }}><HSlider label="G ↔ D" value={pan} center valueText={formatPan(pan)} onChange={(v) => client.set(panPath(ch), f(v))} color={theme.text} theme={theme} /></View>
       <Pressable onPress={() => client.set(panPath(ch), f(panToF(0)))} accessibilityLabel="Remettre au centre" style={[styles.tg, { borderColor: theme.line2, paddingHorizontal: 8 }]}><Text style={{ color: theme.muted, fontWeight: '800', fontSize: 12 }}>centre</Text></Pressable>
     </View>
   );

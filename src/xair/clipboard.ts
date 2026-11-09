@@ -81,3 +81,20 @@ export async function swapChannels(client: XAirClient, a: number, b: number) {
   pasteChannel(client, ca, [b], all);
   pasteChannel(client, cb, [a], all);
 }
+
+/**
+ * Copie les réglages d'une ou plusieurs voies vers d'autres.
+ *  - une source : collée sur toutes les destinations
+ *  - plusieurs sources : appariées dans l'ordre (1re → 1re, 2e → 2e…) ; il en faut autant
+ * Toutes les sources sont lues avant de coller. Renvoie le nombre de réglages envoyés.
+ */
+export async function copySettings(client: XAirClient, srcs: number[], dsts: number[], cats: Category[]): Promise<number> {
+  if (!srcs.length || !dsts.length || !cats.length) return 0;
+  if (srcs.length > 1 && srcs.length !== dsts.length) throw new Error('Il faut autant de voies d’arrivée que de voies de départ');
+  const clips: Clip[] = [];
+  for (const s of srcs) clips.push(await copyChannel(client, s));
+  if (srcs.length === 1) return pasteChannel(client, clips[0], dsts, cats);
+  let n = 0;
+  dsts.forEach((d, k) => { n += pasteChannel(client, clips[k], [d], cats); });
+  return n;
+}

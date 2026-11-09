@@ -3,6 +3,7 @@
 // tuiles avec « Retirer », et en bas qui entend cette voie.
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { f, i } from '../osc/osc';
 import {
   BUS_COUNT, channelDetailPaths, chLevelPath, chNamePath, dynOnPath, dynThrPath, eqGainToF, eqOnPath, eqPath, formatHz, fToCompDb,
@@ -94,7 +95,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
   const b = bands[band];
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }, wide && styles.wideRoot]}>
+    <View style={[styles.root, { backgroundColor: theme.bg }, wide ? styles.wideRoot : { paddingBottom: bottomPad() }]}>
       <View style={styles.head}>
         <Pressable onPress={onClose} accessibilityLabel={wide ? 'Fermer le panneau' : 'Retour à la table'} style={[styles.back, { backgroundColor: theme.panel }]}>
           <Text style={{ color: theme.text, fontSize: 20 }}>{wide ? '×' : '‹'}</Text>

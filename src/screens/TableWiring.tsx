@@ -14,7 +14,7 @@ import { useAnyTick } from '../ui/useTick';
 import { chLevelPath, MODEL } from '../xair/addresses';
 import { dbToFader } from '../xair/levels';
 import { colorOf } from '../xair/smartName';
-import { Outlet, outlets, Plug, plugs, wires, wiringPaths } from '../xair/wiring';
+import { Outlet, outlets, Plug, plugs, wires, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { ChannelDrawer, DrawerActions } from './ChannelDrawer';
 import { MIX_COLORS } from './MixPicker';
@@ -23,9 +23,9 @@ type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | null;
 const W = 1000;
 const H = 300;
 const xIn = (n: number) => (n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
-const yIn = (n: number) => (n <= 8 ? 70 : 150);
+const yIn = (n: number) => (n <= 8 ? 66 : 158);
 const xOut = (k: number) => (k < 6 ? 60 + k * 100 : 880);
-const Y_OUT = 255;
+const Y_OUT = 262;
 
 export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions }) {
   const { client, theme, P, O } = props;
@@ -56,8 +56,8 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
           <Svg width={pw} height={ph} viewBox={`0 0 ${W} ${H}`}>
             <Rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
             <SvgText x={W - 30} y={36} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
-            <SvgText x={24} y={30} fontSize={11} fill="#9AA3AD">ENTRÉES · touche une prise</SvgText>
-            <SvgText x={24} y={214} fontSize={11} fill="#9AA3AD">SORTIES · touche qui écoute</SvgText>
+            <SvgText x={W / 2} y={22} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">ENTRÉES · touche une prise</SvgText>
+            <SvgText x={W / 2} y={Y_OUT - 36} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">SORTIES · touche qui écoute</SvgText>
             {/* fils */}
             {props.W.map((w) => {
               const p = P[w.plug - 1];
@@ -77,7 +77,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
                 <G key={p.n} onPress={() => { setSel({ k: 'in', n: p.n }); }}>
                   <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 16 : 24} fill="#1E2227" stroke={on ? '#FFFFFF' : hit ? '#FFFFFF' : p.chans.length ? c : '#3A414B'} strokeWidth={on || hit ? 5 : 3} />
                   <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 6 : 12} fill={hit ? c : '#0B0D10'} />
-                  <SvgText x={xIn(p.n)} y={yIn(p.n) - 32} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
+                  <SvgText x={xIn(p.n)} y={yIn(p.n) - 30} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
                   <Rect x={xIn(p.n) - 34} y={yIn(p.n) + 28} width={68} height={16} rx={5} fill={p.name ? c : 'transparent'} />
                   <SvgText x={xIn(p.n)} y={yIn(p.n) + 40} textAnchor="middle" fontSize={10} fontWeight="800" fill={p.name ? '#0B0D10' : '#5B636D'}>{(p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')).slice(0, 11)}</SvgText>
                   <Rect x={xIn(p.n) - 40} y={yIn(p.n) - 46} width={80} height={94} fill="transparent" />
@@ -158,7 +158,7 @@ export function TableWiringStandalone({ client, theme, actions }: { client: XAir
   const P = plugs(client);
   const O = outlets(client);
   const W = wires(client);
-  const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
+  const plugColor = (p: Plug) => plugColorOf(client, p, colorOf);
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
   return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} actions={actions} />;
 }

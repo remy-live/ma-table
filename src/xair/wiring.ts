@@ -138,3 +138,11 @@ export function wireD(plug: number, out: string): string {
 }
 /** Épaisseur du fil selon le niveau. */
 export const wireWidth = (db: number) => Math.max(2, 2 + ((Math.max(-40, db) + 40) / 50) * 6);
+
+/** Couleur d'affichage d'une prise : la couleur de sa voie dans la table ; si elle n'en a pas, une teinte par numéro. */
+const PLUG_PALETTE = ['#F59E0B', '#34D399', '#60A5FA', '#F472B6', '#2DD4BF', '#A78BFA', '#FB923C', '#A3E635'];
+export function plugColor(client: XAirClient, p: Plug, tableColor: (idx: number) => string): string {
+  if (!p.chans.length) return '#5B636D';
+  const idx = Number(client.get(`/ch/${String(p.chans[0]).padStart(2, "0")}/config/color`) ?? 0) & 7;
+  return idx ? tableColor(idx) : PLUG_PALETTE[(p.n - 1) % PLUG_PALETTE.length];
+}

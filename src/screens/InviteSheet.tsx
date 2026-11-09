@@ -2,6 +2,7 @@
 // expliqué en 3 images, et ses droits en tuiles.
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { QrCode } from '../ui/QrCode';
 import { Theme } from '../ui/theme';
@@ -61,7 +62,7 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
 
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           {sel && (
             <Pressable onPress={() => setBus(null)} accessibilityLabel="Retour au choix du musicien" style={[styles.back, { backgroundColor: theme.panel }]}>

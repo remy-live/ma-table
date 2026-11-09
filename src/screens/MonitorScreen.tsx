@@ -3,6 +3,7 @@
 // protège-oreilles, et sa balance à lui (gardée avec le numéro du bus).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { f } from '../osc/osc';
 import { load, save } from '../store/persist';
 import { HSlider } from '../ui/HSlider';
@@ -105,7 +106,7 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
 
   const lit = Math.round(meter.level * 20);
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
       <View style={styles.header}>
         <View style={[styles.avatar, { backgroundColor: '#60A5FA' }]}>
           <Text style={styles.avatarText}>{cfg.name.slice(0, 3).toUpperCase()}</Text>

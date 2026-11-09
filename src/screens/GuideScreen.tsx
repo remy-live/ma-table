@@ -2,6 +2,7 @@
 // 1 Ce qui est branché · 2 Groupes · 3 Ce que chacun veut entendre · 4 Ambiance · 5 Balance
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { FxVisual } from '../ui/FxVisual';
 import { GainTile } from '../ui/GainTile';
 import { useAnyTick } from '../ui/useTick';
@@ -38,7 +39,7 @@ export function GuideScreen(props: { client: XAirClient; theme: Theme; visible: 
 
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>ÉTAPE {step + 1} SUR 5</Text>

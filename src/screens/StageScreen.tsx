@@ -125,7 +125,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           </Card>
           {/* 3. URGENCES */}
           <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
-            <Step n={3} title="En cas de problème" theme={theme} color="#EF4444" />
+            <Step n="!" title="En cas de problème" theme={theme} color="#EF4444" />
             <RescueButton client={client} theme={theme} />
             <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
               <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? '⏸ Pause : couper la façade' : '▶ Remettre le son'}</Text>
@@ -184,7 +184,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   );
 }
 
-function Step({ n, title, theme, color }: { n: number; title: string; theme: Theme; color?: string }) {
+function Step({ n, title, theme, color }: { n: number | string; title: string; theme: Theme; color?: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: color ?? theme.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#0B0B0F', fontWeight: '900' }}>{n}</Text></View>

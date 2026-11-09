@@ -2,6 +2,7 @@
 // instrument, appliquer sur une ou plusieurs voies, et « Mes réglages ».
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
@@ -56,7 +57,7 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
 
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <Text style={[styles.title, { color: theme.text, flex: 1 }]}>Préréglages</Text>
           <Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>

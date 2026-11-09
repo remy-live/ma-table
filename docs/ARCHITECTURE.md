@@ -35,3 +35,17 @@ modules/           code natif Android : wifi-scan, immersive
 - **Concert = Scène + Soirées** : « Enregistrer » enregistre la soirée ET fixe le point de retour
   (`saveCurrentSession` écrit aussi `balance`). La liste des soirées et les sauvegardes s'ouvrent depuis là.
 - **Branchements = 3 vues** : Table (cliquable), Câbles (face arrière sur tablette, colonnes sur téléphone), Bulles.
+
+## Voir l'appli sans tablette (aperçu dans un navigateur)
+
+L'appli tourne dans un navigateur en mode démo, ce qui permet de vérifier chaque écran
+(tablette 1210×756, téléphone 390×800) avant d'envoyer une version :
+
+```
+# dans une COPIE du dépôt (pour ne pas ajouter ces dépendances à l'appli)
+npm install react-native-web react-dom @expo/metro-runtime
+# app.json : "web": { "bundler": "metro", "output": "single" }, et retirer "plugins"
+npx expo export -p web --output-dir /tmp/webdist && (cd /tmp/webdist && python3 -m http.server 8099)
+```
+
+`src/xair/udpTransport.web.ts` remplace l'UDP (absent d'un navigateur) : seul « Démo sans table » fonctionne.

@@ -3,6 +3,7 @@
 // Batterie élément par élément, puis les autres, puis tous ensemble.
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { listVenues, saveVenue, Venue } from '../store/venues';
 import { canSpeak, hush, say } from '../ui/speech';
 import { Theme } from '../ui/theme';
@@ -224,7 +225,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
 
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={close}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Balance automatique</Text>

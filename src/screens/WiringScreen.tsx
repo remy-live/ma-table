@@ -10,7 +10,7 @@ import { Theme } from '../ui/theme';
 import { Shell } from '../ui/Shell';
 import { busNamePath, chNamePath, MODEL } from '../xair/addresses';
 import { colorOf } from '../xair/smartName';
-import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths } from '../xair/wiring';
+import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
@@ -33,11 +33,11 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const tick = useAnyTick(client);
-  const [view, setView] = useState<View3>('table');
+  const [view, setView] = useState<View3>(width > 700 ? 'table' : 'colonnes');
   // 3 vues : la table cliquable, les câbles (face arrière sur tablette, colonnes sur téléphone), les bulles
   const cables: View3 = width > 700 ? 'arriere' : 'colonnes';
-  const VIEWS: readonly (readonly [View3, string])[] = [['table', 'Table'], [cables, 'Câbles'], ['bulles', 'Bulles']];
-  useEffect(() => { load<string>('vueBranchements', 'table').then((v) => setView(v === 'bulles' ? 'bulles' : v === 'arriere' || v === 'colonnes' ? cables : 'table')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const VIEWS: readonly (readonly [View3, string])[] = width > 700 ? [['table', 'Table'], [cables, 'Câbles'], ['bulles', 'Bulles']] : [[cables, 'Câbles'], ['bulles', 'Bulles']];
+  useEffect(() => { load<string>('vueBranchements', 'table').then((v) => setView(v === 'bulles' ? 'bulles' : v === 'arriere' || v === 'colonnes' || width <= 700 ? cables : 'table')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
   const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
@@ -52,7 +52,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const W = useMemo(() => wires(client), [client, tick]);
   const say = (t: string) => { void t; setToast(''); }; // plus de bandeau vert
 
-  const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
+  const plugColor = (p: Plug) => plugColorOf(client, p, colorOf);
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
   const selGroup = sel?.kind === 'group' ? readGroups(client).find((g) => g.k === sel.k) ?? null : null;
   const groupPlugs = selGroup ? P.filter((p) => p.chans.some((c) => selGroup.members.includes(c))) : [];
@@ -284,7 +284,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
       if (!g.anchor) continue;
       const c = plugXY(g.anchor);
       if (!g.folded && Math.abs(c.x - vx) < 44 && vy > c.y - 62 && vy < c.y - 40) { setOpen((o) => o.filter((k) => k !== g.k)); return null; }
-      if (g.folded && Math.abs(c.x - vx) < 44 && vy > c.y - 52 && vy < c.y - 30) { setOpen((o) => [...o, g.k]); return null; }
+      if (g.folded && Math.abs(c.x - vx) < 52 && vy > c.y - 54 && vy < c.y - 28) { setOpen((o) => [...o, g.k]); return null; }
     }
     for (const p of latest.current.P) {
       const c = plugXY(p.n);
@@ -401,16 +401,11 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                 const gc = GROUP_COLORS[g.k - 1];
                 return (
                   <G key={p.n}>
-                    <Rect x={x - 40} y={y - 26} width={80} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
-                    <SvgText x={x} y={y - 6} textAnchor="middle" fontSize={11} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
-                    <SvgText x={x} y={y + 9} textAnchor="middle" fontSize={9} fill="#E8EAED">{g.plugs.length} prises</SvgText>
-                    <SvgText x={x} y={y + 20} textAnchor="middle" fontSize={8} fill="#9AA3AD">touche · glisse vers une sortie</SvgText>
-                    <G onPress={() => setOpen((o) => [...o, g.k])}>
-                      <Rect x={x - 44} y={y - 50} width={88} height={18} rx={9} fill="#1E2227" stroke={gc} strokeWidth={1.5} />
-                      <SvgText x={x} y={y - 37} textAnchor="middle" fontSize={9} fontWeight="800" fill={gc}>▸ déplier les prises</SvgText>
-                    </G>
-                    <Rect x={x - 34} y={y + 30} width={68} height={12} rx={4} fill={gc} opacity={0.9} />
-                    <SvgText x={x} y={y + 39} textAnchor="middle" fontSize={8} fontWeight="800" fill="#0B0D10">{g.plugs.join(' · ').slice(0, 16)}</SvgText>
+                    <Rect x={x - 52} y={y - 26} width={104} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
+                    <SvgText x={x} y={y - 3} textAnchor="middle" fontSize={13} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
+                    <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill="#E8EAED">{g.plugs.length} prises</SvgText>
+                    <Rect x={x - 52} y={y - 50} width={104} height={18} rx={9} fill="#15181C" stroke={gc} strokeWidth={1.5} />
+                    <SvgText x={x} y={y - 37} textAnchor="middle" fontSize={9} fontWeight="800" fill={gc}>▸ déplier les prises</SvgText>
                   </G>
                 );
               }
@@ -449,7 +444,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             })}
             {/* fils, écartés à l'arrivée */}
             {props.W.map((w) => {
-              const a = plugXY(anchorOf(w.plug));
+              const a0 = plugXY(anchorOf(w.plug));
+              const a = anchorOf(w.plug) !== w.plug || groupOfPlug(w.plug)?.folded ? { x: a0.x, y: a0.y + 26 } : a0; // un groupe replié : les fils partent du bas de la capsule
               const b = endOf(w);
               const c = props.plugColor(P[w.plug - 1]);
               return (

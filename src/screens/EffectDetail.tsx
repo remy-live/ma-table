@@ -3,6 +3,7 @@
 // premier réglage, avec « Donner son propre effet ».
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { bottomPad } from '../ui/immersive';
 import { f, i } from '../osc/osc';
 import { FxVisual } from '../ui/FxVisual';
 import { HSlider } from '../ui/HSlider';
@@ -99,7 +100,7 @@ export function EffectDetail({ client, theme, slot, names, onNames, onClose, onO
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: bottomPad() }}>
         <View style={styles.top}>
           <Pressable onPress={onClose} style={[styles.btn, { borderColor: theme.line2 }]} accessibilityLabel="Retour"><Text style={{ color: theme.text, fontWeight: '800' }}>‹ Effets</Text></Pressable>
           <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: color }} />
@@ -167,7 +168,7 @@ export function EffectDetail({ client, theme, slot, names, onNames, onClose, onO
             {/* colonne droite : retour + qui l'utilise */}
             <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
               <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-                <HSlider value={ret} onChange={(v) => client.set(fxReturnPath(k), f(v))} label="Retour dans la façade" valueText={formatDb(ret)} color={color} theme={theme} />
+                <HSlider value={ret} onChange={(v) => client.set(fxReturnPath(k), f(v))} label="Retour" valueText={formatDb(ret)} color={color} theme={theme} />
               </View>
               <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.line }]}>
                 <Text style={[styles.kicker, { color: theme.muted }]}>QUI L’UTILISE · {shareText(client, k)}</Text>

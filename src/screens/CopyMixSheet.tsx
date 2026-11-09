@@ -101,7 +101,7 @@ export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible:
 
 const styles = StyleSheet.create({
   scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  sheet: { width: '100%', maxWidth: 760, borderWidth: 2, borderRadius: 20, padding: 16, gap: 10 },
+  sheet: { width: '100%', maxWidth: 900, borderWidth: 2, borderRadius: 20, padding: 16, gap: 10 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 2, justifyContent: 'center', maxWidth: 170 },
   ch: { width: '32%', minHeight: 50, borderRadius: 12, borderWidth: 2, padding: 8, justifyContent: 'center' },

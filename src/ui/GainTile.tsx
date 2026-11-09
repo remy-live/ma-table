@@ -12,7 +12,9 @@ import { tick } from './haptics';
 import { Knob } from './Knob';
 import { Theme } from './theme';
 
-export function GainTile({ client, ch, theme, size, onOpen }: { client: XAirClient; ch: number; theme: Theme; size: number; onOpen: (ch: number) => void }) {
+export interface TileOrganize { onMove: (k: number) => void; onCopy: () => void; onRename: () => void }
+
+export function GainTile({ client, ch, theme, size, onOpen, organize }: { client: XAirClient; ch: number; theme: Theme; size: number; onOpen: (ch: number) => void; organize?: TileOrganize }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
   const col = colorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)));
   const gain = useParamOpt(client, headampGainPath(ch));
@@ -25,7 +27,7 @@ export function GainTile({ client, ch, theme, size, onOpen }: { client: XAirClie
     <View style={[styles.tile, { width: size + 28, backgroundColor: theme.panel, borderColor: m.clip ? '#EF4444' : theme.line }]}>
       <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800' }}>PRISE {insrcPlug(insrc)}{p48 ? ' · 48V' : ''}</Text>
       <Pressable onPress={() => onOpen(ch)} style={[styles.name, { borderBottomColor: col, backgroundColor: theme.deep }]}>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{name}</Text>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: size < 70 ? 12 : 14, fontWeight: '800' }}>{name}</Text>
       </Pressable>
       <Knob
         value={gain === undefined ? 0.5 : Number(gain)}
@@ -42,12 +44,22 @@ export function GainTile({ client, ch, theme, size, onOpen }: { client: XAirClie
           client.set(headampGainPath(ch), f(v));
         }}
       />
-      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{db === null ? 'Ligne' : `${db > 0 ? '+' : ''}${db.toFixed(0)} dB`}</Text>
+      <Text numberOfLines={1} style={{ color: theme.text, fontSize: size < 70 ? 13 : 16, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{db === null ? 'Ligne' : `${db > 0 ? '+' : ''}${db.toFixed(0)} dB`}</Text>
       <View style={[styles.meter, { backgroundColor: theme.meterBg }]}>
         <View style={{ width: `${m.level * 100}%`, height: '100%', backgroundColor: zone }} />
         <View style={[styles.target, { left: '70%', width: '20%', borderColor: theme.text }]} />
       </View>
-      <Text style={{ color: zone, fontSize: 10, fontWeight: '800' }}>{m.clip ? 'SATURE' : m.db > -6 ? 'fort' : m.db > -24 ? 'bon' : m.db > -90 ? 'faible' : '—'}</Text>
+      {organize ? (
+        <View style={{ flexDirection: 'row', gap: 3, alignSelf: 'stretch' }}>
+          {([['◀', () => organize.onMove(-1), 'Déplacer avant'], ['▶', () => organize.onMove(1), 'Déplacer après'], ['⧉', organize.onCopy, 'Copier les réglages'], ['✎', organize.onRename, 'Renommer']] as [string, () => void, string][]).map(([l, fn, a]) => (
+            <Pressable key={a} onPress={fn} accessibilityLabel={a} style={{ flex: 1, height: 34, borderRadius: 8, borderWidth: 1, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: theme.accent, fontWeight: '900', fontSize: 14 }}>{l}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Text style={{ color: zone, fontSize: 10, fontWeight: '800' }}>{m.clip ? 'SATURE' : m.db > -6 ? 'fort' : m.db > -24 ? 'bon' : m.db > -90 ? 'faible' : '—'}</Text>
+      )}
     </View>
   );
 }
