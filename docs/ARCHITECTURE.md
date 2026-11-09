@@ -1,7 +1,7 @@
 # Ma table — comment l'appli est rangée
 
 ```
-App.tsx            navigation (6 sections + Aide-moi + Quitter), préférences, plein écran
+App.tsx            navigation (5 sections : Table, Effets, Branchements, Concert, Réglages + Aide-moi + Quitter), préférences, plein écran
 src/osc/           encodage / décodage OSC
 src/xair/          TOUT ce qui parle à la table, sans interface :
                    XAirClient (liaison, état, annuler), addresses (chemins), wiring, groups,
@@ -27,3 +27,11 @@ modules/           code natif Android : wifi-scan, immersive
 5. **Tout tient sur l'écran** : pas de défilement pour l'essentiel ; gros boutons (44 px mini).
 6. Les adresses non vérifiées sur la vraie table sont marquées « à vérifier » et figurent dans
    le rapport de débogage.
+
+## Trois choix de conception
+
+- **Un seul tiroir d'entrée** : `ChannelDrawer` (onglets Régler / Relier). Il sert pour l'appui sur une
+  tranche (`InputSheet`), la vue Table et la face arrière. On n'en dessine pas d'autre.
+- **Concert = Scène + Soirées** : « Enregistrer » enregistre la soirée ET fixe le point de retour
+  (`saveCurrentSession` écrit aussi `balance`). La liste des soirées et les sauvegardes s'ouvrent depuis là.
+- **Branchements = 3 vues** : Table (cliquable), Câbles (face arrière sur tablette, colonnes sur téléphone), Bulles.

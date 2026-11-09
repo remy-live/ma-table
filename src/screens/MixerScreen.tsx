@@ -20,9 +20,8 @@ import { SmartRenameSheet } from './SmartRenameSheet';
 import { STRIP_WIDTHS, StripWidth } from './SettingsScreen';
 import { safetyBackup } from '../store/sessions';
 import { ClipBanner } from './ClipBanner';
-import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
+import { MixPickerButton, MixPickerSheet } from './MixPicker';
 import { InputSourceSheet } from './InputSourceSheet';
-import { PresetsSheet } from './PresetsSheet';
 import { CATEGORIES, Category } from '../xair/clipboard';
 import { insrcPath, insrcPlug } from '../xair/addresses';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
@@ -72,7 +71,10 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [detailCh, setDetailCh] = useState<number | null>(null);
   const [inputCh, setInputCh] = useState<number | null>(null);
   const [renameCh, setRenameCh] = useState<number | null>(null);
-  const [presetCh, setPresetCh] = useState<number | null>(null);
+  const drawerActions = {
+    onDetail: setDetailCh,
+    onCopy: (c: number) => { setView('full'); setOrganize(true); setSel(c); setClip(null); setPasteSel([]); setMode('copy'); },
+  };
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [organize, setOrganize] = useState(false);
   const [drag, setDrag] = useState<{ ch: number; dx: number } | null>(null);
@@ -263,7 +265,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <ClipBanner client={client} onOpen={setInputCh} />
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
-        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} />}
+        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} actions={drawerActions} />}
         {bodyH > 0 && view === 'gains' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12, justifyContent: 'center' }}>
             {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} />)}
@@ -396,14 +398,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       )}
 
       {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />}
-      <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={{
-        onRename: setRenameCh,
-        onSource: setSrcCh,
-        onDetail: setDetailCh,
-        onPresets: setPresetCh,
-        onCopy: (c) => { setOrganize(true); setSel(c); setClip(null); setPasteSel([]); setMode('copy'); },
-      }} />
-      <PresetsSheet client={client} theme={theme} visible={presetCh !== null} ch={presetCh} onClose={() => setPresetCh(null)} />
+      <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={drawerActions} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />

@@ -99,7 +99,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <ScreenHeader theme={theme} title="Mes soirées" sub="Une soirée = tout le réglage de la table, gardé dans l’appli" style={{ paddingHorizontal: 0 }}>
+        <ScreenHeader theme={theme} title="Soirées et sauvegardes" sub="Une soirée = tout le réglage de la table, gardé dans l’appli" style={{ paddingHorizontal: 0 }}>
           {!props.embedded && <Btn theme={theme} kind="primary" label="Fermer" onPress={props.onClose} />}
         </ScreenHeader>
         <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
@@ -109,7 +109,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
               <Text style={[styles.kicker, { color: '#6EE7B7' }]}>● EN COURS</Text>
               <Pressable onPress={() => setRename('current')}>
                 <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>{cur.name} <Text style={{ color: '#6EE7B7', fontSize: 13 }}>✎</Text></Text>
-                <Text style={{ color: '#A7F3D0', fontSize: 12 }}>Depuis {when(cur.startedAt)}{changes !== null ? ` · ${changes} réglage${changes > 1 ? 's' : ''} depuis la balance` : ''}</Text>
+                <Text style={{ color: '#A7F3D0', fontSize: 12 }}>Depuis {when(cur.startedAt)}{changes !== null ? ` · ${changes} réglage${changes > 1 ? 's' : ''} depuis l’enregistrement` : ''}</Text>
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable onPress={doSave} style={[styles.btn, { backgroundColor: '#34D399' }]}><Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 14 }}>{saved ? '✓ Enregistrée' : 'Enregistrer maintenant'}</Text></Pressable>
@@ -121,7 +121,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.accent }]}>
               <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>Nouvelle soirée</Text>
               <Text style={{ color: theme.muted, fontSize: 13 }}>« {cur?.name} » est d’abord enregistrée telle quelle. Ensuite, on repart de :</Text>
-              {([['same', 'Le même réglage', 'pour enchaîner un autre set avec le même groupe'], ['balance', 'La balance', 'on annule tout ce qui a bougé pendant le concert'], ['blank', 'Une table vide', 'noms, groupes, envois effacés (les gains restent) : nouveau groupe, nouvelle salle']] as [StartFrom, string, string][]).map(([id, l, sub]) => (
+              {([['same', 'Le même réglage', 'pour enchaîner un autre set avec le même groupe'], ['balance', 'Le dernier enregistrement', 'on annule tout ce qui a bougé depuis'], ['blank', 'Une table vide', 'noms, groupes, envois effacés (les gains restent) : nouveau groupe, nouvelle salle']] as [StartFrom, string, string][]).map(([id, l, sub]) => (
                 <Pressable key={id} onPress={() => setFrom(id)} accessibilityState={{ selected: from === id }} style={[styles.opt, { borderColor: from === id ? theme.accent : theme.line, backgroundColor: from === id ? '#1F1C14' : theme.deep }]}>
                   <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{l}</Text>
                   <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>

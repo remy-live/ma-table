@@ -3,24 +3,21 @@
 // relies aux sorties (un curseur par sortie). Touche une sortie : ce qu'elle
 // entend. Tout tient sur l'écran, sans défiler.
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { f, i, s as oscS } from '../osc/osc';
+import { f } from '../osc/osc';
+import { dbLabel } from '../ui/format';
 import { HSlider } from '../ui/HSlider';
-import { Knob } from '../ui/Knob';
-import { Theme } from '../ui/theme';
-import { chLevelPath, chNamePath, FX_COUNT, fToGainDb, headampGainPath, MODEL, phantomPath, Target } from '../xair/addresses';
-import { SLOT_COLORS } from '../xair/fxSlots';
-import { fxType, fxTypePath } from '../xair/effects';
-import { dbToFader, faderToDb } from '../xair/levels';
-import { colorOf, TABLE_COLORS } from '../xair/smartName';
-import { useMeter } from '../xair/useMeter';
-import { meterIndex } from '../xair/addresses';
-import { Outlet, outlets, Plug, plugs, wires, wiringPaths } from '../xair/wiring';
-import { useAnyTick } from '../ui/useTick';
 import { MonoSwitch } from '../ui/MonoSwitch';
-import { MIX_COLORS } from './MixPicker';
+import { Theme } from '../ui/theme';
+import { useAnyTick } from '../ui/useTick';
+import { chLevelPath, MODEL } from '../xair/addresses';
+import { dbToFader } from '../xair/levels';
+import { colorOf } from '../xair/smartName';
+import { Outlet, outlets, Plug, plugs, wires, wiringPaths } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
+import { ChannelDrawer, DrawerActions } from './ChannelDrawer';
+import { MIX_COLORS } from './MixPicker';
 
 type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | null;
 const W = 1000;
@@ -29,14 +26,12 @@ const xIn = (n: number) => (n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 :
 const yIn = (n: number) => (n <= 8 ? 70 : 150);
 const xOut = (k: number) => (k < 6 ? 60 + k * 100 : 880);
 const Y_OUT = 255;
-const dbTxt = (v: number) => { const d = faderToDb(v); return !isFinite(d) || v <= 0 ? '—' : `${d > 0 ? '+' : ''}${Math.round(d)} dB`; };
 
-export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string }) {
+export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions }) {
   const { client, theme, P, O } = props;
   const { width, height } = useWindowDimensions();
   const wide = width >= 900;
   const [sel, setSel] = useState<Sel>({ k: 'in', n: 1 });
-  const [mode, setMode] = useState<'in' | 'link'>('in');
   const [size, setSize] = useState({ w: 0 });
   const scale = size.w ? size.w / W : 0;
   const linked = (n: number, id: string) => props.W.some((w) => w.plug === n && w.out === id);
@@ -110,7 +105,9 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
 
       {/* le tiroir */}
       <View style={[styles.drawer, { backgroundColor: theme.panel, borderColor: plug ? props.plugColor(plug) : out ? props.outColor(out) : theme.line }]}>
-        {plug && <PlugDrawer client={client} theme={theme} plug={plug} O={O} mode={mode} setMode={setMode} level={level} setLevel={setLevel} toggle={toggle} linked={linked} outColor={props.outColor} color={props.plugColor(plug)} wide={wide} />}
+        {plug && (plug.chans.length
+          ? <ChannelDrawer client={client} theme={theme} ch={plug.chans[0]} actions={props.actions} />
+          : <Text style={{ color: theme.muted, fontSize: 14, padding: 12 }}>Prise {plug.n} : rien ne l’écoute. Donne-lui une voie depuis la Table (touche une tranche › Branchée sur › Changer).</Text>)}
         {out && (
           <>
             <View style={styles.row}>
@@ -127,7 +124,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
                     <Pressable onPress={() => toggle(p, out)} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
                       <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{p.n} · {p.name || `voie ${p.chans[0]}`}</Text>
                     </Pressable>
-                    {on ? <View style={{ flex: 1 }}><HSlider value={level(p, out)} onChange={(v) => setLevel(p, out, v)} label="" valueText={dbTxt(level(p, out))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>n’entend pas</Text>}
+                    {on ? <View style={{ flex: 1 }}><HSlider value={level(p, out)} onChange={(v) => setLevel(p, out, v)} label="" valueText={dbLabel(level(p, out))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>n’entend pas</Text>}
                   </View>
                 );
               })}
@@ -137,97 +134,6 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
         {!sel && <Text style={{ color: theme.muted, textAlign: 'center', padding: 20 }}>Touche une prise ou une sortie sur la table.</Text>}
       </View>
     </View>
-  );
-}
-
-function PlugDrawer(p: { client: XAirClient; theme: Theme; plug: Plug; O: Outlet[]; mode: 'in' | 'link'; setMode: (m: 'in' | 'link') => void; level: (a: Plug, o: Outlet) => number; setLevel: (a: Plug, o: Outlet, v: number) => void; toggle: (a: Plug, o: Outlet) => void; linked: (n: number, id: string) => boolean; outColor: (o: Outlet) => string; color: string; wide: boolean }) {
-  const { client, theme, plug, mode } = p;
-  const ch = plug.chans[0];
-  const n2 = ch ? String(ch).padStart(2, '0') : '';
-  const gain = ch ? client.get(headampGainPath(ch)) : undefined;
-  const p48 = ch ? Number(client.get(phantomPath(ch)) ?? 0) === 1 : false;
-  const colIdx = ch ? Number(client.get(`/ch/${n2}/config/color`) ?? 0) & 7 : 0;
-  const m = useMeter(client, ch ? [meterIndex.ch(ch)] : [], 120);
-  const [name, setName] = useState<string | null>(null);
-  const gdb = gain === undefined ? null : fToGainDb(Number(gain));
-  return (
-    <>
-      <View style={styles.row}>
-        <View style={[styles.tag, { borderColor: p.color }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{plug.n}</Text></View>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 18, fontWeight: '800', flex: 1 }}>{plug.name || (ch ? `Voie ${ch}` : 'Prise libre')}</Text>
-        <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['in', '🎚 Régler l’entrée'], ['link', '🔗 Relier aux sorties']] as const).map(([id, l]) => (
-            <Pressable key={id} onPress={() => p.setMode(id)} accessibilityState={{ selected: mode === id }} style={[styles.segBtn, mode === id && { backgroundColor: theme.accent }]}>
-              <Text style={{ color: mode === id ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-      {!ch && <Text style={{ color: theme.muted, fontSize: 13 }}>Rien n’écoute cette prise. Donne-lui une voie depuis la Table (Changer l’entrée).</Text>}
-      {ch && mode === 'in' && (
-        <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center', flex: 1 }}>
-          <View style={{ alignItems: 'center', gap: 2 }}>
-            <Knob value={gain === undefined ? 0.5 : Number(gain)} size={p.wide ? 104 : 80} theme={theme} color={p.color} dim={gain === undefined} label="Gain" onChange={gain === undefined ? undefined : (v) => client.set(headampGainPath(ch), f(v))} />
-            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{gdb === null ? 'Ligne' : `Gain ${gdb > 0 ? '+' : ''}${gdb.toFixed(0)} dB`}</Text>
-            <View style={{ width: 100, height: 8, borderRadius: 4, backgroundColor: theme.meterBg, overflow: 'hidden' }}><View style={{ width: `${m.level * 100}%`, height: 8, backgroundColor: m.clip ? '#EF4444' : m.db > -6 ? '#EAB308' : '#22C55E' }} /></View>
-          </View>
-          <View style={{ flex: 1, gap: 8 }}>
-            <TextInput value={name ?? plug.name} onChangeText={setName} onBlur={() => { if (name !== null) client.set(chNamePath(ch), oscS(name.trim().slice(0, 12))); setName(null); }} onSubmitEditing={() => { if (name !== null) client.set(chNamePath(ch), oscS(name.trim().slice(0, 12))); setName(null); }} placeholder="Ce qui est branché" placeholderTextColor={theme.muted} maxLength={12} style={[styles.input, { color: theme.text, borderColor: p.color, backgroundColor: theme.deep }]} />
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              {Object.keys(TABLE_COLORS).map(Number).map((k) => (
-                <Pressable key={k} onPress={() => client.set(`/ch/${n2}/config/color`, i(k))} style={[styles.sw, { backgroundColor: TABLE_COLORS[k], borderColor: colIdx === k ? '#FFFFFF' : 'transparent' }]} />
-              ))}
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              {gain !== undefined && (
-                <Pressable onPress={() => (p48 ? client.set(phantomPath(ch), i(0)) : Alert.alert('Activer le 48 V ?', 'Seulement pour un micro statique ou une DI active. Baisse le volume avant.', [{ text: 'Annuler', style: 'cancel' }, { text: 'Activer', onPress: () => client.set(phantomPath(ch), i(1)) }]))} style={[styles.tg, { backgroundColor: p48 ? '#DC2626' : theme.deep, borderColor: p48 ? '#DC2626' : theme.line2 }]}>
-                  <Text style={{ color: p48 ? '#FFFFFF' : theme.text, fontWeight: '800' }}>48 V {p48 ? 'allumé' : 'éteint'}</Text>
-                </Pressable>
-              )}
-              <View style={{ flex: 1 }} />
-              <Pressable onPress={() => p.setMode('link')} style={[styles.tg, { borderColor: theme.accent }]}><Text style={{ color: theme.accent, fontWeight: '800' }}>Relier ›</Text></Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-      {ch && mode === 'link' && (
-        <View style={{ flex: 1, gap: 6 }}>
-          <View style={styles.wrap}>
-            {p.O.map((o) => {
-              const on = p.linked(plug.n, o.id);
-              const c = p.outColor(o);
-              return (
-                <View key={o.id} style={[styles.dest, { width: p.wide ? '24.4%' : '49%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
-                  <Pressable onPress={() => p.toggle(plug, o)} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
-                    <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{o.name}</Text>
-                  </Pressable>
-                  {on ? <View style={{ flex: 1 }}><HSlider value={p.level(plug, o)} onChange={(v) => p.setLevel(plug, o, v)} label="" valueText={dbTxt(p.level(plug, o))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>pas relié</Text>}
-                </View>
-              );
-            })}
-          </View>
-          <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>EFFETS · combien cette entrée envoie dans chaque effet</Text>
-          <View style={styles.wrap}>
-            {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => {
-              const t: Target = { kind: 'fx', n: k };
-              const path = chLevelPath(ch, t);
-              const v = Number(client.get(path) ?? 0);
-              const on = v > 0;
-              const c = SLOT_COLORS[k - 1];
-              const label = fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr;
-              return (
-                <View key={k} style={[styles.dest, { width: p.wide ? '24.4%' : '49%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
-                  <Pressable onPress={() => client.set(path, f(on ? 0 : dbToFader(-14)))} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
-                    <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}FX{k} · {label}</Text>
-                  </Pressable>
-                  {on ? <View style={{ flex: 1 }}><HSlider value={v} onChange={(x) => client.set(path, f(x))} label="" valueText={dbTxt(v)} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>sans</Text>}
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
-    </>
   );
 }
 
@@ -246,13 +152,13 @@ const styles = StyleSheet.create({
 });
 
 /** Même vue, autonome : utilisée comme 4e vue de l'écran Table. */
-export function TableWiringStandalone({ client, theme }: { client: XAirClient; theme: Theme }) {
+export function TableWiringStandalone({ client, theme, actions }: { client: XAirClient; theme: Theme; actions?: DrawerActions }) {
   useAnyTick(client);
-  useEffect(() => { client.loadPaths([...wiringPaths(), ...Array.from({ length: FX_COUNT }, (_, k) => fxTypePath(k + 1))]); }, [client]);
+  useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);
   const P = plugs(client);
   const O = outlets(client);
   const W = wires(client);
   const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
-  return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />;
+  return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} actions={actions} />;
 }

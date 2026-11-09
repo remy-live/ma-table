@@ -40,7 +40,7 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
       if (data.app !== 'Ma table') throw new Error('format');
       for (const k of KEYS) if (data[k] !== undefined && data[k] !== null) await save(k, data[k]);
       setImportText('');
-      Alert.alert('Importé', 'Balance et ordre des voies restaurés. Rouvre l’écran Scène pour les voir.');
+      Alert.alert('Importé', 'Balance et ordre des voies restaurés. Rouvre l’écran Concert pour les voir.');
     } catch {
       Alert.alert('Import impossible', 'Colle ici le texte complet d’une sauvegarde « Ma table ».');
     }

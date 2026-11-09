@@ -8,13 +8,12 @@ import { useAnyTick } from '../ui/useTick';
 import { GROUP_COLORS } from './GroupsSheet';
 import { MIX_COLORS } from './MixPicker';
 import { i, s } from '../osc/osc';
-import { save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chNamePath, dcaNamePath, headampGainPath, inDca, MAIN, MODEL, phantomPath, Target, targetId } from '../xair/addresses';
 import { applyRecipe, RECIPES } from '../xair/effects';
 import { readGroups } from '../xair/groups';
 import { applyNeed, currentNeed, hasPreamp, INSTRUMENTS, Need, NEEDS } from '../xair/guide';
-import { capture } from '../xair/snapshot';
+import { saveCurrentSession } from '../store/sessions';
 import { applySmartName, colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 import { GroupsSheet } from './GroupsSheet';
@@ -74,9 +73,8 @@ export function GuideScreen(props: { client: XAirClient; theme: Theme; visible: 
           ) : (
             <Pressable
               onPress={async () => {
-                const snap = await capture(client, 'Balance');
-                await save('balance', snap);
-                Alert.alert('C’est prêt', 'La balance est enregistrée. Sur l’écran Scène, « Revenir à la balance » la rappelle d’un geste.');
+                await saveCurrentSession(client);
+                Alert.alert('C’est prêt', 'La soirée est enregistrée. Sur l’écran Concert, « Revenir à l’enregistrement » la rappelle d’un geste.');
                 props.onClose();
               }}
               style={[styles.nav, { backgroundColor: theme.ok }]}

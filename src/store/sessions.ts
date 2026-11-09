@@ -65,17 +65,20 @@ export async function saveCurrentSession(client: XAirClient, name?: string): Pro
   const sess: Session = { id: c.id, name: name ?? c.name, startedAt: c.startedAt, savedAt: Date.now(), snap, tableSlot: existing?.tableSlot };
   await save('soirees', [sess, ...list.filter((x) => x.id !== c.id)].slice(0, 40));
   if (name && name !== c.name) await save('soiree', { ...c, name });
+  // Enregistrer la soirée fixe aussi le point de retour (« Revenir à l'enregistrement »).
+  await save('balance', snap);
   return sess;
 }
 export type StartFrom = 'same' | 'balance' | 'blank';
 /** Enregistre la soirée en cours, puis en démarre une nouvelle. */
 export async function startNewSession(client: XAirClient, from: StartFrom): Promise<Current> {
+  // le dernier enregistrement, lu AVANT que la soirée soit ré-enregistrée telle quelle
+  const before = await load<Snapshot | null>('balance', null);
   await saveCurrentSession(client);
   const n: Current = { id: newId(), name: defaultName(), startedAt: Date.now() };
   await save('soiree', n);
   if (from === 'balance') {
-    const bal = await load<Snapshot | null>('balance', null);
-    if (bal) restore(client, bal);
+    if (before) { restore(client, before); await save('balance', before); }
   } else if (from === 'blank') {
     await blankTable(client);
   }

@@ -1,0 +1,220 @@
+// LE tiroir d'une entrée — le même partout (appui sur une tranche, vue Table,
+// branchements). Deux onglets :
+//   🎚 Régler  : gain + vumètre, couleur, 48 V, phase, panoramique, prise, groupes
+//   🔗 Relier  : une case par sortie et par effet, un appui relie, un curseur dose
+// Renommer, changer de prise et les préréglages s'ouvrent d'ici.
+import React, { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { f, i } from '../osc/osc';
+import { dbLabel } from '../ui/format';
+import { HSlider } from '../ui/HSlider';
+import { Btn, Kicker, RAD, Segmented, SEM } from '../ui/kit';
+import { Knob } from '../ui/Knob';
+import { Theme } from '../ui/theme';
+import { useAnyTick } from '../ui/useTick';
+import {
+  BUS_COUNT, busNamePath, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, formatPan, FX_COUNT, fToGainDb, headampGainPath,
+  inDca, insrcLabel, insrcPath, insrcPlug, invertPath, MAIN, meterIndex, panPath, panToF, phantomPath, Target, targetId, toggleDca,
+} from '../xair/addresses';
+import { fxType, fxTypePath } from '../xair/effects';
+import { SLOT_COLORS } from '../xair/fxSlots';
+import { dbToFader } from '../xair/levels';
+import { colorOf, TABLE_COLORS } from '../xair/smartName';
+import { useMeter } from '../xair/useMeter';
+import { XAirClient } from '../xair/XAirClient';
+import { GROUP_COLORS } from './GroupsSheet';
+import { InputSourceSheet } from './InputSourceSheet';
+import { MIX_COLORS } from './MixPicker';
+import { PresetsSheet } from './PresetsSheet';
+import { SmartRenameSheet } from './SmartRenameSheet';
+
+export interface DrawerActions {
+  /** ouvrir l'égaliseur / le détail de la voie */
+  onDetail?: (ch: number) => void;
+  /** copier les réglages de cette voie vers d'autres */
+  onCopy?: (ch: number) => void;
+}
+type Mode = 'in' | 'link';
+
+/** Les adresses dont le tiroir a besoin pour une voie. */
+export function drawerPaths(ch: number): string[] {
+  const p = [chNamePath(ch), headampGainPath(ch), phantomPath(ch), invertPath(ch), panPath(ch), chOnPath(ch), chDcaPath(ch), insrcPath(ch), chLevelPath(ch, MAIN)];
+  for (let b = 1; b <= BUS_COUNT; b++) p.push(chLevelPath(ch, { kind: 'bus', n: b }), busNamePath(b));
+  for (let k = 1; k <= FX_COUNT; k++) p.push(chLevelPath(ch, { kind: 'fx', n: k }), fxTypePath(k));
+  return p;
+}
+
+export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: number; actions?: DrawerActions; onClose?: () => void }) {
+  const { client, theme, ch } = props;
+  useAnyTick(client, 100);
+  const wide = useWindowDimensions().width >= 900;
+  const [mode, setMode] = useState<Mode>('in');
+  const [rename, setRename] = useState(false);
+  const [source, setSource] = useState(false);
+  const [presets, setPresets] = useState(false);
+  useEffect(() => { client.loadPaths(drawerPaths(ch)); }, [client, ch]);
+
+  const n2 = String(ch).padStart(2, '0');
+  const name = String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
+  const colIdx = Number(client.get(`/ch/${n2}/config/color`) ?? 0) & 7;
+  const color = colorOf(colIdx);
+  const insrc = Number(client.get(insrcPath(ch)) ?? ch - 1);
+
+  return (
+    <View style={{ flex: 1, gap: 8 }}>
+      <View style={styles.row}>
+        <View style={[styles.tag, { borderColor: color }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{insrcPlug(insrc)}</Text></View>
+        <Pressable onPress={() => setRename(true)} accessibilityLabel={`Renommer ${name}`} style={{ flex: 1, minWidth: 120 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 19, fontWeight: '800' }}>{name} <Text style={{ color: theme.muted, fontSize: 14 }}>✎</Text></Text>
+        </Pressable>
+        <Segmented theme={theme} value={mode} onChange={setMode} options={[['in', '🎚 Régler'], ['link', '🔗 Relier']] as const} />
+        {props.onClose && <Btn theme={theme} kind="primary" small label="OK" onPress={props.onClose} />}
+      </View>
+
+      {mode === 'in' ? (
+        <ScrollView contentContainerStyle={{ flexDirection: wide ? 'row' : 'column', gap: wide ? 18 : 12, alignItems: wide ? 'flex-start' : 'stretch' }}>
+          <GainBlock client={client} theme={theme} ch={ch} color={color} wide={wide} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              {Object.keys(TABLE_COLORS).map(Number).map((k) => (
+                <Pressable key={k} onPress={() => client.set(`/ch/${n2}/config/color`, i(k))} accessibilityLabel={`Couleur ${k}`} style={[styles.sw, { backgroundColor: TABLE_COLORS[k], borderColor: colIdx === k ? '#FFFFFF' : 'transparent' }]} />
+              ))}
+            </View>
+            <Toggles client={client} theme={theme} ch={ch} />
+            <PanRow client={client} theme={theme} ch={ch} />
+          </View>
+          <View style={{ flex: 1, gap: 8 }}>
+            <Pressable onPress={() => setSource(true)} style={[styles.line, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+              <Kicker theme={theme}>BRANCHÉE SUR</Kicker>
+              <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14, flex: 1 }}>{insrcLabel(insrc)}</Text>
+              <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 12 }}>Changer ›</Text>
+            </Pressable>
+            <Groups client={client} theme={theme} ch={ch} />
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              {props.actions?.onDetail && <Btn theme={theme} small icon="〰" label="Égaliseur" onPress={() => props.actions!.onDetail!(ch)} style={styles.act} />}
+              <Btn theme={theme} small icon="★" label="Préréglages" onPress={() => setPresets(true)} style={styles.act} />
+              {props.actions?.onCopy && <Btn theme={theme} small icon="⧉" label="Copier vers…" onPress={() => props.actions!.onCopy!(ch)} style={styles.act} />}
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={{ gap: 6 }}>
+          <View style={styles.wrap}>
+            {[MAIN, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)].map((t) => {
+              const c = t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(t as { n: number }).n] ?? '#9AA3AD';
+              const label = t.kind === 'main' ? 'Le public' : String(client.get(busNamePath((t as { n: number }).n)) ?? '') || `Retour ${(t as { n: number }).n}`;
+              return <Dest key={targetId(t)} client={client} theme={theme} path={chLevelPath(ch, t)} label={label} color={c} wide={wide} startDb={-10} none="pas relié" />;
+            })}
+          </View>
+          <Kicker theme={theme}>EFFETS · combien cette entrée envoie dans chaque effet</Kicker>
+          <View style={styles.wrap}>
+            {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => (
+              <Dest key={k} client={client} theme={theme} path={chLevelPath(ch, { kind: 'fx', n: k })} label={`FX${k} · ${fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr}`} color={SLOT_COLORS[k - 1]} wide={wide} startDb={-14} none="sans" />
+            ))}
+          </View>
+        </ScrollView>
+      )}
+
+      <SmartRenameSheet client={client} ch={rename ? ch : null} theme={theme} onClose={() => setRename(false)} />
+      <InputSourceSheet client={client} ch={source ? ch : null} theme={theme} onClose={() => setSource(false)} />
+      <PresetsSheet client={client} theme={theme} visible={presets} ch={ch} onClose={() => setPresets(false)} />
+    </View>
+  );
+}
+
+function GainBlock({ client, theme, ch, color, wide }: { client: XAirClient; theme: Theme; ch: number; color: string; wide: boolean }) {
+  const gain = client.get(headampGainPath(ch));
+  const m = useMeter(client, [meterIndex.ch(ch)], 100);
+  const gdb = gain === undefined ? null : fToGainDb(Number(gain));
+  const zone = m.clip ? SEM.danger : m.db > -6 ? '#EAB308' : m.db > -24 ? '#22C55E' : theme.muted;
+  const advice = m.clip ? 'Ça sature : baisse' : m.db > -6 ? 'Un peu fort' : m.db < -55 ? 'Joue fort pour régler' : m.db < -24 ? 'Trop faible : monte' : 'Bon niveau';
+  return (
+    <View style={{ alignItems: 'center', gap: 3, flexDirection: wide ? 'column' : 'row' }}>
+      <Knob value={gain === undefined ? 0.5 : Number(gain)} size={wide ? 96 : 80} theme={theme} color={color} dim={gain === undefined} label="Gain" onChange={gain === undefined ? undefined : (v) => client.set(headampGainPath(ch), f(v))} />
+      <View style={{ alignItems: 'center', gap: 3, width: 132 }}>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{gdb === null ? 'Entrée ligne' : `Gain ${gdb > 0 ? '+' : ''}${gdb.toFixed(0)} dB`}</Text>
+        <View style={{ alignSelf: 'stretch', height: 10, borderRadius: 5, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+          <View style={{ width: `${m.level * 100}%`, height: 10, backgroundColor: zone }} />
+          <View style={{ position: 'absolute', left: '70%', width: '20%', top: 0, bottom: 0, borderWidth: 1, borderColor: theme.text, borderRadius: 3, opacity: 0.4 }} />
+        </View>
+        <Text style={{ color: zone, fontSize: 11, fontWeight: '800' }}>{advice}</Text>
+      </View>
+    </View>
+  );
+}
+
+function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: number }) {
+  const hasPreamp = client.get(headampGainPath(ch)) !== undefined;
+  const p48 = Number(client.get(phantomPath(ch)) ?? 0) === 1;
+  const inv = Number(client.get(invertPath(ch)) ?? 0) === 1;
+  const on = Number(client.get(chOnPath(ch)) ?? 1) === 1;
+  const T = ({ label, active, bg, onPress }: { label: string; active: boolean; bg: string; onPress: () => void }) => (
+    <Pressable onPress={onPress} accessibilityRole="switch" accessibilityState={{ checked: active }} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2 }]}>
+      <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+      {hasPreamp && (
+        <T label={p48 ? '48 V allumé' : '48 V'} active={p48} bg="#DC2626" onPress={() => (p48 ? client.set(phantomPath(ch), i(0)) : Alert.alert('Activer le 48 V ?', 'Seulement pour un micro statique ou une DI active. Baisse le volume avant, ça peut claquer.', [{ text: 'Annuler', style: 'cancel' }, { text: 'Activer', onPress: () => client.set(phantomPath(ch), i(1)) }]))} />
+      )}
+      <T label="Phase Ø" active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
+      <T label={on ? 'Couper' : 'Voie coupée'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
+    </View>
+  );
+}
+
+function PanRow({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: number }) {
+  const pan = Number(client.get(panPath(ch)) ?? 0.5);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flex: 1 }}><HSlider label="Gauche ↔ droite" value={pan} center valueText={formatPan(pan)} onChange={(v) => client.set(panPath(ch), f(v))} color={theme.text} theme={theme} /></View>
+      <Pressable onPress={() => client.set(panPath(ch), f(panToF(0)))} accessibilityLabel="Remettre au centre" style={[styles.tg, { borderColor: theme.line2, paddingHorizontal: 8 }]}><Text style={{ color: theme.muted, fontWeight: '800', fontSize: 12 }}>centre</Text></Pressable>
+    </View>
+  );
+}
+
+function Groups({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: number }) {
+  const mask = Number(client.get(chDcaPath(ch)) ?? 0);
+  return (
+    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Kicker theme={theme}>GROUPES</Kicker>
+      {Array.from({ length: DCA_COUNT }, (_, k) => k + 1).map((k) => {
+        const inG = inDca(mask, k);
+        const c = GROUP_COLORS[k - 1];
+        return (
+          <Pressable key={k} onPress={() => client.set(chDcaPath(ch), i(toggleDca(mask, k)))} accessibilityState={{ checked: inG }} style={[styles.chip, { borderColor: c, backgroundColor: inG ? c : 'transparent' }]}>
+            <Text numberOfLines={1} style={{ color: inG ? SEM.ink : theme.text, fontWeight: '800', fontSize: 12 }}>{inG ? '✓ ' : ''}{String(client.get(dcaNamePath(k)) ?? '') || `Groupe ${k}`}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Une destination (sortie ou effet) : un appui relie ou retire, le curseur dose. */
+function Dest({ client, theme, path, label, color, wide, startDb, none }: { client: XAirClient; theme: Theme; path: string; label: string; color: string; wide: boolean; startDb: number; none: string }) {
+  const v = Number(client.get(path) ?? 0);
+  const on = v > 0;
+  return (
+    <View style={[styles.dest, { width: wide ? '24.4%' : '100%', borderColor: on ? color : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
+      <Pressable onPress={() => client.set(path, f(on ? 0 : dbToFader(startDb)))} accessibilityState={{ checked: on }} style={[styles.pill, { backgroundColor: on ? color : theme.panel, borderColor: color }]}>
+        <Text numberOfLines={1} style={{ color: on ? SEM.ink : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{label}</Text>
+      </Pressable>
+      {on ? <View style={{ flex: 1 }}><HSlider value={v} onChange={(x) => client.set(path, f(x))} label="" valueText={dbLabel(v)} color={color} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>{none}</Text>}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  tag: { minWidth: 42, height: 42, borderRadius: RAD.md, borderWidth: 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
+  tg: { minHeight: 40, paddingHorizontal: 12, borderRadius: RAD.sm, borderWidth: 1, justifyContent: 'center' },
+  line: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: RAD.sm + 2, paddingHorizontal: 10 },
+  chip: { height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 2, justifyContent: 'center', maxWidth: 130 },
+  act: { flexGrow: 1 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  dest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: RAD.sm + 2, padding: 4, minHeight: 48 },
+  pill: { height: 34, paddingHorizontal: 8, borderRadius: 17, borderWidth: 1, justifyContent: 'center', minWidth: 96, maxWidth: 140 },
+});

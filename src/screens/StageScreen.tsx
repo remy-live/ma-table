@@ -5,16 +5,18 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, Vi
 import { f, i } from '../osc/osc';
 import { colorOf } from '../xair/smartName';
 import { GROUP_COLORS } from './GroupsSheet';
-import { ScreenHeader, Segmented } from '../ui/kit';
+import { Btn, Card, ScreenHeader, SEM, Segmented } from '../ui/kit';
+import { Current, current, safetyBackup, saveCurrentSession } from '../store/sessions';
+import { SessionsScreen } from './SessionsScreen';
 import { MIX_COLORS } from './MixPicker';
 import { useAnyTick } from '../ui/useTick';
 import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, Target, targetId } from '../xair/addresses';
 import { Group, moveMembers, snapshot as sendSnap } from '../xair/groups';
 import { dbToFader, faderToDb } from '../xair/levels';
-import { capture, changedCount, restore, Snapshot } from '../xair/snapshot';
+import { changedCount, restore, Snapshot } from '../xair/snapshot';
 import { useParam } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
-import { load, save } from '../store/persist';
+import { load } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { MonConfig } from '../xair/monitor';
 import { InviteSheet } from './InviteSheet';
@@ -44,11 +46,13 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [checkOpen, setCheckOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
+  const [cur, setCur] = useState<Current | null>(null);
+  const [sessOpen, setSessOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const lrOn = Number(useParam<number>(client, '/lr/mix/on', 1)) === 1;
 
-  useEffect(() => {
-    load<Snapshot | null>('balance', null).then(setSnap);
-  }, []);
+  const reload = () => { load<Snapshot | null>('balance', null).then(setSnap); current().then(setCur); };
+  useEffect(reload, []);
   // Compte des réglages modifiés depuis la balance, recalculé chaque seconde.
   useEffect(() => {
     if (!snap) return;
@@ -57,16 +61,16 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
     return () => clearInterval(t);
   }, [client, snap]);
 
-  const saveBalance = async () => {
-    const s = await capture(client, 'Balance');
-    setSnap(s);
-    save('balance', s);
+  // Un seul geste : enregistrer la soirée fixe aussi le point de retour.
+  const saveNow = async () => {
+    setBusy(true);
+    try { const sess = await saveCurrentSession(client); setSnap(sess.snap); } finally { setBusy(false); }
   };
   const askRestore = () => {
     if (!snap) return;
-    Alert.alert('Revenir à la balance ?', `${changed} réglage${changed > 1 ? 's' : ''} vont reprendre leur valeur de ${hhmm(snap.at)}.`, [
+    Alert.alert('Revenir à l’enregistrement ?', `${changed} réglage${changed > 1 ? 's' : ''} vont reprendre leur valeur de ${hhmm(snap.at)}.`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Revenir', onPress: () => restore(client, snap) },
+      { text: 'Revenir', onPress: () => { safetyBackup(client, 'avant de revenir à l’enregistrement').catch(() => {}); restore(client, snap); } },
     ]);
   };
 
@@ -98,37 +102,27 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <ScreenHeader theme={theme} title="Sur scène" sub="La télécommande du concert : gros boutons, l’essentiel seulement">
+      <ScreenHeader theme={theme} title="Concert" sub="Ta soirée et la télécommande : gros boutons, l’essentiel seulement">
         <Segmented theme={theme} value={props.locked ? 'concert' : 'balance'} onChange={(v) => { if ((v === 'concert') !== props.locked) props.onToggleLock(); }} options={[['balance', '🎚 Balance', 'je règle tout'], ['concert', '🔒 Concert', 'pas de fausse manip']] as const} />
       </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={{ flexDirection: wide ? 'row' : 'column', gap: 12 }}>
-          {/* 1. AVANT */}
-          <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
-            <Step n={1} title="Garder la balance" theme={theme} />
-            {snap ? (
-              <>
-                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Balance gardée à {hhmm(snap.at)}</Text>
-                <Text style={{ color: changed ? '#FCD34D' : theme.ok, fontSize: 12, fontWeight: '700' }}>{changed ? `${changed} réglage${changed > 1 ? 's' : ''} bougé${changed > 1 ? 's' : ''} depuis` : '✓ Tout est comme à la balance'}</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Pressable onPress={askRestore} disabled={!changed} style={[styles.btn, { backgroundColor: changed ? theme.accent : 'transparent', borderColor: theme.accent, borderWidth: 1, opacity: changed ? 1 : 0.5 }]}>
-                    <Text style={{ color: changed ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 14 }}>↺ Revenir à la balance</Text>
-                  </Pressable>
-                  <Pressable onPress={saveBalance} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1, flex: 0.7 }]}>
-                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Garder l’actuel</Text>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={{ color: theme.muted, fontSize: 13 }}>Quand le son est bon, appuie ici. Pendant le concert, tu pourras y revenir d’un geste.</Text>
-                <Pressable onPress={saveBalance} style={[styles.btn, { backgroundColor: theme.accent }]}>
-                  <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>💾 Garder la balance maintenant</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
+          {/* 1. MA SOIRÉE : enregistrer, revenir, changer */}
+          <Card theme={theme} style={{ flex: 1 }}>
+            <Step n={1} title="Ma soirée" theme={theme} />
+            <Pressable onPress={() => setSessOpen(true)} accessibilityLabel="Renommer, changer de soirée, sauvegardes">
+              <Text numberOfLines={1} style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{cur?.name ?? '…'} <Text style={{ color: theme.muted, fontSize: 13 }}>✎</Text></Text>
+            </Pressable>
+            <Text style={{ color: !snap ? theme.muted : changed ? SEM.warnSoft : theme.ok, fontSize: 12, fontWeight: '700' }}>
+              {!snap ? 'Pas encore enregistrée. Quand le son est bon, enregistre : tu pourras y revenir d’un geste.' : changed ? `Enregistrée à ${hhmm(snap.at)} · ${changed} réglage${changed > 1 ? 's' : ''} bougé${changed > 1 ? 's' : ''} depuis` : `✓ Enregistrée à ${hhmm(snap.at)} · rien n’a bougé`}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Btn theme={theme} kind={!snap || changed ? 'primary' : 'outline'} icon="💾" label={busy ? '…' : 'Enregistrer'} onPress={saveNow} style={{ flex: 1 }} />
+              <Btn theme={theme} icon="↺" label="Revenir" a11y="Revenir à l’enregistrement" disabled={!snap || !changed} onPress={askRestore} style={{ flex: 1 }} />
+            </View>
+            <Btn theme={theme} kind="ghost" small label="Nouvelle soirée · anciennes soirées · sauvegardes ›" onPress={() => setSessOpen(true)} />
+          </Card>
           {/* 3. URGENCES */}
           <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
             <Step n={3} title="En cas de problème" theme={theme} color="#EF4444" />
@@ -182,6 +176,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           </Pressable>
         </View>
       </ScrollView>
+      <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => { setSessOpen(false); reload(); }} />
       <ChecklistSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
       <JournalSheet theme={theme} visible={journalOpen} onClose={() => setJournalOpen(false)} />
       <InviteSheet client={client} theme={theme} visible={invite} onClose={() => setInvite(false)} onTryHere={(cfg) => { setInvite(false); props.onMonitor(cfg); }} />

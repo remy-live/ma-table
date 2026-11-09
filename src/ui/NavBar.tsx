@@ -1,18 +1,17 @@
 // Navigation : barre à gauche sur tablette, en bas sur téléphone.
-// Six sections claires + le bouton « Aide-moi » (assistants).
+// Cinq sections claires + le bouton « Aide-moi » (assistants).
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
 
-export type Section = 'table' | 'effets' | 'branchements' | 'scene' | 'soirees' | 'reglages';
+export type Section = 'table' | 'effets' | 'branchements' | 'scene' | 'reglages';
 
 const ITEMS: [Section, string][] = [
   ['table', 'Table'],
   ['effets', 'Effets'],
   ['branchements', 'Branchements'],
-  ['scene', 'Scène'],
-  ['soirees', 'Soirées'],
+  ['scene', 'Concert'],
   ['reglages', 'Réglages'],
 ];
 
@@ -24,7 +23,6 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter'; colo
       {id === 'effets' && (<><Path d="M3 17h2l2-6 3 10 3-14 3 8 2-3h3" {...p} /></>)}
       {id === 'branchements' && (<><Circle cx={6} cy={6} r={2.5} {...p} /><Circle cx={18} cy={18} r={2.5} {...p} /><Path d="M6 8.5c0 6 12 3 12 7" {...p} /></>)}
       {id === 'scene' && (<><Path d="M12 3v10" {...p} /><Path d="M8 7a4 4 0 0 0 8 0" {...p} /><Path d="M6 21h12" {...p} /><Path d="M12 13v8" {...p} /></>)}
-      {id === 'soirees' && (<><Rect x={4} y={5} width={16} height={15} rx={2} {...p} /><Line x1={4} y1={10} x2={20} y2={10} {...p} /><Line x1={9} y1={3} x2={9} y2={7} {...p} /><Line x1={15} y1={3} x2={15} y2={7} {...p} /></>)}
       {id === 'reglages' && (<><Circle cx={12} cy={12} r={3} {...p} /><Path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" {...p} /></>)}
       {id === 'quitter' && (<><Path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" {...p} /><Path d="M14 8l4 4-4 4" {...p} /><Line x1={18} y1={12} x2={9} y2={12} {...p} /></>)}
       {id === 'aide' && (<><Circle cx={12} cy={12} r={9} {...p} /><Path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7" {...p} /><Circle cx={12} cy={17} r={0.6} {...p} fill={color} /></>)}
@@ -36,7 +34,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
   const { theme, vertical } = props;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
-      Alert.alert('Mode Concert', 'L’appli est verrouillée. Déverrouille depuis Scène.');
+      Alert.alert('Mode Concert', 'L’appli est verrouillée. Déverrouille depuis Concert.');
       return;
     }
     props.onGo(s);

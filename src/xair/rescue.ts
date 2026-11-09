@@ -42,11 +42,11 @@ export function checklist(client: XAirClient, opts: { balanceSaved: boolean; ses
   return [
     { id: 'link', label: 'Table connectée', ok: client.status === 'connecté', hint: 'Vérifie le Wi-Fi du téléphone et celui de la table' },
     { id: 'wifi', label: 'Table sur ton réseau (WIFI CLIENT)', ok: opts.wifiClient !== false, hint: opts.wifiClient === null ? 'Inconnu : regarde l’interrupteur REMOTE à l’arrière' : 'Interrupteur REMOTE → WIFI CLIENT, puis Connexion › Réseau' },
-    { id: 'names', label: `Voies nommées (${named})`, ok: named >= 2, hint: 'Outils › Mode guidé, étape 1' },
+    { id: 'names', label: `Voies nommées (${named})`, ok: named >= 2, hint: 'Aide-moi › Mode guidé, étape 1' },
     { id: 'heard', label: `Le public entend ${heard} voie${heard > 1 ? 's' : ''}`, ok: heard >= 1 && lrOn, hint: lrOn ? 'Monte les faders de la façade' : 'La façade est coupée (pause) : « Reprendre le son »' },
     { id: 'returns', label: `Retours nommés (${returnsNamed})`, ok: returnsNamed >= 1 || opts.namedReturns === 0, hint: 'Mode guidé, étape 3 : qui écoute chaque AUX' },
     { id: 'lim', label: `Protège-oreilles sur les casques (${opts.limiters})`, ok: opts.limiters > 0 || returnsNamed === 0, hint: 'Inviter un musicien : le protège-oreilles s’active sur son retour' },
-    { id: 'balance', label: 'Balance enregistrée', ok: opts.balanceSaved, hint: 'Scène › Enregistrer la balance (ou fin de la balance automatique)' },
-    { id: 'session', label: 'Soirée enregistrée', ok: opts.sessionSaved, hint: 'Outils › Mes soirées › Enregistrer maintenant' },
+    // une seule ligne depuis que « garder la balance » et « enregistrer la soirée » sont le même geste
+    { id: 'balance', label: 'Soirée enregistrée', ok: opts.balanceSaved, hint: 'Concert › Enregistrer' },
   ];
 }

@@ -15,7 +15,6 @@ import { initStorage } from './src/store/persist';
 import { THEMES } from './src/ui/theme';
 import { Prefs, SettingsScreen } from './src/screens/SettingsScreen';
 import { WiringScreen } from './src/screens/WiringScreen';
-import { SessionsScreen } from './src/screens/SessionsScreen';
 import { EffectsHub } from './src/screens/EffectsHub';
 import { HelpSheet } from './src/screens/HelpSheet';
 import { NavBar, Section } from './src/ui/NavBar';
@@ -111,7 +110,7 @@ export default function App() {
   useEffect(() => { if (prefs.immersive !== false) setImmersive(true); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const go = (t: Section) => {
     if (locked && t !== 'scene') {
-      Alert.alert('Verrouillé', 'Déverrouille d’abord depuis l’écran Scène.');
+      Alert.alert('Verrouillé', 'Déverrouille d’abord depuis l’écran Concert.');
       return;
     }
     setTab(t);
@@ -172,7 +171,6 @@ export default function App() {
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
       {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} />}
-      {tab === 'soirees' && <SessionsScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
       {tab === 'reglages' && <SettingsScreen client={client} theme={theme} prefs={prefs} onPrefs={setPrefs} onDisconnect={disconnect} />}
     </View>
   );
