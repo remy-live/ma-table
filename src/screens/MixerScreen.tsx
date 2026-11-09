@@ -6,6 +6,7 @@ import {
 import { Clip, copyChannel, pasteChannel, swapChannels } from '../xair/clipboard';
 import { Group } from '../xair/groups';
 import { CopyMixSheet } from './CopyMixSheet';
+import { CopySettingsSheet } from './CopySettingsSheet';
 import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
@@ -74,7 +75,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const drawerActions = {
     // l'égaliseur s'ouvre à côté des tranches : on revient à la vue complète si on était en Gains ou Table
     onDetail: (c: number) => { setView((v) => (v === 'gains' || v === 'table' ? 'full' : v)); setDetailCh(c); },
-    onCopy: (c: number) => { setView('full'); setOrganize(true); setSel(c); setClip(null); setPasteSel([]); setMode('copy'); },
+    onCopy: (c: number) => setCopySet(c),
   };
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [organize, setOrganize] = useState(false);
@@ -89,6 +90,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [mode, setMode] = useState<null | 'copy' | 'swap'>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [copySet, setCopySet] = useState<number | null | 0>(null); // voie de départ (0 = aucune choisie), null = fermé
   const [pasteSel, setPasteSel] = useState<number[]>([]);
   const [cats, setCats] = useState<Category[]>(['eq', 'dyn', 'fx']);
   const [srcCh, setSrcCh] = useState<number | null>(null);
@@ -316,7 +318,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                       theme={theme}
                       isSource={mode !== null && it.ch === sel}
                       modeLabel={mode === 'swap' ? 'échange' : 'copie'}
-                      onCopy={() => { setSel(it.ch); setClip(null); setPasteSel([]); setMode('copy'); }}
+                      onCopy={() => setCopySet(it.ch)}
                       onSwap={() => { setSel(it.ch); setMode('swap'); }}
                       onInput={() => setSrcCh(it.ch)}
                       onRename={() => setRenameCh(it.ch)}
@@ -400,6 +402,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={drawerActions} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
+      <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} onClose={() => setCopySet(null)} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />

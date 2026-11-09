@@ -46,7 +46,7 @@ export function OrganizeOverlay(props: {
         <Text style={{ color: theme.accent, fontSize: 22, fontWeight: '800' }}>⇆</Text>
         <Text style={{ color: theme.text, fontSize: 10, fontWeight: '800', textAlign: 'center' }}>glisse pour déplacer</Text>
       </View>
-      <Pressable onPress={props.onCopy} style={[styles.btn, { backgroundColor: theme.accent, borderColor: theme.accent }]}><Text style={[styles.btnText, { color: theme.onAccent }]}>Copier vers…</Text></Pressable>
+      <Pressable onPress={props.onCopy} style={[styles.btn, { backgroundColor: theme.accent, borderColor: theme.accent }]}><Text style={[styles.btnText, { color: theme.onAccent }]}>Copier les réglages</Text></Pressable>
       <Pressable onPress={props.onSwap} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Échanger…</Text></Pressable>
       <Pressable onPress={props.onInput} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Entrée</Text></Pressable>
       <Pressable onPress={props.onRename} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Renommer</Text></Pressable>
