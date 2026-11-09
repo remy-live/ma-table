@@ -72,7 +72,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [inputCh, setInputCh] = useState<number | null>(null);
   const [renameCh, setRenameCh] = useState<number | null>(null);
   const drawerActions = {
-    onDetail: setDetailCh,
+    // l'égaliseur s'ouvre à côté des tranches : on revient à la vue complète si on était en Gains ou Table
+    onDetail: (c: number) => { setView((v) => (v === 'gains' || v === 'table' ? 'full' : v)); setDetailCh(c); },
     onCopy: (c: number) => { setView('full'); setOrganize(true); setSel(c); setClip(null); setPasteSel([]); setMode('copy'); },
   };
   const [groupsOpen, setGroupsOpen] = useState(false);
