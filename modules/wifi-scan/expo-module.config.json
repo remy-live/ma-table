@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["fr.remy.wifiscan.WifiScanModule"]
+  }
+}

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { i } from '../osc/osc';
 import { phantomPath } from '../xair/addresses';
-import { applySmartName, colorOf, recognize } from '../xair/smartName';
+import { applySmartName, colorOf, recognize, TABLE_COLORS } from '../xair/smartName';
 import { useParam } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { Theme } from '../ui/theme';
@@ -22,9 +22,12 @@ function Body({ client, ch, theme, onClose }: { client: XAirClient; ch: number; 
   const current = String(useParam<string>(client, `/ch/${String(ch).padStart(2, '0')}/config/name`, ''));
   const [text, setText] = useState(current);
   const [off, setOff] = useState<Record<string, boolean>>({});
-  useEffect(() => setText(current), [ch]); // eslint-disable-line react-hooks/exhaustive-deps
+  const curColor = Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)) & 7;
+  const [pick, setPick] = useState<number | null>(null);
+  useEffect(() => { setText(current); setPick(null); }, [ch]); // eslint-disable-line react-hooks/exhaustive-deps
   const rec = recognize(text);
-  const color = rec ? colorOf(rec.color) : theme.line2;
+  const colIdx = pick ?? (rec && !off.color ? rec.color : curColor);
+  const color = colorOf(colIdx);
 
   const options = rec
     ? ([
@@ -37,7 +40,8 @@ function Body({ client, ch, theme, onClose }: { client: XAirClient; ch: number; 
   const n = options.filter(([k]) => !off[k]).length;
 
   const apply = () => {
-    applySmartName(client, ch, text.trim() || `Voie ${ch}`, rec, { color: !off.color, group: !off.group, preset: !off.preset });
+    applySmartName(client, ch, text.trim() || `Voie ${ch}`, rec, { color: !off.color && pick === null, group: !off.group, preset: !off.preset });
+    if (pick !== null) client.set(`/ch/${String(ch).padStart(2, '0')}/config/color`, i(pick));
     if (rec?.phantom && !off.p48) {
       Alert.alert('Activer le 48 V ?', 'Seulement pour un micro statique ou une DI active. Baisse le volume avant, ça peut claquer.', [
         { text: 'Non', style: 'cancel' },
@@ -59,6 +63,14 @@ function Body({ client, ch, theme, onClose }: { client: XAirClient; ch: number; 
         placeholderTextColor={theme.muted}
         style={[styles.input, { color: theme.text, borderColor: color, backgroundColor: theme.deep }]}
       />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '800' }}>COULEUR</Text>
+        {Object.keys(TABLE_COLORS).map(Number).map((k) => (
+          <Pressable key={k} onPress={() => setPick(k)} accessibilityLabel={`Couleur ${k}`} accessibilityState={{ selected: colIdx === k }} style={[styles.sw, { backgroundColor: TABLE_COLORS[k], borderColor: colIdx === k ? '#FFFFFF' : 'transparent' }]}>
+            {colIdx === k && <Text style={{ color: k === 7 ? '#111' : '#FFF', fontWeight: '900' }}>✓</Text>}
+          </Pressable>
+        ))}
+      </View>
       <View style={styles.chips}>
         {QUICK.map((q) => (
           <Pressable key={q} onPress={() => setText(q)} style={[styles.chip, { borderColor: theme.line2 }]}>
@@ -112,6 +124,7 @@ const styles = StyleSheet.create({
   sheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 30, gap: 12 },
   input: { height: 54, borderRadius: 12, borderWidth: 2, paddingHorizontal: 14, fontSize: 19, fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  sw: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   chip: { height: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, justifyContent: 'center' },
   card: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 4 },
   opt: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },

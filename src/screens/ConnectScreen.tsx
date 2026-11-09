@@ -3,6 +3,7 @@ import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { WLAN, WLAN_PATHS } from '../xair/addresses';
 import { BUILD_VERSION } from '../version';
+import { canScanWifi, currentWifi, scanWifi, WifiNet, wifiBars } from '../xair/wifiScan';
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
@@ -29,6 +30,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [mine, setMine] = useState<MyTable | null>(null);
   const wide = useWindowDimensions().width >= 900;
   useEffect(() => { load<MyTable | null>('maTable', null).then(setMine); }, []);
+  const [nets, setNets] = useState<WifiNet[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [onNet, setOnNet] = useState('');
+  const scanNets = async () => {
+    if (!canScanWifi) return;
+    setScanning(true);
+    try { setNets(await scanWifi()); setOnNet(currentWifi()); } catch (e) { dbg.warn('Scan Wi-Fi : ' + String(e)); }
+    setScanning(false);
+  };
+  useEffect(() => { scanNets(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load<string | null>('derniereIp', null).then(setLast);
@@ -187,8 +198,35 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         <View style={{ flex: 1, gap: 12 }}>
           {/* WI-FI */}
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 10 }]}>
-            <Text style={[styles.kicker, { color: theme.muted }]}>LE BON WI-FI</Text>
-            {tryNames.length > 0 ? tryNames.map((n) => (
+            <View style={styles.row}>
+              <Text style={[styles.kicker, { color: theme.muted }]}>{canScanWifi ? 'WI-FI AUTOUR DE TOI' : 'LE BON WI-FI'}</Text>
+              {canScanWifi && (
+                <Pressable onPress={scanNets} disabled={scanning} style={[styles.small, { borderColor: theme.line2 }]}>
+                  {scanning ? <ActivityIndicator color={theme.text} /> : <Text style={{ color: theme.text, fontWeight: '700' }}>↻</Text>}
+                </Pressable>
+              )}
+            </View>
+            {!!onNet && <Text style={{ color: theme.muted, fontSize: 12 }}>Tu es connecté à <Text style={{ color: theme.text, fontWeight: '800' }}>{onNet}</Text></Text>}
+            {canScanWifi && nets.length > 0 && (
+              <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={{ gap: 6 }} nestedScrollEnabled>
+                {nets.slice(0, 12).map((n) => {
+                  const mineNet = n.table || n.ssid === mine?.ssid || n.ssid === mine?.name;
+                  const here = n.ssid === onNet;
+                  return (
+                    <Pressable key={n.ssid} onPress={openWifi} style={[styles.net, { borderColor: here ? '#34D399' : mineNet ? theme.accent : theme.line2, backgroundColor: theme.deep, borderWidth: mineNet || here ? 2 : 1 }]}>
+                      <Bars n={wifiBars(n.level)} color={mineNet ? theme.accent : theme.muted} />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{n.ssid}</Text>
+                        <Text style={{ color: theme.muted, fontSize: 11 }}>{n.freq > 4000 ? '5 GHz' : '2,4 GHz'} · {n.level} dBm{mineNet ? ' · c’est une table !' : ''}</Text>
+                      </View>
+                      {here ? <Text style={{ color: '#34D399', fontWeight: '800', fontSize: 12 }}>✓ connecté</Text> : mineNet ? <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 12 }}>Rejoindre ›</Text> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            {canScanWifi && !scanning && nets.length === 0 && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucun réseau vu : autorise la localisation (Android l’exige pour lister le Wi-Fi), puis ↻.</Text>}
+            {!canScanWifi && (tryNames.length > 0 ? tryNames.map((n) => (
               <View key={n} style={[styles.net, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
                 <WifiIcon color={theme.accent} />
                 <View style={{ flex: 1 }}>
@@ -201,10 +239,10 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
                 <WifiIcon color={theme.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>XR18-…  /  XR16-…</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>le Wi-Fi de la table porte son nom</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>le Wi-Fi de la table porte son nom (l’iPhone ne laisse pas les applis lister le Wi-Fi)</Text>
                 </View>
               </View>
-            )}
+            ))}
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
               <Num n={1} c={theme.accent} theme={theme} /><Text style={{ color: theme.muted, fontSize: 12, flex: 1 }}>Ouvre le Wi-Fi du téléphone et choisis ce réseau</Text>
             </View>
@@ -279,6 +317,13 @@ function MixerIcon({ color, small }: { color: string; small?: boolean }) {
         </React.Fragment>
       ))}
     </Svg>
+  );
+}
+function Bars({ n, color }: { n: number; color: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 20, width: 26 }}>
+      {[6, 10, 14, 19].map((h, k) => <View key={h} style={{ width: 4, height: h, borderRadius: 1, backgroundColor: k < n ? color : '#3A414B' }} />)}
+    </View>
   );
 }
 function WifiIcon({ color }: { color: string }) {

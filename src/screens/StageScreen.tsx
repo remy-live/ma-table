@@ -1,9 +1,12 @@
 // Télécommande de scène : revenir à la balance, groupes en gros boutons,
 // verrou contre les fausses manips, pause de la façade.
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { i } from '../osc/osc';
-import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, Target, targetId } from '../xair/addresses';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { f, i } from '../osc/osc';
+import { colorOf } from '../xair/smartName';
+import { GROUP_COLORS } from './GroupsSheet';
+import { useAnyTick } from '../ui/useTick';
+import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, Target, targetId } from '../xair/addresses';
 import { Group, moveMembers, snapshot as sendSnap } from '../xair/groups';
 import { dbToFader, faderToDb } from '../xair/levels';
 import { capture, changedCount, restore, Snapshot } from '../xair/snapshot';
@@ -32,6 +35,7 @@ function useGroups(client: XAirClient): Group[] {
 export function StageScreen(props: { client: XAirClient; theme: Theme; locked: boolean; onToggleLock: () => void; onMonitor: (cfg: MonConfig) => void }) {
   const { client, theme } = props;
   const groups = useGroups(client);
+  useAnyTick(client, 150);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [changed, setChanged] = useState(0);
   const [mix, setMix] = useState<Target>({ kind: 'main' });
@@ -79,90 +83,116 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
     }
   };
 
+  const wide = useWindowDimensions().width >= 900;
+  const grouped = new Set(groups.flatMap((g) => g.members));
+  const solos = Array.from({ length: CH_COUNT }, (_, c) => c + 1).filter((c) => !grouped.has(c) && !!String(client.get(chNamePath(c)) ?? ''));
+  const mixColor = (t: Target) => MIX_COLORS[mixes.findIndex((m) => targetId(m) === targetId(t))] ?? theme.text;
+  const nudgeCh = (c: number, db: number) => {
+    const p = chLevelPath(c, mix);
+    const v = Number(client.get(p) ?? 0);
+    const d = faderToDb(v);
+    const n = (isFinite(d) && v > 0 ? d : -30) + db;
+    client.set(p, f(n < -50 ? 0 : dbToFader(Math.min(10, n))));
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}><Text style={[styles.title, { color: theme.text }]}>Sur scène</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{props.locked ? 'Mode Concert : gros boutons, pas de fausse manip' : 'Mode Balance : tout est accessible'}</Text></View>
-        <Pressable
-          onPress={props.onToggleLock}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: props.locked }}
-          style={[styles.lock, props.locked ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}
-        >
-          <Text style={{ color: props.locked ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{props.locked ? '🔒 Concert' : 'Balance'}</Text>
-        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: theme.text }]}>Sur scène</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>La télécommande du concert : gros boutons, l’essentiel seulement</Text>
+        </View>
+        <View style={[styles.seg, { borderColor: theme.line2 }]}>
+          <Pressable onPress={() => props.locked && props.onToggleLock()} accessibilityState={{ selected: !props.locked }} style={[styles.segBtn, !props.locked && { backgroundColor: theme.accent }]}>
+            <Text style={{ color: !props.locked ? theme.onAccent : theme.text, fontWeight: '800' }}>🎚 Balance</Text>
+            <Text style={{ color: !props.locked ? theme.onAccent : theme.muted, fontSize: 10 }}>je règle tout</Text>
+          </Pressable>
+          <Pressable onPress={() => !props.locked && props.onToggleLock()} accessibilityState={{ selected: props.locked }} style={[styles.segBtn, props.locked && { backgroundColor: theme.accent }]}>
+            <Text style={{ color: props.locked ? theme.onAccent : theme.text, fontWeight: '800' }}>🔒 Concert</Text>
+            <Text style={{ color: props.locked ? theme.onAccent : theme.muted, fontSize: 10 }}>pas de fausse manip</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-          <Text style={[styles.kicker, { color: theme.muted }]}>RÉGLAGE DU CONCERT</Text>
-          {snap ? (
-            <>
-              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>Balance de {hhmm(snap.at)}</Text>
-              <Text style={{ color: theme.muted, fontSize: 12 }}>{changed ? `${changed} réglage${changed > 1 ? 's' : ''} modifié${changed > 1 ? 's' : ''} depuis` : 'Identique à la balance'}</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                <Pressable onPress={askRestore} disabled={!changed} style={[styles.btn, { borderColor: theme.accent, borderWidth: 1, opacity: changed ? 1 : 0.5 }]}>
-                  <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 14 }}>Revenir à la balance</Text>
+        <View style={{ flexDirection: wide ? 'row' : 'column', gap: 12 }}>
+          {/* 1. AVANT */}
+          <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Step n={1} title="Garder la balance" theme={theme} />
+            {snap ? (
+              <>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>Balance gardée à {hhmm(snap.at)}</Text>
+                <Text style={{ color: changed ? '#FCD34D' : theme.ok, fontSize: 12, fontWeight: '700' }}>{changed ? `${changed} réglage${changed > 1 ? 's' : ''} bougé${changed > 1 ? 's' : ''} depuis` : '✓ Tout est comme à la balance'}</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable onPress={askRestore} disabled={!changed} style={[styles.btn, { backgroundColor: changed ? theme.accent : 'transparent', borderColor: theme.accent, borderWidth: 1, opacity: changed ? 1 : 0.5 }]}>
+                    <Text style={{ color: changed ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 14 }}>↺ Revenir à la balance</Text>
+                  </Pressable>
+                  <Pressable onPress={saveBalance} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1, flex: 0.7 }]}>
+                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Garder l’actuel</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: theme.muted, fontSize: 13 }}>Quand le son est bon, appuie ici. Pendant le concert, tu pourras y revenir d’un geste.</Text>
+                <Pressable onPress={saveBalance} style={[styles.btn, { backgroundColor: theme.accent }]}>
+                  <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>💾 Garder la balance maintenant</Text>
                 </Pressable>
-                <Pressable onPress={saveBalance} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1, flex: 0.8 }]}>
-                  <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>Remplacer</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={{ color: theme.text, fontSize: 14 }}>Une fois la balance finie, garde ce réglage pour pouvoir y revenir d’un geste.</Text>
-              <Pressable onPress={saveBalance} style={[styles.btn, { backgroundColor: theme.accent, marginTop: 6 }]}>
-                <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>Enregistrer la balance</Text>
-              </Pressable>
-            </>
-          )}
+              </>
+            )}
+          </View>
+          {/* 3. URGENCES */}
+          <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
+            <Step n={3} title="En cas de problème" theme={theme} color="#EF4444" />
+            <RescueButton client={client} theme={theme} />
+            <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
+              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? '⏸ Pause : couper la façade' : '▶ Remettre le son'}</Text>
+              <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 11 }}>les retours des musiciens continuent</Text>
+            </Pressable>
+          </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {mixes.map((t, k) => {
-            const on = targetId(t) === targetId(mix);
-            const c = MIX_COLORS[k] ?? theme.text;
-            return (
-              <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mix, on ? { backgroundColor: c } : { backgroundColor: theme.panel, borderColor: theme.line, borderWidth: 1 }]}>
-                <Text style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 14 }}>{mixName(t)}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {groups.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Crée des groupes (bouton Groupes sur la table) pour les piloter ici en gros boutons.</Text>}
-        <View style={styles.grid}>
-          {groups.map((g) => (
-            <GroupTile key={g.k} client={client} g={g} mix={mix} offset={offsets[targetId(mix) + g.k] ?? 0} theme={theme} onNudge={(d) => nudge(g, d)} />
-          ))}
+        {/* 2. PENDANT */}
+        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: mixColor(mix) }]}>
+          <Step n={2} title="Pendant : plus fort / moins fort" theme={theme} />
+          <Text style={{ color: theme.muted, fontSize: 12 }}>D’abord : pour qui ?</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            {mixes.map((t, k) => {
+              const on = targetId(t) === targetId(mix);
+              const c = MIX_COLORS[k] ?? theme.text;
+              return (
+                <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mix, on ? { backgroundColor: c, borderColor: c } : { backgroundColor: theme.deep, borderColor: c }]}>
+                  <Text style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 14 }}>{t.kind === 'main' ? '👥 Le public' : `🎧 ${mixName(t)}`}</Text>
+                  <Text style={{ color: on ? '#0B0D10' : theme.muted, fontSize: 10 }}>{t.kind === 'main' ? 'façade' : `retour ${(t as { n: number }).n}`}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Puis : quoi ? <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 12 }}>(chaque appui = 2 dB)</Text></Text>
+          {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
+          <View style={styles.grid}>
+            {groups.map((g) => (
+              <GroupTile key={'g' + g.k} client={client} g={g} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudge(g, d)} />
+            ))}
+            {solos.map((c) => <ChTile key={c} client={client} ch={c} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudgeCh(c, d)} />)}
+          </View>
         </View>
 
-        <Pressable onPress={() => setInvite(true)} style={[styles.card, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
-          <Text style={{ color: '#A7F3D0', fontSize: 16, fontWeight: '800' }}>Inviter un musicien</Text>
-          <Text style={{ color: '#6EE7B7', fontSize: 12 }}>QR code : il règle son retour depuis son téléphone, et rien d’autre.</Text>
-        </Pressable>
-
-        <RescueButton client={client} theme={theme} />
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable onPress={() => setCheckOpen(true)} style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
-            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>✅ Avant le concert</Text>
-            <Text style={{ color: theme.muted, fontSize: 11 }}>La check-list : connexion, noms, retours, balance…</Text>
+        {/* 4. OUTILS */}
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <Pressable onPress={() => setInvite(true)} style={[styles.card, styles.tool, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
+            <Text style={{ color: '#A7F3D0', fontSize: 15, fontWeight: '800' }}>📱 Inviter un musicien</Text>
+            <Text style={{ color: '#6EE7B7', fontSize: 11 }}>QR code : il règle son retour lui-même</Text>
           </Pressable>
-          <Pressable onPress={() => setJournalOpen(true)} style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
+          <Pressable onPress={() => setCheckOpen(true)} style={[styles.card, styles.tool, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>✅ Check-list</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>tout est prêt avant de jouer ?</Text>
+          </Pressable>
+          <Pressable onPress={() => setJournalOpen(true)} style={[styles.card, styles.tool, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>📓 Journal</Text>
-            <Text style={{ color: theme.muted, fontSize: 11 }}>Qui a changé quoi, et quand</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>qui a changé quoi, et quand</Text>
           </Pressable>
         </View>
-
-        <Pressable
-          onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))}
-          style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}
-        >
-          <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? 'Pause : couper la façade' : 'Reprendre le son'}</Text>
-          <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 11 }}>Les retours ne sont pas coupés</Text>
-        </Pressable>
       </ScrollView>
       <ChecklistSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
       <JournalSheet theme={theme} visible={journalOpen} onClose={() => setJournalOpen(false)} />
@@ -171,35 +201,76 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   );
 }
 
-function GroupTile(props: { client: XAirClient; g: Group; mix: Target; offset: number; theme: Theme; onNudge: (db: number) => void }) {
+function Step({ n, title, theme, color }: { n: number; title: string; theme: Theme; color?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: color ?? theme.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#0B0B0F', fontWeight: '900' }}>{n}</Text></View>
+      <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>{title}</Text>
+    </View>
+  );
+}
+
+function Level({ v, color, theme }: { v: number; color: string; theme: Theme }) {
+  const d = faderToDb(v);
+  const pct = !isFinite(d) || v <= 0 ? 0 : Math.max(3, Math.min(100, ((d + 50) / 60) * 100));
+  return (
+    <View style={{ height: 12, borderRadius: 6, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+      <View style={{ width: `${pct}%`, height: 12, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function ChTile(props: { client: XAirClient; ch: number; mix: Target; theme: Theme; wide: boolean; onNudge: (db: number) => void }) {
+  const { client, ch, mix, theme } = props;
+  const v = Number(useParam<number>(client, chLevelPath(ch, mix), 0));
+  const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
+  const col = colorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)));
+  const d = faderToDb(v);
+  return (
+    <View style={[styles.tile, { width: props.wide ? '24%' : '48.6%', backgroundColor: theme.deep, borderColor: col }]}>
+      <View style={styles.tileHead}>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 16, flex: 1 }} numberOfLines={1}>{name}</Text>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{!isFinite(d) || v <= 0 ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(0)} dB`}</Text>
+      </View>
+      <Level v={v} color={col} theme={theme} />
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <Pressable onPress={() => props.onNudge(-2)} accessibilityLabel={`Baisser ${name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.panel }]}><Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>−</Text></Pressable>
+        <Pressable onPress={() => props.onNudge(2)} accessibilityLabel={`Monter ${name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.panel }]}><Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>+</Text></Pressable>
+      </View>
+    </View>
+  );
+}
+
+function GroupTile(props: { client: XAirClient; g: Group; mix: Target; theme: Theme; wide: boolean; onNudge: (db: number) => void }) {
   const { client, g, mix, theme } = props;
   const fader = Number(useParam<number>(client, dcaFaderPath(g.k), 0.75));
   const on = Number(useParam<number>(client, dcaOnPath(g.k), 1)) === 1;
   const isMain = mix.kind === 'main';
-  const db = isMain ? faderToDb(fader) : props.offset;
-  const text = !on && isMain ? 'COUPÉ' : `${db > 0 ? '+' : ''}${isFinite(db) ? db.toFixed(0) : '-∞'} dB`;
+  // pour un retour : niveau moyen des membres dans ce retour
+  const sends = g.members.map((c) => Number(client.get(chLevelPath(c, mix)) ?? 0)).filter((x) => x > 0);
+  const avg = sends.length ? sends.reduce((a, b) => a + b, 0) / sends.length : 0;
+  const v = isMain ? fader : avg;
+  const d = faderToDb(v);
+  const gc = GROUP_COLORS[g.k - 1] ?? '#F59E0B';
+  const text = !on && isMain ? 'COUPÉ' : !isFinite(d) || v <= 0 ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(0)} dB`;
   return (
-    <View style={[styles.tile, { backgroundColor: !on && isMain ? '#2A1414' : theme.panel, borderColor: !on && isMain ? '#7F1D1D' : theme.line }]}>
-      <Pressable
-        onPress={() => isMain && client.set(dcaOnPath(g.k), i(on ? 0 : 1))}
-        accessibilityRole="button"
-        accessibilityLabel={isMain ? (on ? `Couper ${g.name}` : `Réactiver ${g.name}`) : g.name}
-        style={styles.tileHead}
-      >
-        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 16, flex: 1 }} numberOfLines={1}>
-          {g.name}
-        </Text>
-        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{text}</Text>
-      </Pressable>
-      <Text style={{ color: theme.muted, fontSize: 11 }}>{isMain ? `${g.members.length} voies · toucher le nom pour couper` : `${g.members.length} voies · décalage dans ce retour`}</Text>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        <Pressable onPress={() => props.onNudge(-2)} accessibilityLabel={`Baisser ${g.name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
-          <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>−</Text>
-        </Pressable>
-        <Pressable onPress={() => props.onNudge(2)} accessibilityLabel={`Monter ${g.name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
-          <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>+</Text>
-        </Pressable>
+    <View style={[styles.tile, { width: props.wide ? '24%' : '48.6%', backgroundColor: !on && isMain ? '#2A1414' : theme.deep, borderColor: !on && isMain ? '#7F1D1D' : gc, borderWidth: 2 }]}>
+      <View style={styles.tileHead}>
+        <Text style={{ color: gc, fontWeight: '900', fontSize: 10 }}>GROUPE</Text>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 16, flex: 1 }} numberOfLines={1}>{g.name}</Text>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{text}</Text>
       </View>
+      <Level v={v} color={gc} theme={theme} />
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <Pressable onPress={() => props.onNudge(-2)} accessibilityLabel={`Baisser ${g.name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.panel }]}><Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>−</Text></Pressable>
+        <Pressable onPress={() => props.onNudge(2)} accessibilityLabel={`Monter ${g.name}`} style={[styles.big, { borderColor: theme.line2, backgroundColor: theme.panel }]}><Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>+</Text></Pressable>
+        {isMain && (
+          <Pressable onPress={() => client.set(dcaOnPath(g.k), i(on ? 0 : 1))} style={[styles.big, { flex: 0.8, borderColor: on ? theme.line2 : theme.mute, backgroundColor: on ? theme.panel : theme.mute }]}>
+            <Text style={{ color: on ? theme.text : theme.onMute, fontSize: 12, fontWeight: '800' }}>{on ? 'Couper' : 'Coupé'}</Text>
+          </Pressable>
+        )}
+      </View>
+      <Text style={{ color: theme.muted, fontSize: 10 }}>{g.members.length} voies{isMain ? '' : ' · toutes bougent ensemble'}</Text>
     </View>
   );
 }
@@ -213,12 +284,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: 48 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
   title: { fontSize: 22, fontWeight: '700' },
-  lock: { height: 44, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center' },
+  seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 3 },
+  segBtn: { minHeight: 48, paddingHorizontal: 14, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  tool: { flexGrow: 1, flexBasis: 220 },
   body: { padding: 14, gap: 12, paddingBottom: 30 },
-  card: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 2 },
+  card: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 8 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   btn: { flex: 1, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  mix: { height: 44, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center' },
+  mix: { minHeight: 50, paddingHorizontal: 14, borderRadius: 12, borderWidth: 2, justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '48.6%', borderRadius: 16, borderWidth: 1, padding: 10, gap: 6 },
   tileHead: { flexDirection: 'row', alignItems: 'center', minHeight: 40, gap: 6 },

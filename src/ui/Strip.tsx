@@ -22,6 +22,17 @@ import { Theme } from './theme';
 import { SLOT_COLORS } from '../xair/fxSlots';
 
 export const GROUP_COLOR = '#F59E0B';
+
+/** Le fader prend toute la hauteur qui reste dans la tranche : le bas reste toujours visible. */
+function AutoFader(props: React.ComponentProps<typeof Fader>) {
+  const [h, setH] = useState(0);
+  return (
+    <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', minHeight: 90 }} onLayout={(e) => setH(Math.floor(e.nativeEvent.layout.height))}>
+      {h > 0 && <Fader {...props} height={Math.max(90, h)} />}
+    </View>
+  );
+}
+export type StripView = 'full' | 'compact' | 'gains';
 const SUGGESTIONS = ['Voix', 'Guitare', 'Basse', 'Kick', 'Caisse claire', 'Charley', 'Toms', 'Overhead', 'Clavier'];
 
 /** Hauteur d'une tranche hors fader (en-tête, gain, nom, mute, dB, EQ/FX, marges). */
@@ -43,6 +54,7 @@ interface StripProps {
   onPasteToggle?: (ch: number) => void;
   dim?: boolean;
   width?: number;
+  view?: StripView;
   onSelect: (ch: number) => void;
   onRename: (ch: number) => void;
   onOpenInput: (ch: number) => void;
@@ -72,7 +84,7 @@ export function Strip(p: StripProps) {
   const border = p.selected ? GROUP_COLOR : p.inOpenGroup ? '#4A3B12' : theme.line;
 
   return (
-    <View style={[styles.strip, { width: p.width ?? 92, backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1, opacity: p.dim ? 0.45 : 1 }]}>
+    <View style={[styles.strip, { height: p.height, width: p.width ?? 92, backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1, opacity: p.dim ? 0.45 : 1 }]}>
       {p.selected && (
         <View style={{ position: 'absolute', top: -1, left: -1, right: -1, zIndex: 2, backgroundColor: GROUP_COLOR, borderTopLeftRadius: 14, borderTopRightRadius: 14, paddingVertical: 3, alignItems: 'center' }}>
           <Text style={{ color: '#1A1204', fontSize: 11, fontWeight: '800' }}>✓ SÉLECTIONNÉE</Text>
@@ -90,6 +102,7 @@ export function Strip(p: StripProps) {
           <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{p.pasteLabel ?? 'Coller ici'}</Text>
         </Pressable>
       )}
+      {p.view !== 'compact' && (<>
       <Pressable
         onPress={() => p.onOpenInput(ch)}
         accessibilityRole="button"
@@ -125,6 +138,7 @@ export function Strip(p: StripProps) {
         </View>
         <PanBar value={pan} theme={theme} />
       </Pressable>
+      </>)}
 
       <Pressable
         onPress={() => p.onRename(ch)}
@@ -139,12 +153,11 @@ export function Strip(p: StripProps) {
       </Pressable>
 
       <MuteButton muted={muted} onPress={toggleMute} theme={theme} />
-      <Fader
+      <AutoFader
         value={level}
         onChange={setLevel}
         color={p.color}
         theme={theme}
-        height={p.height}
         label={name}
         meter={muted ? 0 : meter.level}
         clip={meter.clip}
@@ -206,7 +219,7 @@ export function GroupStrip(props: {
   };
 
   return (
-    <View style={[styles.strip, { backgroundColor: '#1C1A14', borderColor: '#6B4E14', borderWidth: 2 }]}>
+    <View style={[styles.strip, { height: props.height, backgroundColor: '#1C1A14', borderColor: '#6B4E14', borderWidth: 2 }]}>
       <View style={[styles.head, { backgroundColor: GROUP_COLOR }]}>
         <Text style={{ color: '#1A1204', fontSize: 10, fontWeight: '800' }}>GROUPE</Text>
       </View>
@@ -224,14 +237,13 @@ export function GroupStrip(props: {
       </Pressable>
       <MiniMeters client={client} members={group.members} />
       {isMain ? <MuteButton muted={dcaMuted} onPress={toggleDca} theme={theme} /> : <View style={{ height: 30 }} />}
-      <Fader
+      <AutoFader
         value={value}
         onChange={change}
         onStart={begin}
         onEnd={end}
         color={GROUP_COLOR}
         theme={theme}
-        height={props.height}
         label={`Groupe ${group.name}`}
       />
       <Text style={[styles.db, { color: '#D6B46A' }]}>{formatDb(value)}</Text>
@@ -254,7 +266,7 @@ export function OutStrip(props: { client: XAirClient; target: Target; label: str
   const idx = target.kind === 'main' ? [meterIndex.lrL, meterIndex.lrR] : target.kind === 'bus' ? [meterIndex.bus(target.n)] : [meterIndex.fxsend(target.n)];
   const meter = useMeter(client, idx);
   return (
-    <View style={[styles.strip, { backgroundColor: theme.deep, borderColor: theme.line, borderWidth: 1 }]}>
+    <View style={[styles.strip, { height: props.height, backgroundColor: theme.deep, borderColor: theme.line, borderWidth: 1 }]}>
       <View style={[styles.head, { backgroundColor: props.color }]}>
         <Text style={{ color: '#0B0D10', fontSize: 10, fontWeight: '800' }}>SORTIE</Text>
       </View>
@@ -263,7 +275,7 @@ export function OutStrip(props: { client: XAirClient; target: Target; label: str
       </Text>
       <View style={{ height: 110 }} />
       <MuteButton muted={muted} onPress={toggleMute} theme={theme} />
-      <Fader value={level} onChange={setLevel} color={props.color} theme={theme} height={props.height} label={`Sortie ${props.label}`} meter={meter.level} clip={meter.clip} />
+      <AutoFader value={level} onChange={setLevel} color={props.color} theme={theme} label={`Sortie ${props.label}`} meter={meter.level} clip={meter.clip} />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
       <View style={{ height: 40 }} />
     </View>

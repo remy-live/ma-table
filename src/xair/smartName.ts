@@ -21,11 +21,11 @@ export interface Recognized {
 }
 
 const DICT: [string[], Recognized][] = [
-  [['kick', 'grosse caisse', 'gc', 'bd'], { label: 'Kick', color: 3, group: 'Batterie', preset: 'Kick', phantom: false }],
-  [['caisse claire', 'snare', 'cc', 'sn'], { label: 'Caisse claire', color: 3, group: 'Batterie', preset: 'Caisse claire', phantom: false }],
+  [['kick', 'grosse caisse', 'grosse', 'gc', 'bd'], { label: 'Kick', color: 3, group: 'Batterie', preset: 'Kick', phantom: false }],
+  [['caisse claire', 'c. claire', 'c claire', 'snare', 'cc', 'sn'], { label: 'Caisse claire', color: 3, group: 'Batterie', preset: 'Caisse claire', phantom: false }],
   [['charley', 'hihat', 'hi-hat', 'hh'], { label: 'Charley', color: 3, group: 'Batterie', preset: 'Charley', phantom: true }],
-  [['tom', 'toms'], { label: 'Toms', color: 3, group: 'Batterie', preset: 'Toms', phantom: false }],
-  [['overhead', 'oh', 'cymbales'], { label: 'Overhead', color: 3, group: 'Batterie', preset: 'Overhead', phantom: true }],
+  [['tom', 'toms', 'floor'], { label: 'Toms', color: 3, group: 'Batterie', preset: 'Toms', phantom: false }],
+  [['overhead', 'oh', 'cymbales', 'ride', 'crash'], { label: 'Overhead', color: 3, group: 'Batterie', preset: 'Overhead', phantom: true }],
   [['choeur', 'chœur', 'choeurs', 'backing'], { label: 'Chœurs', color: 5, group: 'Voix', preset: 'Voix', phantom: false }],
   [['voix', 'chant', 'lead', 'micro chant'], { label: 'Voix', color: 5, group: 'Voix', preset: 'Voix', phantom: false }],
   [['guitare élec', 'guitare elec', 'elec', 'électrique'], { label: 'Guitare élec', color: 6, group: 'Guitares', preset: 'Guitare élec', phantom: false }],

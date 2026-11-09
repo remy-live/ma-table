@@ -7,7 +7,8 @@ import { Clip, copyChannel, pasteChannel, swapChannels } from '../xair/clipboard
 import { copyMainTo, Group } from '../xair/groups';
 import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
-import { GroupStrip, OutStrip, Strip, STRIP_CHROME } from '../ui/Strip';
+import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
+import { GainTile } from '../ui/GainTile';
 import { Theme } from '../ui/theme';
 import { ChannelScreen } from './ChannelScreen';
 import { GroupsSheet } from './GroupsSheet';
@@ -18,6 +19,7 @@ import { safetyBackup } from '../store/sessions';
 import { ClipBanner } from './ClipBanner';
 import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
 import { InputSourceSheet } from './InputSourceSheet';
+import { PresetsSheet } from './PresetsSheet';
 import { CATEGORIES, Category } from '../xair/clipboard';
 import { insrcPath, insrcPlug } from '../xair/addresses';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
@@ -67,6 +69,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [detailCh, setDetailCh] = useState<number | null>(null);
   const [inputCh, setInputCh] = useState<number | null>(null);
   const [renameCh, setRenameCh] = useState<number | null>(null);
+  const [presetCh, setPresetCh] = useState<number | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [organize, setOrganize] = useState(false);
   const [drag, setDrag] = useState<{ ch: number; dx: number } | null>(null);
@@ -111,7 +114,21 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   }, [client, target]);
 
   const [bodyH, setBodyH] = useState(0);
-  const faderH = Math.max(110, Math.min(460, bodyH - STRIP_CHROME));
+  const faderH = Math.max(260, bodyH - 4); // hauteur totale d'une tranche ; le fader prend le reste
+  const [view, setView] = useState<StripView>('full');
+  useEffect(() => { load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []);
+  const VIEWS: { id: StripView; label: string; icon: string }[] = [
+    { id: 'full', label: 'Complète', icon: '▥' },
+    { id: 'compact', label: 'Compacte', icon: '▤' },
+    { id: 'gains', label: 'Gains', icon: '◎' },
+  ];
+  const cycleView = () => {
+    const n = VIEWS[(VIEWS.findIndex((v) => v.id === view) + 1) % VIEWS.length].id;
+    setView(n);
+    save('vueTable', n);
+    say(n === 'full' ? 'Vue complète' : n === 'compact' ? 'Vue compacte : faders plus grands' : 'Vue gains : un bouton par entrée, pour la balance');
+  };
+  const curView = VIEWS.find((v) => v.id === view)!;
   const label = (t: Target) => (t.kind === 'main' ? 'Façade' : t.kind === 'bus' ? busName(t.n) : `Effet ${t.n}`);
   const color = targetColor(target, theme);
   const name = (ch: number) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
@@ -198,38 +215,44 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
+        <View style={[styles.dot, { backgroundColor: dot, marginRight: 2 }]} accessibilityLabel={`Table ${status}`} />
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Ma table</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={[styles.dot, { backgroundColor: dot }]} />
-            <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-              {status === 'perdu' ? 'Liaison perdue — la table garde son mix' : `${client.info?.name ?? 'Table'} · ${status}`}
-            </Text>
-          </View>
+          <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
         </View>
+        {target.kind === 'bus' && (
+          <Pressable onPress={() => { copyMainTo(client, target); say(`${mixInfo(client, target).name} entend maintenant comme le public`); }} style={[styles.hbtn, { borderColor: color }]}>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>Comme le public</Text>
+          </Pressable>
+        )}
+        <Pressable onPress={cycleView} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+          <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>{curView.icon}</Text>
+          <View>
+            <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>VUE</Text>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{curView.label}</Text>
+          </View>
+        </Pressable>
         <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
         </Pressable>
-        <Pressable onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
-          <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
-        </Pressable>
+        {view !== 'gains' && (
+          <Pressable onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+            <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
+          </Pressable>
+        )}
         <Pressable onPress={() => setGroupsOpen(true)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
           <Text style={{ color: '#FBBF24', fontSize: 13, fontWeight: '700' }}>Groupes</Text>
         </Pressable>
       </View>
+      {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}
       <ClipBanner client={client} onOpen={setInputCh} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 8 }}>
-        <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
-        {target.kind === 'bus' && (
-          <Pressable onPress={() => { copyMainTo(client, target); say(`${mixInfo(client, target).name} entend maintenant comme le public`); }} style={[styles.copy, { backgroundColor: theme.panel, borderColor: color, borderWidth: 1, height: 54 }]}>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>Comme{'\n'}le public</Text>
-          </Pressable>
-        )}
-      </View>
-
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
-        {bodyH > 0 && (
+        {bodyH > 0 && view === 'gains' && (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12 }}>
+            {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={wide ? 96 : 76} onOpen={setInputCh} />)}
+          </ScrollView>
+        )}
+        {bodyH > 0 && view !== 'gains' && (
           <>
             <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={styles.strips}>
               {items.map((it) =>
@@ -250,6 +273,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                   <View key={it.ch} style={drag && drag.ch === it.ch ? { transform: [{ translateX: drag.dx }], zIndex: 10, opacity: 0.9 } : undefined}>
                   <Strip
                     width={stripW}
+                    view={view}
                     client={client}
                     ch={it.ch}
                     target={target}
@@ -354,7 +378,14 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       )}
 
       {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />}
-      <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} />
+      <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={{
+        onRename: setRenameCh,
+        onSource: setSrcCh,
+        onDetail: setDetailCh,
+        onPresets: setPresetCh,
+        onCopy: (c) => { setOrganize(true); setSel(c); setClip(null); setPasteSel([]); setMode('copy'); },
+      }} />
+      <PresetsSheet client={client} theme={theme} visible={presetCh !== null} ch={presetCh} onClose={() => setPresetCh(null)} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
@@ -377,7 +408,7 @@ function BarBtn(props: { label: string; onPress: () => void; theme: Theme; prima
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 48 },
+  root: { flex: 1, paddingTop: 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700' },
   dot: { width: 8, height: 8, borderRadius: 4 },
@@ -387,7 +418,7 @@ const styles = StyleSheet.create({
   tdot: { width: 8, height: 8, borderRadius: 4 },
   hintRow: { marginHorizontal: 16, marginBottom: 4, borderRadius: 10, paddingHorizontal: 10, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   copy: { paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center' },
-  body: { flex: 1, flexDirection: 'row', paddingTop: 6, paddingBottom: 10 },
+  body: { flex: 1, flexDirection: 'row', paddingTop: 4, paddingBottom: 6 },
   strips: { gap: 6, paddingHorizontal: 10, alignItems: 'flex-start' },
   master: { paddingHorizontal: 8, borderLeftWidth: 1 },
   bar: { position: 'absolute', left: 10, right: 10, bottom: 12, borderRadius: 18, borderWidth: 1, padding: 10, gap: 6, elevation: 8, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 12 },
