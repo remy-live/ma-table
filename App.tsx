@@ -7,6 +7,7 @@ import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
 import { BOTTOM_INSET } from './src/ui/safeArea';
+import { setImmersive } from './src/ui/immersive';
 import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -28,7 +29,7 @@ import { APP_VERSION } from './src/debug/diagnostic';
 
 export default function App() {
   const [client, setClient] = useState<XAirClient | null>(null);
-  const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal' });
+  const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal', immersive: true });
   const themeKey = prefs.theme;
   const [tab, setTab] = useState<Section>('table');
   const [fxCh, setFxCh] = useState<number | null>(null);
@@ -38,6 +39,7 @@ export default function App() {
   const setPrefs = (p: Prefs) => {
     setPrefsState(p);
     setHaptics(p.haptics);
+    setImmersive(p.immersive !== false);
     save('prefs', p);
   };
   const [locked, setLocked] = useState(false);
@@ -49,10 +51,10 @@ export default function App() {
     initStorage().then(async (ok) => {
       dbg.info(`Appli ${APP_VERSION} démarrée · sauvegarde ${ok ? 'active' : 'en mémoire'}`);
       const p = await load<Prefs | null>('prefs', null);
-      if (p) {
-        setPrefsState(Object.assign({ theme: 'nuit', haptics: true, width: 'normal' }, p));
-        setHaptics(p.haptics !== false);
-      }
+      const merged: Prefs = Object.assign({ theme: 'nuit', haptics: true, width: 'normal' as const, immersive: true }, p ?? {});
+      setPrefsState(merged);
+      setHaptics(merged.haptics !== false);
+      setImmersive(merged.immersive !== false);
     });
     // Toute erreur JavaScript finit dans le journal de débogage.
     const EU = (global as unknown as { ErrorUtils?: { getGlobalHandler(): (e: unknown, fatal?: boolean) => void; setGlobalHandler(h: (e: unknown, fatal?: boolean) => void): void } }).ErrorUtils;
@@ -158,7 +160,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View style={{ flex: 1, paddingBottom: wide ? BOTTOM_INSET : 0 }}>
+    <View style={{ flex: 1, paddingBottom: wide ? (prefs.immersive !== false ? 8 : BOTTOM_INSET) : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}

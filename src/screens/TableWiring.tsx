@@ -9,7 +9,9 @@ import { f, i, s as oscS } from '../osc/osc';
 import { HSlider } from '../ui/HSlider';
 import { Knob } from '../ui/Knob';
 import { Theme } from '../ui/theme';
-import { chLevelPath, chNamePath, fToGainDb, headampGainPath, MODEL, phantomPath } from '../xair/addresses';
+import { chLevelPath, chNamePath, FX_COUNT, fToGainDb, headampGainPath, MODEL, phantomPath, Target } from '../xair/addresses';
+import { SLOT_COLORS } from '../xair/fxSlots';
+import { fxType, fxTypePath } from '../xair/effects';
 import { dbToFader, faderToDb } from '../xair/levels';
 import { colorOf, TABLE_COLORS } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
@@ -187,20 +189,41 @@ function PlugDrawer(p: { client: XAirClient; theme: Theme; plug: Plug; O: Outlet
         </View>
       )}
       {ch && mode === 'link' && (
-        <ScrollView contentContainerStyle={styles.wrap}>
-          {p.O.map((o) => {
-            const on = p.linked(plug.n, o.id);
-            const c = p.outColor(o);
-            return (
-              <View key={o.id} style={[styles.dest, { width: p.wide ? '32.5%' : '100%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
-                <Pressable onPress={() => p.toggle(plug, o)} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
-                  <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{o.name}</Text>
-                </Pressable>
-                {on ? <View style={{ flex: 1 }}><HSlider value={p.level(plug, o)} onChange={(v) => p.setLevel(plug, o, v)} label="" valueText={dbTxt(p.level(plug, o))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>pas relié</Text>}
-              </View>
-            );
-          })}
-        </ScrollView>
+        <View style={{ flex: 1, gap: 6 }}>
+          <View style={styles.wrap}>
+            {p.O.map((o) => {
+              const on = p.linked(plug.n, o.id);
+              const c = p.outColor(o);
+              return (
+                <View key={o.id} style={[styles.dest, { width: p.wide ? '24.4%' : '49%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
+                  <Pressable onPress={() => p.toggle(plug, o)} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
+                    <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{o.name}</Text>
+                  </Pressable>
+                  {on ? <View style={{ flex: 1 }}><HSlider value={p.level(plug, o)} onChange={(v) => p.setLevel(plug, o, v)} label="" valueText={dbTxt(p.level(plug, o))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>pas relié</Text>}
+                </View>
+              );
+            })}
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>EFFETS · combien cette entrée envoie dans chaque effet</Text>
+          <View style={styles.wrap}>
+            {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => {
+              const t: Target = { kind: 'fx', n: k };
+              const path = chLevelPath(ch, t);
+              const v = Number(client.get(path) ?? 0);
+              const on = v > 0;
+              const c = SLOT_COLORS[k - 1];
+              const label = fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr;
+              return (
+                <View key={k} style={[styles.dest, { width: p.wide ? '24.4%' : '49%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
+                  <Pressable onPress={() => client.set(path, f(on ? 0 : dbToFader(-14)))} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
+                    <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}FX{k} · {label}</Text>
+                  </Pressable>
+                  {on ? <View style={{ flex: 1 }}><HSlider value={v} onChange={(x) => client.set(path, f(x))} label="" valueText={dbTxt(v)} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>sans</Text>}
+                </View>
+              );
+            })}
+          </View>
+        </View>
       )}
     </>
   );
@@ -213,8 +236,8 @@ const styles = StyleSheet.create({
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3 },
   segBtn: { height: 40, paddingHorizontal: 12, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dest: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, padding: 6 },
-  pill: { height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 1, justifyContent: 'center', minWidth: 110, maxWidth: 150 },
+  dest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 12, padding: 4, minHeight: 48 },
+  pill: { height: 34, paddingHorizontal: 8, borderRadius: 17, borderWidth: 1, justifyContent: 'center', minWidth: 96, maxWidth: 140 },
   input: { height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 16, fontWeight: '800' },
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   tg: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
@@ -223,7 +246,7 @@ const styles = StyleSheet.create({
 /** Même vue, autonome : utilisée comme 4e vue de l'écran Table. */
 export function TableWiringStandalone({ client, theme }: { client: XAirClient; theme: Theme }) {
   useAnyTick(client);
-  useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);
+  useEffect(() => { client.loadPaths([...wiringPaths(), ...Array.from({ length: FX_COUNT }, (_, k) => fxTypePath(k + 1))]); }, [client]);
   const P = plugs(client);
   const O = outlets(client);
   const W = wires(client);

@@ -54,9 +54,11 @@ export function HSlider({ value, onChange, label, valueText, color, theme, cente
 
   return (
     <View style={styles.row}>
-      <Text style={[styles.label, { color: theme.text }]} numberOfLines={1}>
-        {label}
-      </Text>
+      {!!label && (
+        <Text style={[styles.label, { color: theme.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+      )}
       <View
         style={styles.area}
         onLayout={(e: LayoutChangeEvent) => setW(Math.max(1, e.nativeEvent.layout.width))}

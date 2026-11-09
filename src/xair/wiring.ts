@@ -112,8 +112,10 @@ export function wiringPaths(): string[] {
   for (let c = 1; c <= CH_COUNT; c++) {
     p.push(insrcPath(c), chNamePath(c), chLevelPath(c, MAIN));
     for (let b = 1; b <= BUS_COUNT; b++) p.push(chLevelPath(c, { kind: 'bus', n: b }));
+    for (let k = 1; k <= 4; k++) p.push(chLevelPath(c, { kind: 'fx', n: k }));
   }
   for (let b = 1; b <= BUS_COUNT; b++) p.push(busNamePath(b));
+  for (let k = 1; k <= 4; k++) p.push(`/fx/${k}/type`);
   return p;
 }
 

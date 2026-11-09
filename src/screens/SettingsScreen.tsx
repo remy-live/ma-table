@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { Fader } from '../ui/Fader';
 import { Knob } from '../ui/Knob';
+import { canImmersive } from '../ui/immersive';
 import { Theme, THEME_ORDER, THEMES } from '../ui/theme';
 import { XAirClient } from '../xair/XAirClient';
 import { ConnectionScreen } from './ConnectionScreen';
@@ -12,6 +13,7 @@ export type StripWidth = 'compact' | 'normal' | 'large';
 export const STRIP_WIDTHS: Record<StripWidth, number> = { compact: 80, normal: 92, large: 116 };
 
 export interface Prefs {
+  immersive: boolean;
   theme: string;
   haptics: boolean;
   width: StripWidth;
@@ -76,6 +78,15 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
               </View>
               <Switch value={prefs.haptics} onValueChange={(v) => props.onPrefs({ ...prefs, haptics: v })} />
             </View>
+            {canImmersive && (
+              <View style={[styles.row, { borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 10 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Cacher les boutons de la tablette</Text>
+                  <Text style={{ color: theme.muted, fontSize: 12 }}>Plein écran : les boutons Android reviennent d’un glissement depuis le bord.</Text>
+                </View>
+                <Switch value={prefs.immersive !== false} onValueChange={(v) => props.onPrefs({ ...prefs, immersive: v })} />
+              </View>
+            )}
             <View style={[styles.row, { borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 10 }]}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Largeur des voies</Text>
