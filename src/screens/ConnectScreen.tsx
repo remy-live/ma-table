@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { WLAN, WLAN_PATHS } from '../xair/addresses';
 import { BUILD_VERSION } from '../version';
-import { canScanWifi, currentWifi, scanWifi, WifiNet, wifiBars } from '../xair/wifiScan';
+import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBars } from '../xair/wifiScan';
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
@@ -35,13 +35,19 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [onNet, setOnNet] = useState('');
   const [netNote, setNetNote] = useState('');
   const [hiddenN, setHiddenN] = useState(0);
+  const [fix, setFix] = useState<ScanInfo['fix']>(undefined);
   const scanNets = async () => {
     if (!canScanWifi) return;
     setScanning(true);
-    try { const r = await scanWifi(); setNets(r.nets); setNetNote(r.note); setHiddenN(r.hidden); setOnNet(currentWifi()); } catch (e) { dbg.warn('Scan Wi-Fi : ' + String(e)); }
+    try { const r = await scanWifi(); setNets(r.nets); setNetNote(r.note); setHiddenN(r.hidden); setFix(r.fix); setOnNet(currentWifi()); } catch (e) { dbg.warn('Scan Wi-Fi : ' + String(e)); }
     setScanning(false);
   };
   useEffect(() => { scanNets(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // retour dans l'appli (après avoir allumé la localisation) : on relance la recherche
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active' && canScanWifi) scanNets(); });
+    return () => sub.remove();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load<string | null>('derniereIp', null).then(setLast);
@@ -228,7 +234,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               </ScrollView>
             )}
             {canScanWifi && (nets.length > 0 || hiddenN > 0) && <Text style={{ color: theme.muted, fontSize: 11 }}>{nets.length} réseau{nets.length > 1 ? 'x' : ''}{hiddenN ? ` · ${hiddenN} caché${hiddenN > 1 ? 's' : ''} (sans nom)` : ''}</Text>}
-            {!!netNote && <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '700' }}>{netNote}</Text>}
+            {!!netNote && (
+              <View style={[styles.net, { borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.10)', flexWrap: 'wrap' }]}>
+                <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '700', flex: 1, minWidth: 180 }}>{netNote}</Text>
+                {fix && (
+                  <Pressable onPress={() => openFix(fix)} style={[styles.go, { backgroundColor: theme.accent, height: 40 }]}>
+                    <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 13 }}>{fix === 'location' ? 'Activer la localisation ›' : fix === 'wifi' ? 'Allumer le Wi-Fi ›' : 'Autoriser ›'}</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
             {canScanWifi && !scanning && nets.length === 0 && !netNote && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucun réseau vu : autorise la localisation (Android l’exige pour lister le Wi-Fi), puis ↻.</Text>}
             {!canScanWifi && (tryNames.length > 0 ? tryNames.map((n) => (
               <View key={n} style={[styles.net, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
