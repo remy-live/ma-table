@@ -9,6 +9,7 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
 import { GainTile } from '../ui/GainTile';
+import { MonoSwitch } from '../ui/MonoSwitch';
 import { TableWiringStandalone } from './TableWiring';
 import { Theme } from '../ui/theme';
 import { ChannelScreen } from './ChannelScreen';
@@ -233,6 +234,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <View style={{ flex: 1 }}>
           <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
         </View>
+        {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact={!wide} />}
         {target.kind === 'bus' && (
           <Pressable onPress={() => { copyMainTo(client, target); say(`${mixInfo(client, target).name} entend maintenant comme le public`); }} style={[styles.hbtn, { borderColor: color }]}>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>Comme le public</Text>

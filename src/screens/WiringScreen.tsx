@@ -18,6 +18,7 @@ import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS, initials } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
 import { TableWiring } from './TableWiring';
+import { MonoSwitch } from '../ui/MonoSwitch';
 import { readGroups } from '../xair/groups';
 import { GROUP_COLORS } from './GroupsSheet';
 import { load, save } from '../store/persist';
@@ -171,6 +172,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     {selOut.t.kind === 'bus' && (
                       <Pressable onPress={() => setRen({ path: busNamePath((selOut.t as { n: number }).n), v: selOut.name })} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>✎ Renommer</Text></Pressable>
                     )}
+                    {selOut.t.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
                     {selOut.t.kind !== 'main' && (
                       <Pressable onPress={() => { likeMain(client, selOut.t); say(`${selOut.name} entend comme le public (−2 dB)`); }} style={[styles.small, { borderColor: theme.accent }]}>
                         <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Comme le public</Text>

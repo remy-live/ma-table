@@ -21,7 +21,7 @@ export function snapshotPaths(): string[] {
   for (let b = 1; b <= 6; b++) p.push(`/bus/${b}/mix/fader`, `/bus/${b}/mix/on`, `/bus/${b}/config/name`);
   // les 4 effets : type, 12 réglages, retour ; noms des groupes ; entrée de chaque voie
   for (let k = 1; k <= 4; k++) {
-    p.push(`/fx/${k}/type`, `/rtn/${k}/mix/on`, `/dca/${k}/config/name`);
+    p.push(`/fx/${k}/type`, `/rtn/${k}/mix/on`, `/rtn/${k}/mix/pan`, `/dca/${k}/config/name`);
     for (let n = 1; n <= 12; n++) p.push(`/fx/${k}/par/${String(n).padStart(2, '0')}`);
   }
   for (let ch = 1; ch <= CH_COUNT; ch++) p.push(`/ch/${String(ch).padStart(2, '0')}/config/insrc`);

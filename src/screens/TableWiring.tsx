@@ -18,6 +18,7 @@ import { useMeter } from '../xair/useMeter';
 import { meterIndex } from '../xair/addresses';
 import { Outlet, outlets, Plug, plugs, wires, wiringPaths } from '../xair/wiring';
 import { useAnyTick } from '../ui/useTick';
+import { MonoSwitch } from '../ui/MonoSwitch';
 import { MIX_COLORS } from './MixPicker';
 import { XAirClient } from '../xair/XAirClient';
 
@@ -115,6 +116,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             <View style={styles.row}>
               <View style={[styles.tag, { borderColor: props.outColor(out) }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{out.label}</Text></View>
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', flex: 1 }}>{out.name} <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '600' }}>· ce qu’il entend</Text></Text>
+              {out.t.kind === 'main' && <MonoSwitch client={client} theme={theme} />}
             </View>
             <ScrollView contentContainerStyle={styles.wrap}>
               {P.filter((p) => p.chans.length).map((p) => {
