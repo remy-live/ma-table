@@ -179,9 +179,9 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column' }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && <NavBar theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} />}
+      {wide && <NavBar theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       {body}
-      {!wide && <NavBar theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} />}
+      {!wide && <NavBar theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
     </View>
   );

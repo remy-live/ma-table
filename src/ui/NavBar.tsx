@@ -16,7 +16,7 @@ const ITEMS: [Section, string][] = [
   ['reglages', 'Réglages'],
 ];
 
-function Icon({ id, color, size = 24 }: { id: Section | 'aide'; color: string; size?: number }) {
+function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter'; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -26,12 +26,13 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide'; color: string; s
       {id === 'scene' && (<><Path d="M12 3v10" {...p} /><Path d="M8 7a4 4 0 0 0 8 0" {...p} /><Path d="M6 21h12" {...p} /><Path d="M12 13v8" {...p} /></>)}
       {id === 'soirees' && (<><Rect x={4} y={5} width={16} height={15} rx={2} {...p} /><Line x1={4} y1={10} x2={20} y2={10} {...p} /><Line x1={9} y1={3} x2={9} y2={7} {...p} /><Line x1={15} y1={3} x2={15} y2={7} {...p} /></>)}
       {id === 'reglages' && (<><Circle cx={12} cy={12} r={3} {...p} /><Path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" {...p} /></>)}
+      {id === 'quitter' && (<><Path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" {...p} /><Path d="M14 8l4 4-4 4" {...p} /><Line x1={18} y1={12} x2={9} y2={12} {...p} /></>)}
       {id === 'aide' && (<><Circle cx={12} cy={12} r={9} {...p} /><Path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7" {...p} /><Circle cx={12} cy={17} r={0.6} {...p} fill={color} /></>)}
     </Svg>
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void }) {
   const { theme, vertical } = props;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
@@ -58,6 +59,13 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
           </Pressable>
         );
       })}
+      {props.onQuit && vertical && <View style={{ flex: 1 }} />}
+      {props.onQuit && (
+        <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
+          <Icon id="quitter" color={theme.muted} size={vertical ? 24 : 20} />
+          <Text numberOfLines={1} style={{ color: theme.muted, fontSize: vertical ? 11 : 9, fontWeight: '600' }}>Quitter</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
