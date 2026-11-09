@@ -22,7 +22,7 @@ const SLOTS = Array.from({ length: FX_COUNT }, (_, k) => k + 1);
 const dbText = (v: number) => { const d = faderToDb(v); return !isFinite(d) || v <= 0 ? '—' : (d > 0 ? '+' : '') + Math.round(d) + ' dB'; };
 const pct = (v: number) => { const d = faderToDb(v); return !isFinite(d) || v <= 0 ? 0 : Math.max(4, Math.round(((d + 40) / 40) * 100)); };
 
-export function EffectsHub({ client, theme }: { client: XAirClient; theme: Theme }) {
+export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; theme: Theme; focusCh?: number | null }) {
   const tick = useAnyTick(client);
   const [view, setView] = useState<V>('fx');
   const [names, setNames] = useState<FxNames>({});
@@ -32,6 +32,7 @@ export function EffectsHub({ client, theme }: { client: XAirClient; theme: Theme
   const [saveMode, setSaveMode] = useState<SaveMode | null>(null);
   const { width } = useWindowDimensions();
   useEffect(() => { client.loadPaths(fxPaths()); loadFxNames().then(setNames); }, [client]);
+  useEffect(() => { if (focusCh) { setView('ch'); setSelCh(focusCh); } }, [focusCh]);
   const setNamesSave = (n: FxNames) => { setNames(n); saveFxNames(n); };
 
   const named = useMemo(() => Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? '') || users(client, 1).includes(c) || users(client, 2).includes(c) || users(client, 3).includes(c) || users(client, 4).includes(c)), [client, tick]); // eslint-disable-line react-hooks/exhaustive-deps

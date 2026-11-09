@@ -4,7 +4,9 @@ import { requireOptionalNativeModule } from 'expo';
 import { PermissionsAndroid, Platform } from 'react-native';
 
 export interface WifiNet { ssid: string; level: number; freq: number; table: boolean }
-type Native = { scan(): Promise<{ ssid: string; level: number; freq: number }[]>; current(): string };
+type Raw = { ssid: string; level: number; freq: number };
+type Native = { scan(): Promise<Raw[]>; scanFull?(): Promise<{ nets: Raw[]; started: boolean; fresh: boolean; locationOn: boolean; wifiOn: boolean }>; current(): string };
+export interface ScanInfo { nets: WifiNet[]; hidden: number; note: string }
 
 const mod: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('WifiScan') : null;
 export const canScanWifi = !!mod;
@@ -22,17 +24,27 @@ export async function askWifiPermission(): Promise<boolean> {
   return Object.values(r).some((v) => v === PermissionsAndroid.RESULTS.GRANTED);
 }
 
-export async function scanWifi(): Promise<WifiNet[]> {
-  if (!mod) return [];
-  await askWifiPermission();
-  const raw = await mod.scan();
+export async function scanWifi(): Promise<ScanInfo> {
+  if (!mod) return { nets: [], hidden: 0, note: '' };
+  const granted = await askWifiPermission();
+  let raw: Raw[] = [];
+  let note = '';
+  if (mod.scanFull) {
+    const r = await mod.scanFull();
+    raw = r.nets;
+    if (!r.wifiOn) note = 'Le Wi-Fi du téléphone est éteint.';
+    else if (!r.locationOn) note = 'Active la localisation du téléphone : Android l’exige pour lister les Wi-Fi.';
+    else if (!r.started || !r.fresh) note = 'Android limite les recherches (4 toutes les 2 minutes) : liste de la dernière recherche.';
+  } else raw = await mod.scan();
+  if (!granted) note = 'Autorise « Position » pour Ma table, sinon Android cache les Wi-Fi.';
+  const hidden = raw.filter((n) => !n.ssid).length;
   const best = new Map<string, WifiNet>();
   for (const n of raw) {
     if (!n.ssid) continue;
     const cur = best.get(n.ssid);
     if (!cur || n.level > cur.level) best.set(n.ssid, { ...n, table: looksLikeTable(n.ssid) });
   }
-  return Array.from(best.values()).sort((a, b) => Number(b.table) - Number(a.table) || b.level - a.level);
+  return { nets: Array.from(best.values()).sort((a, b) => Number(b.table) - Number(a.table) || b.level - a.level), hidden, note };
 }
 
 export function currentWifi(): string {

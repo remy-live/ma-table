@@ -59,6 +59,7 @@ interface StripProps {
   onRename: (ch: number) => void;
   onOpenInput: (ch: number) => void;
   onOpenDetail: (ch: number) => void;
+  onOpenFx?: (ch: number) => void;
 }
 
 export function Strip(p: StripProps) {
@@ -166,7 +167,7 @@ export function Strip(p: StripProps) {
 
       <View style={{ flexDirection: 'row', gap: 4, width: '100%' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} />
-        <Pressable onPress={() => p.onOpenDetail(ch)} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[styles.small, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: 6 }]}>
+        <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[styles.small, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: 6 }]}>
           {fxVals.map((v, k) => {
             const on = Number(v ?? 0) > 0;
             const d = faderToDb(Number(v ?? 0));

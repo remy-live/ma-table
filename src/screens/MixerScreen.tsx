@@ -58,7 +58,7 @@ function useMixerLabels(client: XAirClient) {
 
 type Item = { kind: 'ch'; ch: number; inOpenGroup: boolean } | { kind: 'group'; g: Group };
 
-export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidth?: StripWidth }) {
+export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidth?: StripWidth; onOpenEffects?: (ch: number) => void }) {
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -129,6 +129,18 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     say(n === 'full' ? 'Vue complète' : n === 'compact' ? 'Vue compacte : faders plus grands' : 'Vue gains : un bouton par entrée, pour la balance');
   };
   const curView = VIEWS.find((v) => v.id === view)!;
+  // vue gains : la plus grande taille de bouton qui fait tenir les 16 entrées sans défiler
+  const availW = width - (wide ? 96 : 0) - 24;
+  const gainSize = (() => {
+    let best = 50;
+    for (let cols = 4; cols <= 10; cols++) {
+      const rows = Math.ceil(CH_COUNT / cols);
+      const byW = (availW - (cols - 1) * 10) / cols - 28;
+      const byH = (bodyH - 12 - (rows - 1) * 10) / rows - 150;
+      best = Math.max(best, Math.min(byW, byH));
+    }
+    return Math.floor(Math.min(130, best));
+  })();
   const label = (t: Target) => (t.kind === 'main' ? 'Façade' : t.kind === 'bus' ? busName(t.n) : `Effet ${t.n}`);
   const color = targetColor(target, theme);
   const name = (ch: number) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
@@ -248,8 +260,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
         {bodyH > 0 && view === 'gains' && (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12 }}>
-            {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={wide ? 96 : 76} onOpen={setInputCh} />)}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12, justifyContent: 'center' }}>
+            {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} />)}
           </ScrollView>
         )}
         {bodyH > 0 && view !== 'gains' && (
@@ -291,6 +303,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                     onRename={setRenameCh}
                     onOpenInput={setInputCh}
                     onOpenDetail={setDetailCh}
+                    onOpenFx={(c) => (props.onOpenEffects ? props.onOpenEffects(c) : setDetailCh(c))}
                   />
                   {organize && !(mode !== null && it.ch !== sel) && (
                     <OrganizeOverlay

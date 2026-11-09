@@ -4,7 +4,10 @@
 //  3. Bulles (le tableau « Qui entend quoi »)
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { s as oscS } from '../osc/osc';
+import { f as oscF, s as oscS } from '../osc/osc';
+import { HSlider } from '../ui/HSlider';
+import { chLevelPath } from '../xair/addresses';
+import { dbToFader, faderToDb } from '../xair/levels';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Theme } from '../ui/theme';
 import { Shell } from '../ui/Shell';
@@ -15,7 +18,7 @@ import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS, initials } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
 
-type View3 = 'arriere' | 'colonnes' | 'bulles';
+type View3 = 'arriere' | 'colonnes' | 'niveaux' | 'bulles';
 type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null;
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
@@ -42,6 +45,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
   const [ren, setRen] = useState<{ path: string; v: string } | null>(null);
+  const [fold, setFold] = useState(false);
   const doRen = () => { if (ren) { client.set(ren.path, oscS(ren.v.trim().slice(0, 12))); say('Renommé'); } setRen(null); };
   useEffect(() => setRen(null), [sel]);
   useEffect(() => { if (props.visible) client.loadPaths(wiringPaths()); }, [client, props.visible]);
@@ -88,7 +92,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
             </Pressable>)}
         </View>
         <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
+          {([['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['niveaux', 'Niveaux'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
             <Pressable key={v} onPress={() => { setView(v); setSel(null); }} style={[styles.segBtn, view === v && { backgroundColor: theme.accent }]}>
               <Text style={{ color: view === v ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
             </Pressable>
@@ -97,11 +101,13 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
 
         {view === 'bulles' ? (
           <WhoHearsScreen client={client} theme={theme} visible embedded onClose={props.onClose} />
+        ) : view === 'niveaux' ? (
+          <Levels client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />
         ) : (
           <>
             <View style={{ flex: 1 }}>
               {view === 'arriere' ? (
-                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
+                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onEmpty={() => setSel(null)} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}
@@ -138,10 +144,13 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     <Pressable onPress={() => { const n = toAllReturns(client, selPlug); say(n ? `Envoyée dans ${n} retour${n > 1 ? 's' : ''} à −8 dB` : 'Déjà dans tous les retours nommés'); }} style={[styles.small, { borderColor: theme.accent }]}>
                       <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Vers tous les retours</Text>
                     </Pressable>
+                    <Pressable onPress={() => setFold((x) => !x)} accessibilityLabel={fold ? 'Déplier' : 'Réduire'} style={styles.close}><Text style={{ color: theme.muted, fontSize: 18 }}>{fold ? '▴' : '▾'}</Text></Pressable>
                     <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
                   </View>
+                  {!fold && <>
                   <AddRow theme={theme} label="Ajouter vers" items={O.filter((o) => !selWires.some((w) => w.out === o.id)).map((o) => ({ key: o.id, text: `${o.label.replace('MAIN L/R', 'MAIN')} · ${o.name}`, color: outColor(o), add: () => { if (!selPlug.chans.length) { say(`Rien n’écoute la prise ${selPlug.n}`); return; } connect(client, selPlug, o.t); say(`Prise ${selPlug.n} → ${o.label} · −6 dB`); } }))} />
                   <WireList theme={theme} items={selWires.map((w) => { const o = O.find((x) => x.id === w.out)!; return { key: w.out, short: o.label.replace('MAIN L/R', 'MAIN').replace('AUX ', 'A'), name: o.name, plug: o.label, color: outColor(o), db: w.db, paths: w.paths, cut: () => disconnect(client, selPlug, o.t) }; })} client={client} empty="Personne n’entend cette prise. Glisse-la vers AUX 1-6 ou MAIN." />
+                  </>}
                 </>
               )}
               {selOut && (
@@ -160,10 +169,13 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                         <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Comme le public</Text>
                       </Pressable>
                     )}
+                    <Pressable onPress={() => setFold((x) => !x)} accessibilityLabel={fold ? 'Déplier' : 'Réduire'} style={styles.close}><Text style={{ color: theme.muted, fontSize: 18 }}>{fold ? '▴' : '▾'}</Text></Pressable>
                     <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
                   </View>
+                  {!fold && <>
                   <AddRow theme={theme} label="Ajouter" items={P.filter((p) => p.chans.length && !selWires.some((w) => w.plug === p.n)).map((p) => ({ key: String(p.n), text: `${p.n} · ${p.name || 'voie ' + p.chans[0]}`, color: plugColor(p), add: () => { connect(client, p, selOut.t); say(`Prise ${p.n} → ${selOut.label} · −6 dB`); } }))} />
                   <WireList theme={theme} items={selWires.map((w) => { const p = P[w.plug - 1]; return { key: String(w.plug), short: String(w.plug), name: p.name || `Voie ${p.chans[0]}`, plug: `prise ${w.plug}`, color: plugColor(p), db: w.db, paths: w.paths, cut: () => disconnect(client, p, selOut.t) }; })} client={client} empty="N’entend rien pour l’instant. Glisse une prise jusqu’à cette sortie." />
+                  </>}
                 </>
               )}
             </View>
@@ -186,6 +198,64 @@ function Step({ n, c, t, theme }: { n: string; c: string; t: string; theme: Them
   );
 }
 
+// ---------- VUE « NIVEAUX » : la table, une entrée + une sortie = un curseur ----------
+function Levels(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string }) {
+  const { client, theme, P, O } = props;
+  const [inP, setInP] = useState<number | null>(null);
+  const [outId, setOutId] = useState<string | null>(null);
+  const plug = inP ? P[inP - 1] : null;
+  const out = outId ? O.find((o) => o.id === outId) ?? null : null;
+  const linked = (n: number, id: string) => props.W.some((w) => w.plug === n && w.out === id);
+  const path = plug && out && plug.chans.length ? chLevelPath(plug.chans[0], out.t) : null;
+  const v = path ? Number(client.get(path) ?? 0) : 0;
+  const set = (x: number) => { if (plug && out) for (const c of plug.chans) client.set(chLevelPath(c, out.t), oscF(x)); };
+  const dbTxt = (x: number) => { const d = faderToDb(x); return !isFinite(d) || x <= 0 ? 'rien' : `${d > 0 ? '+' : ''}${d.toFixed(1)} dB`; };
+  const Jack = ({ label, sub, color, on, link, onPress, dim }: { label: string; sub: string; color: string; on: boolean; link: boolean; onPress: () => void; dim?: boolean }) => (
+    <Pressable onPress={onPress} style={{ alignItems: 'center', width: 84, gap: 3, opacity: dim ? 0.35 : 1 }}>
+      <View style={{ width: 54, height: 54, borderRadius: 27, borderWidth: on ? 5 : 3, borderColor: on ? '#FFFFFF' : link ? color : '#3A414B', backgroundColor: '#1E2227', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: link ? color : '#0B0D10' }} />
+      </View>
+      <Text style={{ color: '#E8EAED', fontSize: 12, fontWeight: '800' }}>{label}</Text>
+      <Text numberOfLines={1} style={{ color: '#9AA3AD', fontSize: 10, maxWidth: 82 }}>{sub}</Text>
+    </Pressable>
+  );
+  return (
+    <ScrollView contentContainerStyle={{ padding: 12, gap: 12 }}>
+      <View style={[styles.lvPanel]}>
+        <Text style={{ color: '#9AA3AD', fontSize: 11, fontWeight: '800' }}>1 · TOUCHE UNE ENTRÉE</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {P.map((p) => <Jack key={p.n} label={String(p.n)} sub={p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')} color={props.plugColor(p)} on={inP === p.n} link={out ? linked(p.n, out.id) : !!p.chans.length && !!p.name} dim={!p.chans.length} onPress={() => setInP(p.n)} />)}
+        </View>
+        <View style={{ height: 1, backgroundColor: '#2A3038' }} />
+        <Text style={{ color: '#9AA3AD', fontSize: 11, fontWeight: '800' }}>2 · PUIS UNE SORTIE</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {O.map((o) => <Jack key={o.id} label={o.label.replace('MAIN L/R', 'MAIN')} sub={o.name} color={props.outColor(o)} on={outId === o.id} link={plug ? linked(plug.n, o.id) : true} onPress={() => setOutId(o.id)} />)}
+        </View>
+      </View>
+      <View style={[styles.lvBox, { backgroundColor: theme.panel, borderColor: plug && out ? props.outColor(out) : theme.line }]}>
+        {plug && out && path ? (
+          <>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+              <Text style={{ color: props.plugColor(plug) }}>{plug.n} · {plug.name || `voie ${plug.chans[0]}`}</Text>  →  <Text style={{ color: props.outColor(out) }}>{out.name}</Text>
+            </Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>{v > 0 ? 'Combien cette entrée sort ici' : 'Pas encore relié : monte le curseur pour relier'}</Text>
+            <HSlider value={v} onChange={set} label="Niveau" valueText={dbTxt(v)} color={props.outColor(out)} theme={theme} />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {[-20, -10, -6, 0].map((d) => (
+                <Pressable key={d} onPress={() => set(dbToFader(d))} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>{d} dB</Text></Pressable>
+              ))}
+              <View style={{ flex: 1 }} />
+              <Pressable onPress={() => set(0)} style={[styles.small, { borderColor: theme.mute }]}><Text style={{ color: '#FCA5A5', fontWeight: '800' }}>✕ Retirer</Text></Pressable>
+            </View>
+          </>
+        ) : (
+          <Text style={{ color: theme.muted, fontSize: 14 }}>{!plug ? 'Touche une entrée en haut…' : !plug.chans.length ? 'Rien n’écoute cette prise : donne-lui une voie (Table › Changer l’entrée).' : '…puis une sortie : un curseur apparaît ici pour régler le niveau.'}</Text>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
 function AddRow(props: { theme: Theme; label: string; items: { key: string; text: string; color: string; add: () => void }[] }) {
   const { theme } = props;
   if (!props.items.length) return null;
@@ -205,7 +275,7 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
   const { theme, client } = props;
   if (!props.items.length) return <Text style={{ color: theme.muted, fontSize: 13, paddingVertical: 8 }}>{props.empty}</Text>;
   return (
-    <ScrollView style={{ maxHeight: 190 }} contentContainerStyle={{ gap: 8, flexDirection: 'row', flexWrap: 'wrap' }}>
+    <ScrollView style={{ maxHeight: 132 }} contentContainerStyle={{ gap: 6, flexDirection: 'row', flexWrap: 'wrap' }}>
       {props.items.map((w) => (
         <View key={w.key} style={[styles.wire, { backgroundColor: theme.deep, borderColor: theme.line }]}>
           <View style={[styles.num, { width: 34, height: 34, borderColor: w.color }]}><Text style={{ color: theme.text, fontSize: 10, fontWeight: '800' }}>{w.short}</Text></View>
@@ -226,7 +296,7 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
 // ---------- VUE 1 : FACE ARRIÈRE ----------
 // Relier au doigt : on appuie sur une prise, on glisse jusqu'à une sortie (ou l'inverse).
 // Les fils qui arrivent sur une même sortie sont écartés pour rester lisibles.
-function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void }) {
+function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void; onEmpty: () => void }) {
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
@@ -234,6 +304,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   const h = PANEL_H * scale;
   const latest = useRef({ P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut });
   latest.current = { P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut };
+  const emptyRef = useRef(props.onEmpty);
+  emptyRef.current = props.onEmpty;
   const isSelPlug = (n: number) => sel?.kind === 'plug' && sel.n === n;
   const isSelOut = (id: string) => sel?.kind === 'out' && sel.id === id;
   const linkedPlug = (n: number) => sel?.kind === 'out' && props.W.some((w) => w.plug === n && w.out === sel.id);
@@ -264,7 +336,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
       onPanResponderRelease: (e) => {
         const sc = latest.current.scale || 1;
         setDrag((d) => {
-          if (!d) return null;
+          if (!d) { if (!moved.current) emptyRef.current(); return null; }
           const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
           if (!moved.current || !t) {
             // simple appui : sélectionner
@@ -409,7 +481,6 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
           })}
         </View>
       )}
-      <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>Pour relier : appuie sur une prise et GLISSE jusqu’à une sortie (la cible s’allume en vert) · un simple appui montre ses liaisons, ✕ pour enlever.</Text>
     </View>
   );
 }
@@ -430,7 +501,7 @@ function Columns(props: { theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: numbe
   const L = 120;
   const R = 120;
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40 }}>
       <View style={{ height: H, flexDirection: 'row' }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
         <View style={{ width: L }}>
           {used.map((p) => (
@@ -475,8 +546,10 @@ const styles = StyleSheet.create({
   small: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   num: { width: 38, height: 38, borderRadius: 19, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   close: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  wire: { borderWidth: 1, borderRadius: 14, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  wire: { borderWidth: 1, borderRadius: 12, padding: 5, flexDirection: 'row', alignItems: 'center', gap: 5 },
   pm: { width: 36, height: 36, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   colItem: { borderWidth: 2, borderRadius: 12, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  lvPanel: { backgroundColor: '#15181C', borderColor: '#2A3038', borderWidth: 2, borderRadius: 18, padding: 12, gap: 10 },
+  lvBox: { borderWidth: 2, borderRadius: 18, padding: 14, gap: 10 },
   toast: { position: 'absolute', left: 24, right: 24, top: 100, backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1, borderRadius: 12, padding: 10 },
 });

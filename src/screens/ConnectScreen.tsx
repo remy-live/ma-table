@@ -33,10 +33,12 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [nets, setNets] = useState<WifiNet[]>([]);
   const [scanning, setScanning] = useState(false);
   const [onNet, setOnNet] = useState('');
+  const [netNote, setNetNote] = useState('');
+  const [hiddenN, setHiddenN] = useState(0);
   const scanNets = async () => {
     if (!canScanWifi) return;
     setScanning(true);
-    try { setNets(await scanWifi()); setOnNet(currentWifi()); } catch (e) { dbg.warn('Scan Wi-Fi : ' + String(e)); }
+    try { const r = await scanWifi(); setNets(r.nets); setNetNote(r.note); setHiddenN(r.hidden); setOnNet(currentWifi()); } catch (e) { dbg.warn('Scan Wi-Fi : ' + String(e)); }
     setScanning(false);
   };
   useEffect(() => { scanNets(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -208,8 +210,8 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </View>
             {!!onNet && <Text style={{ color: theme.muted, fontSize: 12 }}>Tu es connecté à <Text style={{ color: theme.text, fontWeight: '800' }}>{onNet}</Text></Text>}
             {canScanWifi && nets.length > 0 && (
-              <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={{ gap: 6 }} nestedScrollEnabled>
-                {nets.slice(0, 12).map((n) => {
+              <ScrollView style={{ maxHeight: 340 }} contentContainerStyle={{ gap: 6 }} nestedScrollEnabled>
+                {nets.map((n) => {
                   const mineNet = n.table || n.ssid === mine?.ssid || n.ssid === mine?.name;
                   const here = n.ssid === onNet;
                   return (
@@ -225,7 +227,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
                 })}
               </ScrollView>
             )}
-            {canScanWifi && !scanning && nets.length === 0 && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucun réseau vu : autorise la localisation (Android l’exige pour lister le Wi-Fi), puis ↻.</Text>}
+            {canScanWifi && (nets.length > 0 || hiddenN > 0) && <Text style={{ color: theme.muted, fontSize: 11 }}>{nets.length} réseau{nets.length > 1 ? 'x' : ''}{hiddenN ? ` · ${hiddenN} caché${hiddenN > 1 ? 's' : ''} (sans nom)` : ''}</Text>}
+            {!!netNote && <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '700' }}>{netNote}</Text>}
+            {canScanWifi && !scanning && nets.length === 0 && !netNote && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucun réseau vu : autorise la localisation (Android l’exige pour lister le Wi-Fi), puis ↻.</Text>}
             {!canScanWifi && (tryNames.length > 0 ? tryNames.map((n) => (
               <View key={n} style={[styles.net, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
                 <WifiIcon color={theme.accent} />

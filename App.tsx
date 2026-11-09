@@ -30,6 +30,7 @@ export default function App() {
   const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal' });
   const themeKey = prefs.theme;
   const [tab, setTab] = useState<Section>('table');
+  const [fxCh, setFxCh] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -157,8 +158,8 @@ export default function App() {
   };
   const body = (
     <View style={{ flex: 1 }}>
-      {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} />}
-      {tab === 'effets' && <EffectsHub client={client} theme={theme} />}
+      {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
+      {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
       {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} />}
       {tab === 'soirees' && <SessionsScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}

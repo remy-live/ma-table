@@ -21,7 +21,8 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
   const { theme, prefs } = props;
   const [part, setPart] = useState<'look' | 'conn'>('look');
   const { width } = useWindowDimensions();
-  const cols = width > 900 ? 5 : width > 600 ? 3 : 2;
+  const wide = width >= 900;
+  const cols = wide ? 4 : width > 600 ? 3 : 2;
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={styles.head}>
@@ -37,18 +38,9 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
       {part === 'conn' ? (
         <ConnectionScreen client={props.client} theme={theme} onDisconnect={props.onDisconnect} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 14, gap: 14, paddingBottom: 40 }}>
-          <View style={[styles.preview, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-            <LivePreview theme={theme} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 }}>DESIGN ACTUEL</Text>
-              <Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>{theme.name}</Text>
-              <Text style={{ color: theme.muted, fontSize: 13 }}>{theme.desc}</Text>
-              <Text style={{ color: theme.muted, fontSize: 12, marginTop: 8 }}>L’aperçu est vivant : tourne le bouton, glisse le fader. Touche un design ci-dessous pour l’essayer.</Text>
-            </View>
-          </View>
-
-          <Text style={[styles.kicker, { color: theme.muted }]}>10 DESIGNS</Text>
+        <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 12, paddingBottom: 40 }}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>DESIGN · touche pour essayer</Text>
           <View style={styles.grid}>
             {THEME_ORDER.map((id) => {
               const t = THEMES[id];
@@ -97,12 +89,18 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
             </View>
           </View>
         </ScrollView>
+        <View style={[styles.side, wide ? { width: 210, borderLeftWidth: 1 } : { flexDirection: 'row', borderTopWidth: 1 }, { borderColor: theme.line, backgroundColor: theme.panel }]}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>APERÇU</Text>
+          <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', textAlign: 'center' }}>{theme.name}</Text>
+          <LivePreview theme={theme} small={!wide} />
+        </View>
+        </View>
       )}
     </View>
   );
 }
 
-function LivePreview({ theme }: { theme: Theme }) {
+function LivePreview({ theme, small }: { theme: Theme; small?: boolean }) {
   const [g, setG] = useState(0.55);
   const [v, setV] = useState(0.75);
   const [p, setP] = useState(0.5);
@@ -115,7 +113,7 @@ function LivePreview({ theme }: { theme: Theme }) {
       <View style={{ backgroundColor: theme.deep, borderBottomWidth: 3, borderBottomColor: '#F472B6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Voix</Text>
       </View>
-      <Fader value={v} onChange={(x) => setV(Math.max(0, Math.min(1, x)))} color={theme.accent} theme={theme} height={190} label="Fader (aperçu)" meter={0.55} />
+      <Fader value={v} onChange={(x) => setV(Math.max(0, Math.min(1, x)))} color={theme.accent} theme={theme} height={small ? 120 : 200} label="Fader (aperçu)" meter={0.55} />
     </View>
   );
 }
@@ -125,6 +123,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '700' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, alignSelf: 'flex-start' },
   segBtn: { height: 40, paddingHorizontal: 16, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  side: { padding: 12, gap: 8, alignItems: 'center' },
   preview: { borderWidth: 1, borderRadius: 20, padding: 14, flexDirection: 'row', gap: 18, alignItems: 'center' },
   strip: { width: 116, borderWidth: 1, borderRadius: 14, padding: 8, alignItems: 'center', gap: 6 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
