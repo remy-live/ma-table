@@ -21,6 +21,7 @@ import { SLOT_COLORS } from '../xair/fxSlots';
 import { dbToFader } from '../xair/levels';
 import { colorOf, TABLE_COLORS } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
+import { toAllReturns } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { GROUP_COLORS } from './GroupsSheet';
 import { InputSourceSheet } from './InputSourceSheet';
@@ -106,7 +107,10 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
               return <Dest key={targetId(t)} client={client} theme={theme} path={chLevelPath(ch, t)} label={label} color={c} wide={wide} startDb={-10} none="pas relié" />;
             })}
           </View>
-          <Kicker theme={theme}>EFFETS · combien cette entrée envoie dans chaque effet</Kicker>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}><Kicker theme={theme}>EFFETS · combien cette entrée envoie dans chaque effet</Kicker></View>
+            <Btn theme={theme} small kind="ghost" label="+ Vers tous les retours nommés" onPress={() => toAllReturns(client, { n: insrcPlug(insrc), chans: [ch], name, usb: false })} />
+          </View>
           <View style={styles.wrap}>
             {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => (
               <Dest key={k} client={client} theme={theme} path={chLevelPath(ch, { kind: 'fx', n: k })} label={`FX${k} · ${fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr}`} color={SLOT_COLORS[k - 1]} wide={wide} startDb={-14} none="sans" />
