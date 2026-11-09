@@ -69,7 +69,7 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
   const changes = bal ? monitorChanges(client, bal) : 0;
 
   const say = (t: string) => {
-    setToast(t);
+    void t; setToast('');
     if (toastT.current) clearTimeout(toastT.current);
     toastT.current = setTimeout(() => setToast(''), 1800);
   };

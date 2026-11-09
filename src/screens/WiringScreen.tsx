@@ -59,7 +59,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const P = useMemo(() => plugs(client), [client, tick]);
   const O = useMemo(() => outlets(client), [client, tick]);
   const W = useMemo(() => wires(client), [client, tick]);
-  const say = (t: string) => { setToast(t); setTimeout(() => setToast(''), 1600); };
+  const say = (t: string) => { void t; setToast(''); }; // plus de bandeau vert
 
   const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');

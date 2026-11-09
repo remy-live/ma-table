@@ -96,8 +96,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
 
   const say = (m: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(m);
-    toastTimer.current = setTimeout(() => setToast(''), 2200);
+    void m; // plus de bandeau vert : l'écran montre déjà le résultat
+    setToast('');
   };
 
   // Ordre des voies à l'écran (Déplacer) : gardé dans l'appli.

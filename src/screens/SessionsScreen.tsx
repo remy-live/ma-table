@@ -43,7 +43,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
     client.loadPaths(tableSnapPaths(), false);
     load<Snapshot | null>('balance', null).then((b) => setChanges(b ? changedCount(client, b) : null));
   }, [props.visible]); // eslint-disable-line react-hooks/exhaustive-deps
-  const say = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2000); };
+  const say = (t: string) => { void t; setToast(''); }; // plus de bandeau vert
 
   const doSave = async () => {
     const s = await saveCurrentSession(client);
