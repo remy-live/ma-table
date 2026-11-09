@@ -48,6 +48,7 @@ jobs:
             a.expo.android = { ...a.expo.android, versionCode: Number(process.env.GITHUB_RUN_NUMBER) };
             fs.writeFileSync('app.json', JSON.stringify(a, null, 2));
             fs.appendFileSync(process.env.GITHUB_ENV, 'APP_VERSION=' + a.expo.version + '\n');
+            fs.writeFileSync('src/version.ts', 'export const BUILD_VERSION = ' + JSON.stringify(a.expo.version) + ';\n');
           "
 
       - name: Projet Android natif

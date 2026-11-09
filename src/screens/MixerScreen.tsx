@@ -13,19 +13,14 @@ import { ChannelScreen } from './ChannelScreen';
 import { GroupsSheet } from './GroupsSheet';
 import { InputSheet } from './InputSheet';
 import { SmartRenameSheet } from './SmartRenameSheet';
-import { Tool, ToolsSheet } from './ToolsSheet';
-import { EffectsScreen } from './EffectsScreen';
-import { PresetsSheet } from './PresetsSheet';
-import { GuideScreen } from './GuideScreen';
-import { WiringScreen } from './WiringScreen';
-import { SessionsScreen } from './SessionsScreen';
+import { STRIP_WIDTHS, StripWidth } from './SettingsScreen';
 import { safetyBackup } from '../store/sessions';
 import { ClipBanner } from './ClipBanner';
-import { AutoBalanceScreen } from './AutoBalanceScreen';
 import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
 import { InputSourceSheet } from './InputSourceSheet';
 import { CATEGORIES, Category } from '../xair/clipboard';
 import { insrcPath, insrcPlug } from '../xair/addresses';
+import { OrganizeOverlay } from '../ui/OrganizeOverlay';
 
 const CHANNELS = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
 const BUS_COLORS = ['#60A5FA', '#34D399', '#38BDF8', '#A3E635', '#FB923C', '#F87171'];
@@ -61,7 +56,7 @@ function useMixerLabels(client: XAirClient) {
 
 type Item = { kind: 'ch'; ch: number; inOpenGroup: boolean } | { kind: 'group'; g: Group };
 
-export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextTheme: () => void }) {
+export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidth?: StripWidth }) {
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -73,8 +68,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
   const [inputCh, setInputCh] = useState<number | null>(null);
   const [renameCh, setRenameCh] = useState<number | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [tool, setTool] = useState<Tool | null>(null);
+  const [organize, setOrganize] = useState(false);
+  const [drag, setDrag] = useState<{ ch: number; dx: number } | null>(null);
+  const [undoN, setUndoN] = useState(client.undoCount);
+  useEffect(() => client.onUndoChange(setUndoN), [client]);
+  const stripW = STRIP_WIDTHS[props.stripWidth ?? 'normal'];
   const [virtual, setVirtual] = useState<Record<string, number>>({});
   const [openGroups, setOpenGroups] = useState<number[]>([]);
   const [order, setOrder] = useState<number[]>(CHANNELS);
@@ -175,6 +173,16 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
     setSel(null);
   };
 
+  const moveBy = (ch: number, k: number) => {
+    if (!k) return;
+    const o = order.filter((c) => c !== ch);
+    const i = order.indexOf(ch);
+    const j = Math.max(0, Math.min(o.length, i + k));
+    o.splice(j, 0, ch);
+    setAndSaveOrder(o);
+    say(`${name(ch)} déplacée (l’ordre à l’écran, pas les branchements)`);
+  };
+
   const move = (dir: -1 | 1) => {
     if (sel === null) return;
     const o = order.slice();
@@ -199,11 +207,14 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
             </Text>
           </View>
         </View>
+        <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
+        </Pressable>
+        <Pressable onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+          <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
+        </Pressable>
         <Pressable onPress={() => setGroupsOpen(true)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
           <Text style={{ color: '#FBBF24', fontSize: 13, fontWeight: '700' }}>Groupes</Text>
-        </Pressable>
-        <Pressable onPress={() => setToolsOpen(true)} style={[styles.hbtn, { borderColor: theme.line2 }]}>
-          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Outils</Text>
         </Pressable>
       </View>
       <ClipBanner client={client} onOpen={setInputCh} />
@@ -236,8 +247,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
                     setVirtual={(v) => setVirtual((m) => ({ ...m, [targetId(target) + it.g.k]: v }))}
                   />
                 ) : (
+                  <View key={it.ch} style={drag && drag.ch === it.ch ? { transform: [{ translateX: drag.dx }], zIndex: 10, opacity: 0.9 } : undefined}>
                   <Strip
-                    key={it.ch}
+                    width={stripW}
                     client={client}
                     ch={it.ch}
                     target={target}
@@ -256,6 +268,21 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
                     onOpenInput={setInputCh}
                     onOpenDetail={setDetailCh}
                   />
+                  {organize && !(mode !== null && it.ch !== sel) && (
+                    <OrganizeOverlay
+                      theme={theme}
+                      isSource={mode !== null && it.ch === sel}
+                      modeLabel={mode === 'swap' ? 'échange' : 'copie'}
+                      onCopy={() => { setSel(it.ch); setClip(null); setPasteSel([]); setMode('copy'); }}
+                      onSwap={() => { setSel(it.ch); setMode('swap'); }}
+                      onInput={() => setSrcCh(it.ch)}
+                      onRename={() => setRenameCh(it.ch)}
+                      onCancel={() => { setSel(null); setMode(null); setPasteSel([]); }}
+                      onDrag={(dx) => setDrag({ ch: it.ch, dx })}
+                      onDrop={(dx) => { setDrag(null); moveBy(it.ch, Math.round(dx / (stripW + 6))); }}
+                    />
+                  )}
+                  </View>
                 ),
               )}
             </ScrollView>
@@ -271,7 +298,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
         )}
       </View>
 
-      {sel !== null && (
+      {sel !== null && mode !== null && (
         <View style={[styles.bar, { backgroundColor: '#1F1C14', borderColor: '#F59E0B', borderWidth: 2 }]}>
           <View style={styles.barHead}>
             <View style={{ flex: 1 }}>
@@ -330,23 +357,6 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
-      <ToolsSheet
-        theme={theme}
-        visible={toolsOpen}
-        onClose={() => setToolsOpen(false)}
-        onPick={(t) => {
-          setToolsOpen(false);
-          if (t === 'theme') props.onNextTheme();
-          else if (t === 'groupes') setGroupsOpen(true);
-          else setTool(t);
-        }}
-      />
-      <EffectsScreen client={client} theme={theme} visible={tool === 'effets'} onClose={() => setTool(null)} />
-      <PresetsSheet client={client} theme={theme} visible={tool === 'presets'} ch={null} onClose={() => setTool(null)} />
-      <GuideScreen client={client} theme={theme} visible={tool === 'guide'} onClose={() => setTool(null)} />
-      <AutoBalanceScreen client={client} theme={theme} visible={tool === 'auto'} onClose={() => setTool(null)} />
-      <SessionsScreen client={client} theme={theme} visible={tool === 'soirees'} onClose={() => setTool(null)} />
-      <WiringScreen client={client} theme={theme} visible={tool === 'branchements'} onClose={() => setTool(null)} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>

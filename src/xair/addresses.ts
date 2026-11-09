@@ -175,3 +175,14 @@ export const SNAP_COUNT = 64;
 export const snapNamePath = (n: number) => `/-snap/${ch2(n)}/name`;
 export const SNAP_SAVE = '/-snap/save';
 export const SNAP_LOAD = '/-snap/load';
+
+// ---------- Wi-Fi de la table (adresses à vérifier sur la vraie table) ----------
+export const WLAN = {
+  mode: '/-prefs/wlan/mode', // 0 point d'accès, 1 client (?)
+  apSsid: '/-prefs/ap/ssid',
+  apChannel: '/-prefs/ap/channel',
+  isSsid: '/-prefs/is/ssid',
+  lanMode: '/-prefs/lan/mode',
+  ip: '/-prefs/lan/addr',
+};
+export const WLAN_PATHS = Object.values(WLAN);

@@ -6,6 +6,7 @@ import React, { useRef, useState } from 'react';
 import { PanResponder, StyleSheet, Text, View } from 'react-native';
 import { dbToFader } from '../xair/levels';
 import { Theme } from './theme';
+import { tick } from './haptics';
 
 interface Props {
   value: number; // 0..1
@@ -21,6 +22,7 @@ interface Props {
 }
 
 const CAP_H = 30;
+const ZERO = 0.75; // position du 0 dB
 const MARKS: [number, string][] = [
   [1, '+10'],
   [0.75, '0'],
@@ -58,7 +60,10 @@ export function Fader({ value, onChange, color, theme, height = 340, label, onSt
       onPanResponderMove: (_e, g) => {
         const r = ref.current;
         const k = r.fine ? 0.25 : 1;
-        latest.current.onChange(r.start - ((g.dy - r.dy0) / latest.current.track) * k);
+        const nv = r.start - ((g.dy - r.dy0) / latest.current.track) * k;
+        const old = latest.current.value;
+        if ((old < ZERO && nv >= ZERO) || (old > ZERO && nv <= ZERO)) tick();
+        latest.current.onChange(nv);
       },
       onPanResponderRelease: () => {
         setFine(false);
@@ -112,16 +117,41 @@ export function Fader({ value, onChange, color, theme, height = 340, label, onSt
       {meter !== undefined && <Meter level={meter} clip={!!clip} height={track} theme={theme} />}
       <View style={[styles.track, { top: CAP_H / 2, bottom: CAP_H / 2, backgroundColor: theme.track }]} />
       <View style={[styles.track, { bottom: CAP_H / 2, height: capBottom, backgroundColor: color }]} />
-      <View
-        style={[
-          styles.cap,
-          { bottom: capBottom, backgroundColor: theme.cap, borderColor: fine ? theme.accent : 'transparent' },
-        ]}
-      >
-        <View style={[styles.groove, { backgroundColor: theme.capGroove }]} />
-        <View style={[styles.line, { backgroundColor: color }]} />
-        <View style={[styles.groove, { backgroundColor: theme.capGroove }]} />
+      <Cap bottom={capBottom} fine={fine} color={color} theme={theme} />
+    </View>
+  );
+}
+
+/** Capuchon de fader, dessiné selon le design. */
+function Cap({ bottom, fine, color, theme }: { bottom: number; fine: boolean; color: string; theme: Theme }) {
+  const border = fine ? theme.accent : 'transparent';
+  if (theme.look === 'real' || theme.look === 'vintage') {
+    const v = theme.look === 'vintage';
+    return (
+      <View style={[styles.cap, { bottom, width: 40, left: 16, backgroundColor: theme.cap, borderColor: border, borderRadius: v ? 4 : 5, borderTopWidth: 3, borderTopColor: fine ? theme.accent : v ? '#FFF6E2' : '#F4F6F8', borderBottomWidth: 3, borderBottomColor: v ? '#6E5A3E' : '#5F666E', gap: 2 }]}>
+        {[0, 1, 2].map((k) => <View key={'a' + k} style={{ width: 30, height: 1, backgroundColor: theme.capGroove }} />)}
+        <View style={[styles.line, { width: 32, height: 3, backgroundColor: v ? '#1B1410' : '#111' }]} />
+        {[0, 1, 2].map((k) => <View key={'b' + k} style={{ width: 30, height: 1, backgroundColor: theme.capGroove }} />)}
       </View>
+    );
+  }
+  if (theme.look === 'neon') {
+    return (
+      <View style={[styles.cap, { bottom, backgroundColor: theme.bg, borderColor: fine ? theme.accent : color, borderWidth: 2, shadowColor: color, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } }]}>
+        <View style={[styles.line, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (theme.look === 'minimal') {
+    return (
+      <View style={[styles.cap, { bottom: bottom + CAP_H / 2 - 4, height: 8, borderRadius: 4, backgroundColor: theme.cap, borderColor: border, elevation: 0, shadowOpacity: 0 }]} />
+    );
+  }
+  return (
+    <View style={[styles.cap, { bottom, backgroundColor: theme.cap, borderColor: border }]}>
+      <View style={[styles.groove, { backgroundColor: theme.capGroove }]} />
+      <View style={[styles.line, { backgroundColor: color }]} />
+      <View style={[styles.groove, { backgroundColor: theme.capGroove }]} />
     </View>
   );
 }

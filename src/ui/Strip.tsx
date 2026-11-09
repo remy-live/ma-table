@@ -15,13 +15,17 @@ import { useMeter } from '../xair/useMeter';
 import { useFader, useMute, useParam, useParamOpt } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { Fader } from './Fader';
+import { Knob } from './Knob';
+import { tick } from './haptics';
+import { f } from '../osc/osc';
 import { Theme } from './theme';
+import { SLOT_COLORS } from '../xair/fxSlots';
 
 export const GROUP_COLOR = '#F59E0B';
 const SUGGESTIONS = ['Voix', 'Guitare', 'Basse', 'Kick', 'Caisse claire', 'Charley', 'Toms', 'Overhead', 'Clavier'];
 
 /** Hauteur d'une tranche hors fader (en-tête, gain, nom, mute, dB, EQ/FX, marges). */
-export const STRIP_CHROME = 362;
+export const STRIP_CHROME = 318;
 
 interface StripProps {
   client: XAirClient;
@@ -38,6 +42,7 @@ interface StripProps {
   pasteLabel?: string;
   onPasteToggle?: (ch: number) => void;
   dim?: boolean;
+  width?: number;
   onSelect: (ch: number) => void;
   onRename: (ch: number) => void;
   onOpenInput: (ch: number) => void;
@@ -67,7 +72,7 @@ export function Strip(p: StripProps) {
   const border = p.selected ? GROUP_COLOR : p.inOpenGroup ? '#4A3B12' : theme.line;
 
   return (
-    <View style={[styles.strip, { backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1, opacity: p.dim ? 0.45 : 1 }]}>
+    <View style={[styles.strip, { width: p.width ?? 92, backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1, opacity: p.dim ? 0.45 : 1 }]}>
       {p.selected && (
         <View style={{ position: 'absolute', top: -1, left: -1, right: -1, zIndex: 2, backgroundColor: GROUP_COLOR, borderTopLeftRadius: 14, borderTopRightRadius: 14, paddingVertical: 3, alignItems: 'center' }}>
           <Text style={{ color: '#1A1204', fontSize: 11, fontWeight: '800' }}>✓ SÉLECTIONNÉE</Text>
@@ -96,7 +101,21 @@ export function Strip(p: StripProps) {
       </Pressable>
 
       <Pressable onPress={() => p.onOpenInput(ch)} accessibilityRole="button" accessibilityLabel={`Entrée de ${name}`} style={styles.inputZone}>
-        <Knob value={gain === undefined ? 0.5 : Number(gain)} color={scribble} theme={theme} dim={gain === undefined} />
+        <Knob
+          value={gain === undefined ? 0.5 : Number(gain)}
+          size={52}
+          color={scribble}
+          theme={theme}
+          dim={gain === undefined}
+          label={`Gain de ${name}`}
+          onPress={() => p.onOpenInput(ch)}
+          onChange={gain === undefined ? undefined : (v) => {
+            const before = fToGainDb(Number(gain));
+            const after = fToGainDb(v);
+            if ((before < 0 && after >= 0) || (before > 0 && after <= 0)) tick();
+            client.set(headampGainPath(ch), f(v));
+          }}
+        />
         <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
           {gainDb === null ? 'Ligne' : `${gainDb > 0 ? '+' : ''}${gainDb.toFixed(0)} dB`}
         </Text>
@@ -109,6 +128,7 @@ export function Strip(p: StripProps) {
 
       <Pressable
         onPress={() => p.onRename(ch)}
+        onLongPress={() => p.onRename(ch)}
         accessibilityRole="button"
         accessibilityLabel={`Renommer ${name}`}
         style={[styles.name, { backgroundColor: theme.deep, borderBottomColor: scribble }]}
@@ -133,17 +153,15 @@ export function Strip(p: StripProps) {
 
       <View style={{ flexDirection: 'row', gap: 4, width: '100%' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} />
-        <SmallBtn label="FX" on={fxOn} onColor="#C084FC" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Effets de ${name}`} />
+        <Pressable onPress={() => p.onOpenDetail(ch)} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[styles.small, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: 6 }]}>
+          {fxVals.map((v, k) => {
+            const on = Number(v ?? 0) > 0;
+            const d = faderToDb(Number(v ?? 0));
+            const s = on ? Math.round(7 + Math.max(0, Math.min(1, (d + 40) / 40)) * 6) : 7;
+            return <View key={k} style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: s, height: s, borderRadius: s / 2, backgroundColor: on ? SLOT_COLORS[k] : 'transparent', borderWidth: on ? 0 : 1, borderColor: theme.line2 }} /></View>;
+          })}
+        </Pressable>
       </View>
-      <Pressable
-        onPress={() => p.onSelect(ch)}
-        accessibilityRole="button"
-        accessibilityState={{ selected: p.selected }}
-        accessibilityLabel={`Actions sur ${name} : déplacer, copier, échanger, entrée`}
-        style={[styles.small, { width: '100%', flex: 0, height: 38, borderColor: p.selected ? GROUP_COLOR : theme.line, backgroundColor: p.selected ? GROUP_COLOR : theme.deep }]}
-      >
-        <Text style={{ color: p.selected ? '#1A1204' : theme.text, fontSize: 18, fontWeight: '800', lineHeight: 20 }}>⋯</Text>
-      </Pressable>
     </View>
   );
 }
@@ -253,15 +271,6 @@ export function OutStrip(props: { client: XAirClient; target: Target; label: str
 }
 
 // ---------- petits éléments ----------
-
-function Knob({ value, color, theme, dim }: { value: number; color: string; theme: Theme; dim: boolean }) {
-  const deg = -135 + value * 270;
-  return (
-    <View style={[styles.knob, { borderColor: theme.line2, backgroundColor: theme.deep, opacity: dim ? 0.4 : 1, transform: [{ rotate: `${deg}deg` }] }]}>
-      <View style={[styles.knobMark, { backgroundColor: color }]} />
-    </View>
-  );
-}
 
 function Badge({ on, label, onBg, onInk, theme, w }: { on: boolean; label: string; onBg: string; onInk: string; theme: Theme; w: number }) {
   return (

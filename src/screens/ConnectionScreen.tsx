@@ -9,7 +9,7 @@ import { NetworkSetupScreen } from './NetworkSetupScreen';
 import { DebugScreen } from './DebugScreen';
 import { SessionsScreen } from './SessionsScreen';
 
-const KEYS = ['balance', 'ordre', 'mesPresets', 'autos'];
+const KEYS = ['balance', 'ordre', 'mesPresets', 'autos', 'mesEffets', 'jeuxEffets', 'fxNoms', 'prefs'];
 
 export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAirClient; theme: Theme; onDisconnect: () => void }) {
   const [status, setStatus] = useState<Status>(client.status);
@@ -25,7 +25,9 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
   }, [client]);
 
   const ok = status === 'connecté';
-  const bars = !ok ? 0 : silence < 10 ? 4 : silence < 15 ? 3 : 2;
+  const lk = client.link();
+  const bars = !ok ? 0 : Math.min(lk.bars, silence < 10 ? 4 : silence < 15 ? 3 : 2);
+  const verdict = !ok ? '' : bars >= 4 ? 'Liaison excellente' : bars === 3 ? 'Bonne liaison' : bars === 2 ? 'Liaison moyenne : rapproche-toi de la table' : 'Liaison faible : rapproche-toi ou change de canal Wi-Fi';
 
   const doExport = async () => {
     const data: Record<string, unknown> = { app: 'Ma table', version: 1, date: new Date().toISOString() };
@@ -67,7 +69,9 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
             {client.info ? `${client.info.model} · ${client.info.ip} · firmware ${client.info.firmware}` : ''}
           </Text>
           <Text style={{ color: theme.muted, fontSize: 12 }}>
-            {silence >= 0 ? `Dernière réponse il y a ${silence} s` : ''}
+            {ok && <Text style={{ color: bars >= 3 ? theme.ok : '#FCD34D', fontWeight: '800' }}>{verdict} · </Text>}
+            {lk.ms !== null ? `réponse en ${lk.ms} ms · ${lk.lost} % perdus · ` : ''}
+            {silence >= 0 ? `dernière réponse il y a ${silence} s` : ''}
             {client.reconnections ? ` · ${client.reconnections} reconnexion${client.reconnections > 1 ? 's' : ''}` : ''}
           </Text>
         </View>

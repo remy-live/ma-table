@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import { WLAN, WLAN_PATHS } from '../xair/addresses';
+import { BUILD_VERSION } from '../version';
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
@@ -9,6 +12,8 @@ import { load, save } from '../store/persist';
 import * as dbg from '../debug/log';
 import { DebugScreen } from './DebugScreen';
 import { Theme } from '../ui/theme';
+
+interface MyTable { ip: string; name: string; model: string; at: number; ssid?: string; mode?: number }
 
 export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig) => void; invite?: MonConfig | null }) {
   const [code, setCode] = useState('');
@@ -21,6 +26,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [last, setLast] = useState<string | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [dbgOpen, setDbgOpen] = useState(false);
+  const [mine, setMine] = useState<MyTable | null>(null);
+  const wide = useWindowDimensions().width >= 900;
+  useEffect(() => { load<MyTable | null>('maTable', null).then(setMine); }, []);
 
   useEffect(() => {
     load<string | null>('derniereIp', null).then(setLast);
@@ -86,7 +94,18 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     const client = new XAirClient(demo ? new DemoTransport() : new RnUdpTransport());
     try {
       await client.connect(host);
-      if (!demo && !mon) save('derniereIp', host);
+      if (!demo && !mon) {
+        save('derniereIp', host);
+        const inf = client.info;
+        const base: MyTable = { ip: host, name: inf?.name || host, model: inf?.model || '', at: Date.now(), ssid: mine?.ssid, mode: mine?.mode };
+        save('maTable', base);
+        // Wi-Fi de la table (adresses à vérifier) : lu en arrière-plan
+        client.loadPaths(WLAN_PATHS).then(() => {
+          const mode = Number(client.get(WLAN.mode) ?? NaN);
+          const ssid = String((mode === 1 ? client.get(WLAN.isSsid) : client.get(WLAN.apSsid)) ?? '') || base.ssid;
+          save('maTable', { ...base, ssid, mode: isFinite(mode) ? mode : undefined });
+        }).catch(() => {});
+      }
       if (mon && !demo) save('monRetour', mon);
       onConnected(client, mon);
     } catch (e) {
@@ -97,105 +116,199 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     setBusy(false);
   };
 
+  const tryNames = Array.from(new Set([mine?.ssid, mine?.name].filter(Boolean))) as string[];
+  const openWifi = () => {
+    if (Platform.OS === 'android') Linking.sendIntent('android.settings.WIFI_SETTINGS').catch(() => Linking.openSettings());
+    else Linking.openSettings();
+  };
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.root} keyboardShouldPersistTaps="handled">
-      <Text style={[styles.title, { color: theme.text }]}>Ma table</Text>
-      {lastMon && (
-        <Pressable onPress={() => connect(lastMon.host, false, lastMon)} style={[styles.card, { borderColor: '#34D399', backgroundColor: '#13261E' }]}>
-          <Text style={{ color: '#A7F3D0', fontSize: 16, fontWeight: '800' }}>Reprendre mon retour</Text>
-          <Text style={{ color: '#6EE7B7', fontSize: 12 }}>{lastMon.name} · AUX {lastMon.bus} · {lastMon.host}</Text>
-        </Pressable>
-      )}
-      <Text style={{ color: theme.muted, fontSize: 14 }}>Connecte le téléphone au Wi-Fi de la XR16, puis choisis-la.</Text>
-
-      <View style={styles.row}>
-        <Text style={[styles.section, { color: theme.muted }]}>TABLES TROUVÉES</Text>
-        <Pressable onPress={search} disabled={searching} style={[styles.small, { borderColor: theme.line2 }]}>
-          {searching ? <ActivityIndicator color={theme.text} /> : <Text style={{ color: theme.text }}>Chercher</Text>}
-        </Pressable>
-      </View>
-      {found.length === 0 && !searching && <Text style={{ color: theme.muted }}>Aucune table trouvée pour l'instant.</Text>}
-      {found.map((t) => (
-        <Pressable
-          key={t.ip}
-          onPress={() => connect(t.ip)}
-          style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}
-        >
-          <Text style={{ color: theme.text, fontSize: 17, fontWeight: '700' }}>{t.name}</Text>
-          <Text style={{ color: theme.muted, fontSize: 13 }}>
-            {t.model} · {t.ip}
-          </Text>
-        </Pressable>
-      ))}
-
-      <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
-        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche sur ton réseau…' : 'Chercher sur mon partage de connexion'}</Text>
-        <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
-      </Pressable>
-      {last && (
-        <Pressable onPress={() => connect(last)} style={[styles.card, { borderColor: theme.accent }]}>
-          <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Reconnecter à la dernière table</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>{last}</Text>
-        </Pressable>
-      )}
-      <Text style={[styles.section, { color: theme.muted, marginTop: 12 }]}>OU PAR ADRESSE IP</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <TextInput
-          value={ip}
-          onChangeText={setIp}
-          placeholder="192.168.1.1"
-          placeholderTextColor={theme.muted}
-          keyboardType="numbers-and-punctuation"
-          autoCapitalize="none"
-          style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]}
-        />
-        <Pressable
-          onPress={() => ip && connect(ip.trim())}
-          style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}
-        >
-          <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
-        </Pressable>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40 }]} keyboardShouldPersistTaps="handled">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={[styles.logo, { backgroundColor: theme.accent }]}>
+          {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 6, height: 34 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: theme.text }]}>Ma table</Text>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>{BUILD_VERSION === 'dev' ? 'version de développement' : `v${BUILD_VERSION}`}</Text>
+        </View>
+        <Pressable onPress={() => setDbgOpen(true)} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Débogage</Text></Pressable>
       </View>
 
-      <Pressable onPress={() => connect('demo', true)} style={[styles.card, { borderColor: theme.line2, marginTop: 12 }]}>
-        <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }}>Essayer sans table (démo)</Text>
-        <Text style={{ color: theme.muted, fontSize: 13 }}>Une XR16 imitée dans l'appli, rien n'est envoyé.</Text>
-      </Pressable>
+      <View style={{ flexDirection: wide ? 'row' : 'column', gap: 14 }}>
+        <View style={{ flex: 1, gap: 12 }}>
+          {/* TA TABLE */}
+          {mine && (
+            <Pressable onPress={() => connect(mine.ip)} disabled={busy} style={[styles.hero, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
+              <Text style={[styles.kicker, { color: theme.accent }]}>TA TABLE</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <MixerIcon color={theme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 22, fontWeight: '800' }}>{mine.name}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 13 }}>{mine.model} · {mine.ip}{mine.ssid ? ` · Wi-Fi « ${mine.ssid} »` : ''}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>dernière fois {ago(mine.at)}</Text>
+                </View>
+                <View style={[styles.go, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 16 }}>{busy ? '…' : 'Connecter'}</Text></View>
+              </View>
+            </Pressable>
+          )}
+          {lastMon && (
+            <Pressable onPress={() => connect(lastMon.host, false, lastMon)} style={[styles.card, { borderColor: '#34D399', backgroundColor: '#13261E' }]}>
+              <Text style={{ color: '#A7F3D0', fontSize: 16, fontWeight: '800' }}>Reprendre mon retour</Text>
+              <Text style={{ color: '#6EE7B7', fontSize: 12 }}>{lastMon.name} · AUX {lastMon.bus} · {lastMon.host}</Text>
+            </Pressable>
+          )}
 
-      <Text style={[styles.section, { color: theme.muted, marginTop: 12 }]}>JE SUIS MUSICIEN : REJOINDRE MON RETOUR</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <TextInput
-          value={code}
-          onChangeText={setCode}
-          placeholder="172.20.10.2 · 1"
-          placeholderTextColor={theme.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]}
-        />
-        <Pressable onPress={join} style={[styles.go, { backgroundColor: '#34D399', opacity: code ? 1 : 0.5 }]}>
-          <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 16 }}>Rejoindre</Text>
-        </Pressable>
+          {/* TABLES TROUVÉES */}
+          <View style={styles.row}>
+            <Text style={[styles.kicker, { color: theme.muted }]}>SUR CE RÉSEAU</Text>
+            <Pressable onPress={search} disabled={searching} style={[styles.small, { borderColor: theme.line2 }]}>
+              {searching ? <ActivityIndicator color={theme.text} /> : <Text style={{ color: theme.text, fontWeight: '700' }}>↻ Chercher</Text>}
+            </Pressable>
+          </View>
+          {found.length === 0 && !searching && <Text style={{ color: theme.muted }}>Aucune table vue ici pour l’instant.</Text>}
+          {searching && found.length === 0 && <Radar color={theme.accent} theme={theme} />}
+          {found.map((t) => (
+            <Pressable key={t.ip} onPress={() => connect(t.ip)} style={[styles.found, { backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+              <MixerIcon color="#34D399" small />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>{t.name}</Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{t.model} · {t.ip} · {t.firmware}</Text>
+              </View>
+              <Text style={{ color: '#34D399', fontWeight: '800' }}>Connecter ›</Text>
+            </Pressable>
+          ))}
+          <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche adresse par adresse…' : 'Chercher sur mon partage de connexion'}</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ flex: 1, gap: 12 }}>
+          {/* WI-FI */}
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 10 }]}>
+            <Text style={[styles.kicker, { color: theme.muted }]}>LE BON WI-FI</Text>
+            {tryNames.length > 0 ? tryNames.map((n) => (
+              <View key={n} style={[styles.net, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                <WifiIcon color={theme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{n}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>{n === mine?.ssid && mine?.mode === 1 ? 'le réseau que ta table rejoint' : 'le Wi-Fi créé par ta table'}</Text>
+                </View>
+              </View>
+            )) : (
+              <View style={[styles.net, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                <WifiIcon color={theme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>XR18-…  /  XR16-…</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>le Wi-Fi de la table porte son nom</Text>
+                </View>
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <Num n={1} c={theme.accent} theme={theme} /><Text style={{ color: theme.muted, fontSize: 12, flex: 1 }}>Ouvre le Wi-Fi du téléphone et choisis ce réseau</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <Num n={2} c={theme.accent} theme={theme} /><Text style={{ color: theme.muted, fontSize: 12, flex: 1 }}>Reviens ici : la table apparaît toute seule</Text>
+            </View>
+            <Pressable onPress={openWifi} style={[styles.go, { backgroundColor: theme.accent, alignItems: 'center' }]}>
+              <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>Ouvrir le Wi-Fi du téléphone</Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+            <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput value={ip} onChangeText={setIp} placeholder="192.168.1.1" placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+              <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
+                <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+            <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput value={code} onChangeText={setCode} placeholder="172.20.10.2 · 1" placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+              <Pressable onPress={join} style={[styles.go, { backgroundColor: '#34D399', opacity: code ? 1 : 0.5 }]}>
+                <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 16 }}>Rejoindre</Text>
+              </Pressable>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Le plus simple : scanne le QR code du sondier avec l’appareil photo.</Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => connect('demo', true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo sans table</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>rien n’est envoyé</Text>
+            </Pressable>
+            <Pressable onPress={() => connect('demo', true, { host: 'demo', bus: 1, name: 'Bassiste', me: [4], rights: { ...DEFAULT_RIGHTS, fx: true } })} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo musicien</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>le mode « Mon retour »</Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
-      <Text style={{ color: theme.muted, fontSize: 12 }}>Le plus simple : scanne le QR code du sondier avec l’appareil photo.</Text>
-      <Pressable onPress={() => connect('demo', true, { host: 'demo', bus: 1, name: 'Bassiste', me: [4], rights: { ...DEFAULT_RIGHTS, fx: true } })} style={{ paddingVertical: 6 }}>
-        <Text style={{ color: theme.muted, fontSize: 13 }}>Essayer le mode musicien en démo</Text>
-      </Pressable>
 
       {busy && <ActivityIndicator color={theme.accent} style={{ marginTop: 12 }} />}
-      <Pressable onPress={() => setDbgOpen(true)} style={{ paddingVertical: 12 }}>
-        <Text style={{ color: theme.muted, fontSize: 13 }}>Débogage : envoyer le journal</Text>
-      </Pressable>
+      {!!error && <Text style={{ color: theme.mute, marginTop: 8, fontWeight: '700' }}>{error}</Text>}
       <DebugScreen client={null} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
-      {!!error && <Text style={{ color: theme.mute, marginTop: 8 }}>{error}</Text>}
     </ScrollView>
   );
 }
 
+function ago(t: number) {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 60) return `il y a ${Math.max(1, m)} min`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `il y a ${h} h`;
+  return `il y a ${Math.round(h / 24)} jours`;
+}
+function Num({ n, c, theme }: { n: number; c: string; theme: Theme }) {
+  return <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: c, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{n}</Text></View>;
+}
+function MixerIcon({ color, small }: { color: string; small?: boolean }) {
+  const s = small ? 40 : 56;
+  return (
+    <Svg width={s} height={s} viewBox="0 0 56 56">
+      <Rect x={3} y={8} width={50} height={40} rx={8} fill="none" stroke={color} strokeWidth={3} />
+      {[14, 24, 34, 44].map((x, k) => (
+        <React.Fragment key={x}>
+          <Line x1={x} y1={16} x2={x} y2={40} stroke={color} strokeOpacity={0.4} strokeWidth={2} />
+          <Rect x={x - 4} y={[30, 20, 34, 24][k]} width={8} height={5} rx={2} fill={color} />
+        </React.Fragment>
+      ))}
+    </Svg>
+  );
+}
+function WifiIcon({ color }: { color: string }) {
+  return (
+    <Svg width={30} height={24} viewBox="0 0 30 24">
+      <Path d="M2 8 Q15 -3 28 8" stroke={color} strokeWidth={2.5} fill="none" strokeLinecap="round" />
+      <Path d="M7 13 Q15 6 23 13" stroke={color} strokeWidth={2.5} fill="none" strokeLinecap="round" />
+      <Path d="M11 18 Q15 15 19 18" stroke={color} strokeWidth={2.5} fill="none" strokeLinecap="round" />
+      <Circle cx={15} cy={21.5} r={2} fill={color} />
+    </Svg>
+  );
+}
+function Radar({ color, theme }: { color: string; theme: Theme }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8 }}>
+      <ActivityIndicator color={color} />
+      <Text style={{ color: theme.muted }}>Je cherche les tables autour…</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { padding: 20, paddingTop: 64, gap: 10, paddingBottom: 40 },
-  title: { fontSize: 28, fontWeight: '700' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+  root: { padding: 20, paddingTop: 56, gap: 16, paddingBottom: 40 },
+  title: { fontSize: 30, fontWeight: '800' },
+  logo: { width: 56, height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  hero: { borderWidth: 2, borderRadius: 20, padding: 16, gap: 8 },
+  found: { borderWidth: 1, borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  net: { borderWidth: 1, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   section: { fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
   small: { height: 40, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
   card: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 4 },

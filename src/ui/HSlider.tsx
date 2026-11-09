@@ -32,7 +32,13 @@ export function HSlider({ value, onChange, label, valueText, color, theme, cente
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (e) => {
         const x = e.nativeEvent.locationX;
+        const cur = latest.current.v;
         const nv = Math.max(0, Math.min(1, x / latest.current.w));
+        // Doigt posé sur la pastille (±20 px) : on part de la valeur actuelle, sans saut.
+        if (Math.abs(nv * latest.current.w - cur * latest.current.w) < 20) {
+          start.current = { v: cur, dx0: 0 };
+          return;
+        }
         start.current = { v: nv, dx0: 0 };
         latest.current.onChange(nv);
       },
@@ -62,10 +68,10 @@ export function HSlider({ value, onChange, label, valueText, color, theme, cente
         onAccessibilityAction={(e) => onChange(Math.max(0, Math.min(1, v + (e.nativeEvent.actionName === 'increment' ? 0.02 : -0.02))))}
         {...pan.panHandlers}
       >
-        <View style={[styles.track, { backgroundColor: theme.track }]} />
-        {center && <View style={[styles.mid, { backgroundColor: theme.line2 }]} />}
-        <View style={[styles.fill, { left: `${fillLeft * 100}%`, width: `${fillW * 100}%`, backgroundColor: color }]} />
-        <View style={[styles.knob, { left: v * w - 14, backgroundColor: theme.cap, borderColor: color }]} />
+        <View pointerEvents="none" style={[styles.track, { backgroundColor: theme.track }]} />
+        {center && <View pointerEvents="none" style={[styles.mid, { backgroundColor: theme.line2 }]} />}
+        <View pointerEvents="none" style={[styles.fill, { left: `${fillLeft * 100}%`, width: `${fillW * 100}%`, backgroundColor: color }]} />
+        <View pointerEvents="none" style={[styles.knob, { left: v * w - 14, backgroundColor: theme.cap, borderColor: color }]} />
       </View>
       <Text style={[styles.val, { color: theme.muted }]}>{valueText}</Text>
     </View>

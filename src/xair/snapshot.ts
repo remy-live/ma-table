@@ -18,12 +18,18 @@ export function snapshotPaths(): string[] {
   for (let ch = 1; ch <= CH_COUNT; ch++) p.push(...pathsFor(ch, CATEGORIES.map((c) => c.id)), `/ch/${String(ch).padStart(2, '0')}/mix/fader`, `/ch/${String(ch).padStart(2, '0')}/mix/on`);
   p.push('/lr/mix/fader', '/lr/mix/on');
   for (let k = 1; k <= 4; k++) p.push(`/dca/${k}/fader`, `/dca/${k}/on`, `/rtn/${k}/mix/fader`);
-  for (let b = 1; b <= 6; b++) p.push(`/bus/${b}/mix/fader`, `/bus/${b}/mix/on`);
-  return p;
+  for (let b = 1; b <= 6; b++) p.push(`/bus/${b}/mix/fader`, `/bus/${b}/mix/on`, `/bus/${b}/config/name`);
+  // les 4 effets : type, 12 réglages, retour ; noms des groupes ; entrée de chaque voie
+  for (let k = 1; k <= 4; k++) {
+    p.push(`/fx/${k}/type`, `/rtn/${k}/mix/on`, `/dca/${k}/config/name`);
+    for (let n = 1; n <= 12; n++) p.push(`/fx/${k}/par/${String(n).padStart(2, '0')}`);
+  }
+  for (let ch = 1; ch <= CH_COUNT; ch++) p.push(`/ch/${String(ch).padStart(2, '0')}/config/insrc`);
+  return Array.from(new Set(p));
 }
 
 const argFor = (path: string, v: OscValue): OscArg =>
-  typeof v === 'string' ? s(v) : /\/(on|type|phantom|invert|hpon|color|dca)$/.test(path) ? i(Number(v)) : f(Number(v));
+  typeof v === 'string' ? s(v) : /\/(on|type|phantom|invert|hpon|color|dca|insrc)$/.test(path) ? i(Number(v)) : f(Number(v));
 
 export async function capture(client: XAirClient, name: string): Promise<Snapshot> {
   const paths = snapshotPaths();

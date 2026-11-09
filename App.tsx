@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, StatusBar, View } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
-import { ConnectionScreen } from './src/screens/ConnectionScreen';
 import { MixerScreen } from './src/screens/MixerScreen';
 import { StageScreen } from './src/screens/StageScreen';
 import { MonitorScreen } from './src/screens/MonitorScreen';
@@ -11,24 +10,48 @@ import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
 import { initStorage } from './src/store/persist';
-import { THEME_ORDER, THEMES } from './src/ui/theme';
+import { THEMES } from './src/ui/theme';
+import { Prefs, SettingsScreen } from './src/screens/SettingsScreen';
+import { WiringScreen } from './src/screens/WiringScreen';
+import { SessionsScreen } from './src/screens/SessionsScreen';
+import { EffectsHub } from './src/screens/EffectsHub';
+import { HelpSheet } from './src/screens/HelpSheet';
+import { NavBar, Section } from './src/ui/NavBar';
+import { load } from './src/store/persist';
+import { setHaptics } from './src/ui/haptics';
+import { useWindowDimensions } from 'react-native';
 import { XAirClient } from './src/xair/XAirClient';
 import * as dbg from './src/debug/log';
 import { APP_VERSION } from './src/debug/diagnostic';
 
-type Tab = 'table' | 'scene' | 'connexion';
 
 export default function App() {
   const [client, setClient] = useState<XAirClient | null>(null);
-  const [themeKey, setThemeKey] = useState('nuit');
-  const [tab, setTab] = useState<Tab>('table');
+  const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal' });
+  const themeKey = prefs.theme;
+  const [tab, setTab] = useState<Section>('table');
+  const [help, setHelp] = useState(false);
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
+  const setPrefs = (p: Prefs) => {
+    setPrefsState(p);
+    setHaptics(p.haptics);
+    save('prefs', p);
+  };
   const [locked, setLocked] = useState(false);
   const [monitor, setMonitor] = useState<{ cfg: MonConfig; owner: boolean } | null>(null);
   const [invite, setInvite] = useState<MonConfig | null>(null);
-  const theme = THEMES[themeKey];
+  const theme = THEMES[themeKey] ?? THEMES.nuit;
 
   useEffect(() => {
-    initStorage().then((ok) => dbg.info(`Appli ${APP_VERSION} démarrée · sauvegarde ${ok ? 'active' : 'en mémoire'}`));
+    initStorage().then(async (ok) => {
+      dbg.info(`Appli ${APP_VERSION} démarrée · sauvegarde ${ok ? 'active' : 'en mémoire'}`);
+      const p = await load<Prefs | null>('prefs', null);
+      if (p) {
+        setPrefsState(Object.assign({ theme: 'nuit', haptics: true, width: 'normal' }, p));
+        setHaptics(p.haptics !== false);
+      }
+    });
     // Toute erreur JavaScript finit dans le journal de débogage.
     const EU = (global as unknown as { ErrorUtils?: { getGlobalHandler(): (e: unknown, fatal?: boolean) => void; setGlobalHandler(h: (e: unknown, fatal?: boolean) => void): void } }).ErrorUtils;
     if (EU) {
@@ -75,7 +98,7 @@ export default function App() {
     ]);
   }, [invite, client]);
 
-  const go = (t: Tab) => {
+  const go = (t: Section) => {
     if (locked && t !== 'scene') {
       Alert.alert('Verrouillé', 'Déverrouille d’abord depuis l’écran Scène.');
       return;
@@ -86,7 +109,7 @@ export default function App() {
   if (!client) {
     return (
       <>
-        <StatusBar barStyle={themeKey === 'jour' ? 'dark-content' : 'light-content'} />
+        <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
         <ConnectScreen
           theme={theme}
           invite={invite}
@@ -108,7 +131,7 @@ export default function App() {
   if (monitor) {
     return (
       <>
-        <StatusBar barStyle={themeKey === 'jour' ? 'dark-content' : 'light-content'} />
+        <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
         <MonitorScreen
           client={client}
           cfg={monitor.cfg}
@@ -127,51 +150,29 @@ export default function App() {
     );
   }
 
+  const disconnect = () => {
+    client.close();
+    setClient(null);
+    setTab('table');
+  };
+  const body = (
+    <View style={{ flex: 1 }}>
+      {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} />}
+      {tab === 'effets' && <EffectsHub client={client} theme={theme} />}
+      {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
+      {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} />}
+      {tab === 'soirees' && <SessionsScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
+      {tab === 'reglages' && <SettingsScreen client={client} theme={theme} prefs={prefs} onPrefs={setPrefs} onDisconnect={disconnect} />}
+    </View>
+  );
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <StatusBar barStyle={themeKey === 'jour' ? 'dark-content' : 'light-content'} />
-      <View style={{ flex: 1 }}>
-        {tab === 'table' && (
-          <MixerScreen client={client} theme={theme} onNextTheme={() => setThemeKey(THEME_ORDER[(THEME_ORDER.indexOf(themeKey) + 1) % THEME_ORDER.length])} />
-        )}
-        {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} />}
-        {tab === 'connexion' && (
-          <ConnectionScreen
-            client={client}
-            theme={theme}
-            onDisconnect={() => {
-              client.close();
-              setClient(null);
-              setTab('table');
-            }}
-          />
-        )}
-      </View>
-      <View style={[styles.tabs, { backgroundColor: theme.deep, borderTopColor: theme.line }]}>
-        {(
-          [
-            ['table', 'Table'],
-            ['scene', 'Scène'],
-            ['connexion', 'Connexion'],
-          ] as [Tab, string][]
-        ).map(([id, label]) => {
-          const on = tab === id;
-          const dim = locked && id !== 'scene';
-          return (
-            <Pressable key={id} onPress={() => go(id)} accessibilityRole="tab" accessibilityState={{ selected: on, disabled: dim }} style={styles.tab}>
-              <View style={[styles.tabPill, on && { backgroundColor: theme.panel }]}>
-                <Text style={{ color: on ? theme.accent : dim ? theme.line2 : theme.muted, fontWeight: on ? '800' : '600', fontSize: 13 }}>{label}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column' }}>
+      <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
+      {wide && <NavBar theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} />}
+      {body}
+      {!wide && <NavBar theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} />}
+      <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 20, paddingTop: 6 },
-  tab: { flex: 1, alignItems: 'center' },
-  tabPill: { height: 44, minWidth: 96, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-});

@@ -55,6 +55,9 @@ export class XAirClient {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private keepTimer: ReturnType<typeof setInterval> | null = null;
   private lastHeard = 0;
+  // qualité de liaison : chaque /xinfo envoyé est un « ping »
+  private pingAt = 0;
+  private pings = { sent: 0, got: 0, rtt: [] as number[] };
   private infoWaiters: ((i: TableInfo) => void)[] = [];
   private extra = new Set<string>();
   private metersOn = false;
@@ -132,6 +135,48 @@ export class XAirClient {
   /** Nombre de reconnexions réussies depuis le début. */
   reconnections = 0;
 
+  // ---------- annuler ----------
+  private undoStack: { at: number; changes: Map<string, OscValue> }[] = [];
+  private undoing = false;
+  private undoListeners = new Set<(n: number) => void>();
+  private recordUndo(path: string, before: OscValue) {
+    if (path.startsWith('/-') || path.startsWith('/meters')) return;
+    const now = this.now();
+    const last = this.undoStack[this.undoStack.length - 1];
+    // un même geste (glisser un fader, appliquer un préréglage) = une seule étape
+    if (last && now - last.at < 700) {
+      if (!last.changes.has(path)) last.changes.set(path, before);
+      last.at = now;
+    } else {
+      this.undoStack.push({ at: now, changes: new Map([[path, before]]) });
+      if (this.undoStack.length > 60) this.undoStack.shift();
+    }
+    this.undoListeners.forEach((cb) => cb(this.undoStack.length));
+  }
+  get undoCount() {
+    return this.undoStack.length;
+  }
+  onUndoChange(cb: (n: number) => void): () => void {
+    this.undoListeners.add(cb);
+    return () => this.undoListeners.delete(cb);
+  }
+  /** Annule le dernier geste. Renvoie le nombre de réglages remis. */
+  undo(): number {
+    const step = this.undoStack.pop();
+    if (!step) return 0;
+    this.undoing = true;
+    try {
+      for (const [p, v] of step.changes) {
+        const arg: OscArg = typeof v === 'string' ? { t: 's', v } : Number.isInteger(v) && /\/(on|type|insrc|dca|phantom|invert|hpon|color|mode|ratio)$/.test(p) ? { t: 'i', v: Number(v) } : { t: 'f', v: Number(v) };
+        this.set(p, arg);
+      }
+    } finally {
+      this.undoing = false;
+    }
+    this.undoListeners.forEach((cb) => cb(this.undoStack.length));
+    return step.changes.size;
+  }
+
   /** Journal : chaque changement de valeur, avec son origine (moi / un autre appareil). */
   onChange(cb: ChangeListener): () => void {
     this.changeListeners.add(cb);
@@ -144,6 +189,19 @@ export class XAirClient {
   }
 
   // ---------- état ----------
+
+  /** Liaison : temps de réponse moyen (ms), pings perdus (%), note sur 4. */
+  link(): { ms: number | null; lost: number; bars: number; sent: number } {
+    const r = this.pings.rtt;
+    const ms = r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length) : null;
+    const lost = this.pings.sent > 1 ? Math.max(0, Math.round((1 - this.pings.got / this.pings.sent) * 100)) : 0;
+    let bars = this.status !== 'connecté' ? 0 : 4;
+    if (ms !== null && ms > 60) bars--;
+    if (ms !== null && ms > 150) bars--;
+    if (lost > 5) bars--;
+    if (lost > 20) bars--;
+    return { ms, lost, bars: Math.max(this.status === 'connecté' ? 1 : 0, bars), sent: this.pings.sent };
+  }
 
   get(path: string): OscValue | undefined {
     return this.state.get(path);
@@ -160,6 +218,7 @@ export class XAirClient {
   /** Modifie une valeur : mise à jour locale immédiate, envoi lissé vers la table. */
   set(path: string, arg: OscArg) {
     const before = this.state.get(path);
+    if (!this.undoing && before !== undefined && before !== arg.v) this.recordUndo(path, before);
     this.state.set(path, arg.v as OscValue);
     this.lastLocal.set(path, this.now());
     this.emit(path);
@@ -229,6 +288,9 @@ export class XAirClient {
 
   private keepAlive(channels: number) {
     this.raw('/xremote');
+    if (this.pingAt) { /* pas de réponse au ping précédent */ }
+    this.pingAt = this.now();
+    this.pings.sent++;
     this.raw('/xinfo'); // sert aussi de « ping »
     if (this.metersOn) this.raw('/meters', [oscS('/meters/1')]);
     const silent = this.now() - this.lastHeard;
@@ -263,6 +325,11 @@ export class XAirClient {
     dbg.oscTraffic('in', m.address, m.args);
 
     if (m.address === '/xinfo') {
+      if (this.pingAt) {
+        this.pings.got++;
+        this.pings.rtt = [...this.pings.rtt, this.now() - this.pingAt].slice(-20);
+        this.pingAt = 0;
+      }
       this.info = parseInfo(m.args, from);
       const w = this.infoWaiters;
       this.infoWaiters = [];

@@ -3,10 +3,12 @@
 //  2. Deux colonnes (prises à gauche, personnes à droite — pour le téléphone)
 //  3. Bulles (le tableau « Qui entend quoi »)
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { s as oscS } from '../osc/osc';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Theme } from '../ui/theme';
-import { MODEL, Target } from '../xair/addresses';
+import { Shell } from '../ui/Shell';
+import { busNamePath, chNamePath, MODEL } from '../xair/addresses';
 import { colorOf } from '../xair/smartName';
 import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
@@ -31,7 +33,7 @@ function useTick(client: XAirClient) {
   return t;
 }
 
-export function WiringScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
+export function WiringScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; embedded?: boolean }) {
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const tick = useTick(client);
@@ -39,6 +41,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const [sel, setSel] = useState<Sel>(null);
   const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
+  const [ren, setRen] = useState<{ path: string; v: string } | null>(null);
+  const doRen = () => { if (ren) { client.set(ren.path, oscS(ren.v.trim().slice(0, 12))); say('Renommé'); } setRen(null); };
+  useEffect(() => setRen(null), [sel]);
   useEffect(() => { if (props.visible) client.loadPaths(wiringPaths()); }, [client, props.visible]);
 
   const P = useMemo(() => plugs(client), [client, tick]);
@@ -88,7 +93,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const selWires = W.filter(touches);
 
   return (
-    <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
+    <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
@@ -97,9 +102,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
               {view === 'bulles' ? 'Une bulle = un son dans une oreille' : 'Touche une prise, puis une sortie : un fil se crée'}
             </Text>
           </View>
-          <Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
-            <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Terminé</Text>
-          </Pressable>
+          {!props.embedded && (<Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
+              <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Terminé</Text>
+            </Pressable>)}
         </View>
         <View style={[styles.seg, { borderColor: theme.line2 }]}>
           {([['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
@@ -115,7 +120,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <>
             <View style={{ flex: 1 }}>
               {view === 'arriere' ? (
-                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} />
+                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}
@@ -124,13 +129,18 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
             {/* BAS : sélection */}
             <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : theme.line, backgroundColor: theme.panel }]}>
               {!sel && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Step n="1" c="#F59E0B" t="Touche une PRISE (1 à 18)" theme={theme} />
-                  <Step n="2" c="#60A5FA" t="Touche une SORTIE (AUX, MAIN)" theme={theme} />
-                  <Step n="3" c="#34D399" t="Le fil se crée · règle-le en bas" theme={theme} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: theme.muted, fontSize: 12, flex: 1 }} numberOfLines={2}>Touche une <Text style={{ color: '#FBBF24', fontWeight: '800' }}>prise</Text> ou une <Text style={{ color: '#60A5FA', fontWeight: '800' }}>sortie</Text> pour voir ses fils, la renommer et régler les niveaux.</Text>
                   <Pressable onPress={() => setShowAll((x) => !x)} style={[styles.small, { borderColor: theme.line2 }]}>
-                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{showAll ? 'Masquer les fils' : 'Montrer tous les fils'}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{showAll ? 'Masquer les fils' : 'Montrer les fils'}</Text>
                   </Pressable>
+                </View>
+              )}
+              {ren && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput autoFocus value={ren.v} maxLength={12} onChangeText={(v) => setRen({ ...ren, v })} onSubmitEditing={doRen} placeholder="Nouveau nom" placeholderTextColor={theme.muted} style={{ flex: 1, height: 44, borderWidth: 2, borderColor: theme.accent, borderRadius: 10, paddingHorizontal: 10, color: theme.text, fontSize: 16, fontWeight: '800' }} />
+                  <Pressable onPress={doRen} style={[styles.small, { backgroundColor: theme.accent, borderColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '800' }}>OK</Text></Pressable>
+                  <Pressable onPress={() => setRen(null)} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>Annuler</Text></Pressable>
                 </View>
               )}
               {selPlug && (
@@ -141,6 +151,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>Prise {selPlug.n} · {selPlug.name || (selPlug.chans.length ? `voie ${selPlug.chans[0]}` : 'rien ne l’écoute')}</Text>
                       <Text style={{ color: theme.muted, fontSize: 11 }}>{selPlug.usb ? 'ordinateur (USB)' : selPlug.n <= MODEL.preamps ? 'micro / ligne' : 'ligne'} · touche une sortie pour ajouter un fil</Text>
                     </View>
+                    {selPlug.chans.length > 0 && (
+                      <Pressable onPress={() => setRen({ path: chNamePath(selPlug.chans[0]), v: selPlug.name })} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>✎ Renommer</Text></Pressable>
+                    )}
                     <Pressable onPress={() => { const n = toAllReturns(client, selPlug); say(n ? `Envoyée dans ${n} retour${n > 1 ? 's' : ''} à −8 dB` : 'Déjà dans tous les retours nommés'); }} style={[styles.small, { borderColor: theme.accent }]}>
                       <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Vers tous les retours</Text>
                     </Pressable>
@@ -157,6 +170,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{selOut.name}</Text>
                       <Text style={{ color: theme.muted, fontSize: 11 }}>touche une prise pour l’ajouter à ce qu’il entend</Text>
                     </View>
+                    {selOut.t.kind === 'bus' && (
+                      <Pressable onPress={() => setRen({ path: busNamePath((selOut.t as { n: number }).n), v: selOut.name })} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>✎ Renommer</Text></Pressable>
+                    )}
                     {selOut.t.kind !== 'main' && (
                       <Pressable onPress={() => { likeMain(client, selOut.t); say(`${selOut.name} entend comme le public (−2 dB)`); }} style={[styles.small, { borderColor: theme.accent }]}>
                         <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Comme le public</Text>
@@ -174,7 +190,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <View pointerEvents="none" style={styles.toast}><Text style={{ color: '#A7F3D0', fontWeight: '600', fontSize: 13, textAlign: 'center' }}>{toast}</Text></View>
         )}
       </View>
-    </Modal>
+    </Shell>
   );
 }
 
@@ -212,7 +228,7 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
 // ---------- VUE 1 : FACE ARRIÈRE ----------
 // Relier au doigt : on appuie sur une prise, on glisse jusqu'à une sortie (ou l'inverse).
 // Les fils qui arrivent sur une même sortie sont écartés pour rester lisibles.
-function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void }) {
+function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void }) {
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
@@ -279,6 +295,21 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
     const off = list.length > 1 ? -spread / 2 + (k / (list.length - 1)) * spread : 0;
     const c = outletXY(w.out);
     return { x: c.x + off, y: c.y - 12 };
+  };
+  const hover = drag && moved.current ? hit(drag.x / (scale || 1), drag.y / (scale || 1)) : null;
+  const hoverOk = !!hover && !!drag && hover.kind !== drag.from.kind;
+  const hoverXY = hover ? (hover.kind === 'plug' ? plugXY(hover.n) : outletXY(hover.id)) : null;
+  // appui simple sur une sortie : ses entrées s'écartent au-dessus, avec ✕
+  const fanOut = sel?.kind === 'out' ? sel.id : null;
+  const fanWires = fanOut ? props.W.filter((w) => w.out === fanOut).sort((a, b) => a.plug - b.plug) : [];
+  const fanC = fanOut ? outletXY(fanOut) : null;
+  const fanPos = (k: number) => {
+    const n = fanWires.length;
+    const r = 70 + Math.max(0, n - 5) * 9;
+    const span = Math.min(170, 40 + n * 22);
+    const a = n > 1 ? -span / 2 + (k / (n - 1)) * span : 0;
+    const t = (a * Math.PI) / 180;
+    return { x: Math.max(30, Math.min(PANEL_W - 30, fanC!.x + r * Math.sin(t))), y: fanC!.y - 20 - r * Math.cos(t) };
   };
   const dragOrigin = drag ? (drag.from.kind === 'plug' ? plugXY(drag.from.n) : outletXY(drag.from.id)) : null;
 
@@ -349,13 +380,36 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             {drag && dragOrigin && moved.current && (
               <Path d={`M${dragOrigin.x} ${dragOrigin.y} L${drag.x / (scale || 1)} ${drag.y / (scale || 1)}`} fill="none" stroke="#FFFFFF" strokeWidth={4} strokeDasharray="8 6" strokeLinecap="round" />
             )}
+            {/* cible fantôme sous le doigt */}
+            {hoverXY && (
+              <>
+                <Circle cx={hoverXY.x} cy={hoverXY.y} r={34} fill={hoverOk ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.10)'} />
+                <Circle cx={hoverXY.x} cy={hoverXY.y} r={30} fill="none" stroke={hoverOk ? '#34D399' : '#9AA3AD'} strokeWidth={4} />
+              </>
+            )}
+            {/* éventail : fils vers les entrées écartées */}
+            {fanC && fanWires.map((w, k) => { const q = fanPos(k); return <Line key={'fl' + w.plug} x1={fanC.x} y1={fanC.y - 18} x2={q.x} y2={q.y} stroke={props.plugColor(P[w.plug - 1])} strokeWidth={3} opacity={0.9} />; })}
             {/* halos de sélection */}
             {P.filter((p) => isSelPlug(p.n) || linkedPlug(p.n)).map((p) => { const { x, y } = plugXY(p.n); return <Circle key={'h' + p.n} cx={x} cy={y} r={27} fill="none" stroke={isSelPlug(p.n) ? '#FFFFFF' : props.plugColor(p)} strokeWidth={3} />; })}
             {O.filter((o) => isSelOut(o.id) || linkedOut(o.id)).map((o) => { const { x, y } = outletXY(o.id); return <Circle key={'h' + o.id} cx={x} cy={y} r={25} fill="none" stroke={isSelOut(o.id) ? '#FFFFFF' : props.outColor(o)} strokeWidth={3} />; })}
           </Svg>
+          {fanC && fanWires.map((w, k) => {
+            const q = fanPos(k);
+            const pl = P[w.plug - 1];
+            return (
+              <View key={'f' + w.plug} style={{ position: 'absolute', left: q.x * scale - 34, top: q.y * scale - 22, width: 68, alignItems: 'center' }}>
+                <View style={{ minWidth: 56, height: 36, borderRadius: 18, borderWidth: 3, borderColor: props.plugColor(pl), backgroundColor: '#0B0D10', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
+                  <Text numberOfLines={1} style={{ color: '#E8EAED', fontSize: 10, fontWeight: '800' }}>{w.plug} · {(pl.name || 'voie').slice(0, 7)}</Text>
+                </View>
+                <Pressable onPress={() => props.onCut(w.plug, w.out)} hitSlop={8} accessibilityLabel={`Retirer la prise ${w.plug}`} style={{ position: 'absolute', right: -2, top: -10, width: 26, height: 26, borderRadius: 13, backgroundColor: '#7F1D1D', borderWidth: 2, borderColor: '#0B0D10', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✕</Text>
+                </Pressable>
+              </View>
+            );
+          })}
         </View>
       )}
-      <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>Glisse du doigt d’une prise à une sortie pour les relier · touche une prise ou une sortie pour voir ses fils · ✕ en bas pour enlever.</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>Glisse d’une prise à une sortie : la cible s’allume en vert · touche une sortie : ses entrées s’écartent, ✕ pour enlever.</Text>
     </View>
   );
 }
@@ -417,9 +471,9 @@ const styles = StyleSheet.create({
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, marginHorizontal: 14, marginBottom: 8 },
   segBtn: { flex: 1, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  bottom: { margin: 10, borderWidth: 2, borderRadius: 18, padding: 10, gap: 8, minHeight: 78 },
+  bottom: { marginHorizontal: 10, marginBottom: 8, borderWidth: 2, borderRadius: 16, padding: 8, gap: 6 },
   small: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
-  num: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  num: { width: 38, height: 38, borderRadius: 19, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   close: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   wire: { borderWidth: 1, borderRadius: 14, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
   pm: { width: 36, height: 36, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

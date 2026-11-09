@@ -9,9 +9,10 @@ import { XAirClient } from '../xair/XAirClient';
 import { isPersistent } from '../store/persist';
 import { getEntries, stamp, traffic } from './log';
 
-const MON_PATHS = ['/bus/1/dyn/on', '/bus/1/dyn/thr', '/bus/1/dyn/ratio', '/bus/1/dyn/attack', '/bus/1/dyn/release', '/bus/1/dyn/mode', '/rtn/aux/mix/01/level', '/rtn/aux/config/name', '/rtn/1/mix/01/level', '/rtn/1/config/name', '/config/chlink/1-2', '/config/chlink/3-4', '/ch/01/config/insrc', '/ch/09/config/insrc', '/-snap/01/name', '/-snap/02/name', '/config/routing/IN/1-2'];
+const MON_PATHS = ['/bus/1/dyn/on', '/bus/1/dyn/thr', '/bus/1/dyn/ratio', '/bus/1/dyn/attack', '/bus/1/dyn/release', '/bus/1/dyn/mode', '/rtn/aux/mix/01/level', '/rtn/aux/config/name', '/rtn/1/mix/01/level', '/rtn/1/config/name', '/config/chlink/1-2', '/config/chlink/3-4', '/ch/01/config/insrc', '/ch/09/config/insrc', '/-snap/01/name', '/-snap/02/name', '/config/routing/IN/1-2', '/-prefs/wlan/mode', '/-prefs/ap/ssid', '/-prefs/ap/channel', '/-prefs/is/ssid', '/-prefs/lan/mode', '/-prefs/lan/addr', '/fx/1/type', '/fx/1/par/01', '/fx/1/par/02'];
 
-export const APP_VERSION = '0.8.1-ux2b';
+import { BUILD_VERSION } from '../version';
+export const APP_VERSION = BUILD_VERSION === 'dev' ? 'dev (construite à la main)' : `v${BUILD_VERSION}`;
 
 /** Noms supposés des effets X Air, dans l'ordre de la documentation (à confirmer). */
 export const FX_NAMES = [

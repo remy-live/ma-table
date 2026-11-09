@@ -9,13 +9,14 @@ import {
 } from '../store/sessions';
 import { load } from '../store/persist';
 import { Theme } from '../ui/theme';
+import { Shell } from '../ui/Shell';
 import { changedCount, restore, Snapshot } from '../xair/snapshot';
 import { XAirClient } from '../xair/XAirClient';
 import { snapNamePath } from '../xair/addresses';
 
 const when = (t: number) => new Date(t).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export function SessionsScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
+export function SessionsScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; embedded?: boolean }) {
   const { client, theme } = props;
   const [cur, setCur] = useState<Current | null>(null);
   const [list, setList] = useState<Session[]>([]);
@@ -95,16 +96,16 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   void tick;
 
   return (
-    <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
+    <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Mes soirées</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Une soirée = tout le réglage de la table, gardé dans l’appli</Text>
           </View>
-          <Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
-            <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Fermer</Text>
-          </Pressable>
+          {!props.embedded && (<Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
+              <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Fermer</Text>
+            </Pressable>)}
         </View>
         <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
           {/* EN COURS */}
@@ -201,7 +202,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
         </Modal>
         {!!toast && <View pointerEvents="none" style={styles.toast}><Text style={{ color: '#A7F3D0', fontWeight: '600', fontSize: 13, textAlign: 'center' }}>{toast}</Text></View>}
       </View>
-    </Modal>
+    </Shell>
   );
 }
 
