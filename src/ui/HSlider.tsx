@@ -23,14 +23,21 @@ export function HSlider({ value, onChange, label, valueText, color, theme, cente
 
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 3 && Math.abs(g.dx) > Math.abs(g.dy),
+      // Le curseur prend la main dès qu'on le touche (un simple appui place le curseur),
+      // et la garde même si l'écran voudrait défiler.
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (_e, g) => {
-        start.current = { v: latest.current.v, dx0: g.dx };
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: (e) => {
+        const x = e.nativeEvent.locationX;
+        const nv = Math.max(0, Math.min(1, x / latest.current.w));
+        start.current = { v: nv, dx0: 0 };
+        latest.current.onChange(nv);
       },
       onPanResponderMove: (_e, g) => {
-        const nv = start.current.v + (g.dx - start.current.dx0) / latest.current.w;
+        const nv = start.current.v + g.dx / latest.current.w;
         latest.current.onChange(Math.max(0, Math.min(1, nv)));
       },
     }),
@@ -58,7 +65,7 @@ export function HSlider({ value, onChange, label, valueText, color, theme, cente
         <View style={[styles.track, { backgroundColor: theme.track }]} />
         {center && <View style={[styles.mid, { backgroundColor: theme.line2 }]} />}
         <View style={[styles.fill, { left: `${fillLeft * 100}%`, width: `${fillW * 100}%`, backgroundColor: color }]} />
-        <View style={[styles.knob, { left: v * w - 11, backgroundColor: theme.cap }]} />
+        <View style={[styles.knob, { left: v * w - 14, backgroundColor: theme.cap, borderColor: color }]} />
       </View>
       <Text style={[styles.val, { color: theme.muted }]}>{valueText}</Text>
     </View>
@@ -69,9 +76,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   label: { width: 96, fontSize: 13 },
   area: { flex: 1, height: 44, justifyContent: 'center' },
-  track: { height: 6, borderRadius: 3 },
+  track: { height: 8, borderRadius: 4 },
   mid: { position: 'absolute', left: '50%', width: 2, height: 14, marginLeft: -1 },
-  fill: { position: 'absolute', height: 6, borderRadius: 3 },
-  knob: { position: 'absolute', width: 22, height: 22, borderRadius: 11, elevation: 3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 3 },
+  fill: { position: 'absolute', height: 8, borderRadius: 4 },
+  knob: { position: 'absolute', width: 28, height: 28, borderRadius: 14, borderWidth: 3, elevation: 3, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 3 },
   val: { width: 64, textAlign: 'right', fontSize: 12, fontVariant: ['tabular-nums'] },
 });

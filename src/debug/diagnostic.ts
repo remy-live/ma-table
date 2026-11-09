@@ -11,7 +11,7 @@ import { getEntries, stamp, traffic } from './log';
 
 const MON_PATHS = ['/bus/1/dyn/on', '/bus/1/dyn/thr', '/bus/1/dyn/ratio', '/bus/1/dyn/attack', '/bus/1/dyn/release', '/bus/1/dyn/mode', '/rtn/aux/mix/01/level', '/rtn/aux/config/name', '/rtn/1/mix/01/level', '/rtn/1/config/name', '/config/chlink/1-2', '/config/chlink/3-4', '/ch/01/config/insrc', '/ch/09/config/insrc', '/-snap/01/name', '/-snap/02/name', '/config/routing/IN/1-2'];
 
-export const APP_VERSION = '0.8.0-ux2';
+export const APP_VERSION = '0.8.1-ux2b';
 
 /** Noms supposés des effets X Air, dans l'ordre de la documentation (à confirmer). */
 export const FX_NAMES = [

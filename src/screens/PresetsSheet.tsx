@@ -7,8 +7,10 @@ import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
 import { applyPreset, FAMILIES, Family, LIBRARY, Preset, presetFromChannel, presetPaths } from '../xair/presets';
 import { XAirClient } from '../xair/XAirClient';
+import { EqThumb, PresetDots } from '../ui/EqThumb';
 
-const OFF_TXT = (db: number | null | undefined) => (typeof db === 'number' && isFinite(db) && db > -90 ? `${db} dB` : '—');
+const FAM_COLORS: Record<string, string> = { Voix: '#F472B6', Guitares: '#2DD4BF', Basse: '#60A5FA', Batterie: '#F59E0B', Claviers: '#A3E635', 'Mes réglages': '#FBBF24' };
+
 
 export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; ch: number | null; onClose: () => void }) {
   const { client, theme } = props;
@@ -73,18 +75,22 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
 
         <ScrollView contentContainerStyle={{ gap: 8, paddingTop: 12, paddingBottom: 30 }}>
           {list.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Rien ici pour l’instant. Règle une voie à ton goût, puis « Garder ce réglage » en bas.</Text>}
-          {list.map((p) => {
-            const on = sel?.name === p.name;
-            return (
-              <Pressable key={p.name} onPress={() => setSel(p)} onLongPress={fam === 'Mes réglages' ? () => Alert.alert('Supprimer ?', p.name, [{ text: 'Non' }, { text: 'Supprimer', style: 'destructive', onPress: () => remove(p) }]) : undefined} style={[styles.preset, { borderColor: on ? theme.accent : theme.line, backgroundColor: theme.panel }]}>
-                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{p.variant && p.variant !== 'Standard' ? p.variant : p.name}</Text>
-                <Text style={{ color: theme.muted, fontSize: 12 }}>{p.desc ?? p.name}</Text>
-                <Text style={{ color: theme.muted, fontSize: 11 }}>
-                  Coupe-bas {p.lowCut ? `${p.lowCut} Hz` : '—'} · Gate {OFF_TXT(p.gate)} · Comp {OFF_TXT(p.comp)} · Réverbe {OFF_TXT(p.fx[0])}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {list.map((p) => {
+              const on = sel?.name === p.name;
+              const c = FAM_COLORS[p.family ?? 'Mes réglages'] ?? theme.accent;
+              return (
+                <Pressable key={p.name} onPress={() => setSel(p)} accessibilityState={{ selected: on }} onLongPress={fam === 'Mes réglages' ? () => Alert.alert('Supprimer ?', p.name, [{ text: 'Non' }, { text: 'Supprimer', style: 'destructive', onPress: () => remove(p) }]) : undefined} style={[styles.preset, { borderColor: on ? '#FFFFFF' : theme.line, backgroundColor: on ? theme.deep : theme.panel }]}>
+                  <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: theme.meterBg }}>
+                    <EqThumb p={p} width={150} height={56} color={c} theme={theme} />
+                  </View>
+                  <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{p.variant && p.variant !== 'Standard' ? p.variant : p.name}</Text>
+                  <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 11, minHeight: 28 }}>{p.desc ?? p.name}</Text>
+                  <PresetDots p={p} theme={theme} />
+                </Pressable>
+              );
+            })}
+          </View>
 
           <Text style={[styles.kicker, { color: theme.muted, marginTop: 8 }]}>SUR QUELLES VOIES</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -128,7 +134,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },
   chip: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },
-  preset: { borderWidth: 1.5, borderRadius: 14, padding: 12, gap: 3 },
+  preset: { width: 174, borderWidth: 2, borderRadius: 16, padding: 11, gap: 6 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   small: { minHeight: 36, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   apply: { height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 6 },

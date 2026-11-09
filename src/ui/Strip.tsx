@@ -21,7 +21,7 @@ export const GROUP_COLOR = '#F59E0B';
 const SUGGESTIONS = ['Voix', 'Guitare', 'Basse', 'Kick', 'Caisse claire', 'Charley', 'Toms', 'Overhead', 'Clavier'];
 
 /** Hauteur d'une tranche hors fader (en-tête, gain, nom, mute, dB, EQ/FX, marges). */
-export const STRIP_CHROME = 312;
+export const STRIP_CHROME = 362;
 
 interface StripProps {
   client: XAirClient;
@@ -131,19 +131,19 @@ export function Strip(p: StripProps) {
       />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
 
-      <View style={{ flexDirection: 'row', gap: 3, width: '100%' }}>
+      <View style={{ flexDirection: 'row', gap: 4, width: '100%' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} />
         <SmallBtn label="FX" on={fxOn} onColor="#C084FC" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Effets de ${name}`} />
-        <Pressable
-          onPress={() => p.onSelect(ch)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: p.selected }}
-          accessibilityLabel={`Actions sur ${name} : déplacer, copier, échanger, entrée`}
-          style={[styles.small, { flex: 0, width: 26, borderColor: p.selected ? GROUP_COLOR : theme.line, backgroundColor: p.selected ? GROUP_COLOR : theme.deep }]}
-        >
-          <Text style={{ color: p.selected ? '#1A1204' : theme.text, fontSize: 13, fontWeight: '800' }}>⋯</Text>
-        </Pressable>
       </View>
+      <Pressable
+        onPress={() => p.onSelect(ch)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: p.selected }}
+        accessibilityLabel={`Actions sur ${name} : déplacer, copier, échanger, entrée`}
+        style={[styles.small, { width: '100%', flex: 0, height: 38, borderColor: p.selected ? GROUP_COLOR : theme.line, backgroundColor: p.selected ? GROUP_COLOR : theme.deep }]}
+      >
+        <Text style={{ color: p.selected ? '#1A1204' : theme.text, fontSize: 18, fontWeight: '800', lineHeight: 20 }}>⋯</Text>
+      </Pressable>
     </View>
   );
 }
@@ -306,7 +306,7 @@ function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: T
       accessibilityLabel={props.a11y}
       style={[styles.small, { borderColor: on ? props.onColor : theme.line, backgroundColor: theme.deep }]}
     >
-      <Text style={{ color: on ? props.onColor : theme.muted, fontSize: 11, fontWeight: '800' }}>{props.label}</Text>
+      <Text style={{ color: on ? props.onColor : theme.muted, fontSize: 14, fontWeight: '800' }}>{props.label}</Text>
     </Pressable>
   );
 }
@@ -373,7 +373,7 @@ export function RenameSheet(props: {
 }
 
 const styles = StyleSheet.create({
-  strip: { width: 80, borderRadius: 12, paddingTop: 6, paddingBottom: 8, paddingHorizontal: 4, alignItems: 'center', gap: 6 },
+  strip: { width: 92, borderRadius: 12, paddingTop: 6, paddingBottom: 8, paddingHorizontal: 4, alignItems: 'center', gap: 6 },
   head: { width: '100%', height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   inputZone: { alignItems: 'center', gap: 4, paddingVertical: 2 },
   knob: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, alignItems: 'center' },
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   name: { width: '100%', minHeight: 40, borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderBottomWidth: 3 },
   mute: { width: 68, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   db: { fontSize: 11, fontVariant: ['tabular-nums'] },
-  small: { flex: 1, height: 40, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  small: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   fold: { width: 72, minHeight: 52, borderRadius: 10, borderWidth: 1, borderColor: '#6B4E14', backgroundColor: '#2A2115', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   nudge: { flex: 1, height: 40, borderRadius: 8, borderWidth: 1, borderColor: '#6B4E14', backgroundColor: '#0E1013', alignItems: 'center', justifyContent: 'center' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

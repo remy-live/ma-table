@@ -2,8 +2,8 @@
 //  1. Face arrière (la XR18 vue de derrière, prises numérotées, fils)
 //  2. Deux colonnes (prises à gauche, personnes à droite — pour le téléphone)
 //  3. Bulles (le tableau « Qui entend quoi »)
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Theme } from '../ui/theme';
 import { MODEL, Target } from '../xair/addresses';
@@ -37,7 +37,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const tick = useTick(client);
   const [view, setView] = useState<View3>(width > 700 ? 'arriere' : 'colonnes');
   const [sel, setSel] = useState<Sel>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
   useEffect(() => { if (props.visible) client.loadPaths(wiringPaths()); }, [client, props.visible]);
 
@@ -74,6 +74,15 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
     setSel(sel && sel.kind === 'out' && sel.id === o.id ? null : { kind: 'out', id: o.id });
   };
 
+  const linkDrag = (plugN: number, outId: string) => {
+    const p = P[plugN - 1];
+    const o = O.find((x) => x.id === outId)!;
+    if (!p.chans.length) { say(`Rien n’écoute la prise ${p.n} : donne-lui une voie (Changer l’entrée)`); return; }
+    if (W.some((w) => w.plug === p.n && w.out === o.id)) { setSel({ kind: 'plug', n: p.n }); say('Déjà relié : règle le niveau en bas'); return; }
+    connect(client, p, o.t);
+    setSel({ kind: 'plug', n: p.n });
+    say(`Prise ${p.n} → ${o.label} (${o.name}) · −6 dB`);
+  };
   const selPlug = sel?.kind === 'plug' ? P[sel.n - 1] : null;
   const selOut = sel?.kind === 'out' ? O.find((x) => x.id === sel.id) ?? null : null;
   const selWires = W.filter(touches);
@@ -106,7 +115,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <>
             <View style={{ flex: 1 }}>
               {view === 'arriere' ? (
-                <RearPanel client={client} theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
+                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}
@@ -119,8 +128,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                   <Step n="1" c="#F59E0B" t="Touche une PRISE (1 à 18)" theme={theme} />
                   <Step n="2" c="#60A5FA" t="Touche une SORTIE (AUX, MAIN)" theme={theme} />
                   <Step n="3" c="#34D399" t="Le fil se crée · règle-le en bas" theme={theme} />
-                  <Pressable onPress={() => setShowAll((x) => !x)} style={[styles.small, { borderColor: showAll ? '#FBBF24' : theme.line2 }]}>
-                    <Text style={{ color: showAll ? '#FBBF24' : theme.text, fontSize: 12, fontWeight: '800' }}>{showAll ? 'Tous les fils : oui' : 'Tous les fils'}</Text>
+                  <Pressable onPress={() => setShowAll((x) => !x)} style={[styles.small, { borderColor: theme.line2 }]}>
+                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{showAll ? 'Masquer les fils' : 'Montrer tous les fils'}</Text>
                   </Pressable>
                 </View>
               )}
@@ -201,19 +210,82 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
 }
 
 // ---------- VUE 1 : FACE ARRIÈRE ----------
-function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void }) {
+// Relier au doigt : on appuie sur une prise, on glisse jusqu'à une sortie (ou l'inverse).
+// Les fils qui arrivent sur une même sortie sont écartés pour rester lisibles.
+function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void }) {
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
   const scale = size.w ? size.w / PANEL_W : 0;
   const h = PANEL_H * scale;
+  const latest = useRef({ P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut });
+  latest.current = { P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut };
   const isSelPlug = (n: number) => sel?.kind === 'plug' && sel.n === n;
   const isSelOut = (id: string) => sel?.kind === 'out' && sel.id === id;
   const linkedPlug = (n: number) => sel?.kind === 'out' && props.W.some((w) => w.plug === n && w.out === sel.id);
   const linkedOut = (id: string) => sel?.kind === 'plug' && props.W.some((w) => w.out === id && w.plug === sel.n);
+
+  // qu'y a-t-il sous le doigt ? (coordonnées du viewBox)
+  const hit = (vx: number, vy: number): { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null => {
+    for (const p of latest.current.P) { const c = plugXY(p.n); if (Math.hypot(c.x - vx, c.y - vy) < 30) return { kind: 'plug', n: p.n }; }
+    for (const o of latest.current.O) { const c = outletXY(o.id); if (Math.hypot(c.x - vx, c.y - vy) < 30) return { kind: 'out', id: o.id }; }
+    return null;
+  };
+  const moved = useRef(false);
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        const sc = latest.current.scale || 1;
+        const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+        moved.current = false;
+        setDrag(t ? { from: t, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY } : null);
+      },
+      onPanResponderMove: (e, g) => {
+        if (Math.abs(g.dx) + Math.abs(g.dy) > 8) moved.current = true;
+        setDrag((d) => (d ? { ...d, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY } : d));
+      },
+      onPanResponderRelease: (e) => {
+        const sc = latest.current.scale || 1;
+        setDrag((d) => {
+          if (!d) return null;
+          const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+          if (!moved.current || !t) {
+            // simple appui : sélectionner
+            if (d.from.kind === 'plug') latest.current.onPlug(latest.current.P[d.from.n - 1]);
+            else { const o = latest.current.O.find((x) => x.id === (d.from as { id: string }).id); if (o) latest.current.onOut(o); }
+            return null;
+          }
+          if (d.from.kind === 'plug' && t.kind === 'out') latest.current.onLink(d.from.n, t.id);
+          else if (d.from.kind === 'out' && t.kind === 'plug') latest.current.onLink(t.n, d.from.id);
+          else if (d.from.kind === 'plug' && t.kind === 'plug' && t.n === d.from.n) latest.current.onPlug(latest.current.P[t.n - 1]);
+          else if (d.from.kind === 'out' && t.kind === 'out' && t.id === d.from.id) { const o = latest.current.O.find((x) => x.id === t.id); if (o) latest.current.onOut(o); }
+          return null;
+        });
+      },
+      onPanResponderTerminate: () => setDrag(null),
+    }),
+  ).current;
+
+  // Écarter les câbles : chaque fil arrivant sur une sortie a son propre point d'arrivée.
+  const byOut = new Map<string, number[]>();
+  props.W.forEach((w) => byOut.set(w.out, [...(byOut.get(w.out) ?? []), w.plug]));
+  const endOf = (w: { plug: number; out: string }) => {
+    const list = (byOut.get(w.out) ?? []).slice().sort((a, b) => a - b);
+    const k = list.indexOf(w.plug);
+    const spread = Math.min(34, list.length * 7);
+    const off = list.length > 1 ? -spread / 2 + (k / (list.length - 1)) * spread : 0;
+    const c = outletXY(w.out);
+    return { x: c.x + off, y: c.y - 12 };
+  };
+  const dragOrigin = drag ? (drag.from.kind === 'plug' ? plugXY(drag.from.n) : outletXY(drag.from.id)) : null;
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 10 }} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
       {size.w > 0 && (
-        <View style={{ width: size.w, height: h, alignSelf: 'center' }}>
+        <View style={{ width: size.w, height: h, alignSelf: 'center' }} {...pan.panHandlers}>
           <Svg width={size.w} height={h} viewBox={`0 0 ${PANEL_W} ${PANEL_H}`}>
             <Rect x={8} y={8} width={984} height={284} rx={18} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
             <Rect x={20} y={20} width={960} height={260} rx={10} fill="#1A1D22" stroke="#232830" />
@@ -260,20 +332,30 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                 </G>
               );
             })}
-            {/* fils */}
-            {props.W.map((w) => (
-              <Path key={w.plug + w.out} d={wireD(w.plug, w.out)} fill="none" stroke={props.plugColor(P[w.plug - 1])} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={sel ? 0.95 : 0.55} />
-            ))}
+            {/* fils, écartés à l'arrivée */}
+            {props.W.map((w) => {
+              const a = plugXY(w.plug);
+              const b = endOf(w);
+              const c = props.plugColor(P[w.plug - 1]);
+              return (
+                <G key={w.plug + w.out}>
+                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke="#0B0D10" strokeWidth={wireWidth(w.db) + 3} strokeLinecap="round" opacity={!sel || (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.6 : 0} />
+                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke={c} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={!sel ? 0.55 : (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.95 : 0.12} />
+                  <Circle cx={b.x} cy={b.y} r={4} fill={c} />
+                </G>
+              );
+            })}
+            {/* fil en train d'être tiré */}
+            {drag && dragOrigin && moved.current && (
+              <Path d={`M${dragOrigin.x} ${dragOrigin.y} L${drag.x / (scale || 1)} ${drag.y / (scale || 1)}`} fill="none" stroke="#FFFFFF" strokeWidth={4} strokeDasharray="8 6" strokeLinecap="round" />
+            )}
             {/* halos de sélection */}
             {P.filter((p) => isSelPlug(p.n) || linkedPlug(p.n)).map((p) => { const { x, y } = plugXY(p.n); return <Circle key={'h' + p.n} cx={x} cy={y} r={27} fill="none" stroke={isSelPlug(p.n) ? '#FFFFFF' : props.plugColor(p)} strokeWidth={3} />; })}
             {O.filter((o) => isSelOut(o.id) || linkedOut(o.id)).map((o) => { const { x, y } = outletXY(o.id); return <Circle key={'h' + o.id} cx={x} cy={y} r={25} fill="none" stroke={isSelOut(o.id) ? '#FFFFFF' : props.outColor(o)} strokeWidth={3} />; })}
           </Svg>
-          {/* zones tactiles (plus grandes que les prises) */}
-          {P.map((p) => { const { x, y } = plugXY(p.n); return <Pressable key={p.n} onPress={() => props.onPlug(p)} accessibilityLabel={`Prise ${p.n}${p.name ? ' · ' + p.name : ''}`} accessibilityState={{ selected: isSelPlug(p.n) }} style={{ position: 'absolute', left: x * scale - 28, top: y * scale - 28, width: 56, height: 56, borderRadius: 28 }} />; })}
-          {O.map((o) => { const { x, y } = outletXY(o.id); return <Pressable key={o.id} onPress={() => props.onOut(o)} accessibilityLabel={`${o.label} · ${o.name}`} accessibilityState={{ selected: isSelOut(o.id) }} style={{ position: 'absolute', left: x * scale - 28, top: y * scale - 28, width: 56, height: 56, borderRadius: 28 }} />; })}
         </View>
       )}
-      <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>Vue de l’arrière de la table. Un fil = ce que cette prise envoie dans cette sortie ; son épaisseur = le niveau.</Text>
+      <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>Glisse du doigt d’une prise à une sortie pour les relier · touche une prise ou une sortie pour voir ses fils · ✕ en bas pour enlever.</Text>
     </View>
   );
 }

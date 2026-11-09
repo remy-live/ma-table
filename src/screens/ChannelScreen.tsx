@@ -3,14 +3,14 @@
 // tuiles avec « Retirer », et en bas qui entend cette voie.
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { f, i } from '../osc/osc';
 import {
   BUS_COUNT, channelDetailPaths, chLevelPath, chNamePath, dynOnPath, dynThrPath, eqGainToF, eqOnPath, eqPath, formatHz, fToCompDb,
   fToEqGain, fToGainDb, fToGateDb, fToHpfHz, fToHz, fToQ, FX_COUNT, gateOnPath, gateThrPath, headampGainPath, hpfHzToF, hpfPath, hpOnPath,
   hzToF, insrcPath, insrcPlug, MAIN, phantomPath, sourceKind, Target,
 } from '../xair/addresses';
-import { Band, bandName, curvePath, curvePoints, xOf, yOfDb } from '../xair/eqCurve';
+import { Band, bandName } from '../xair/eqCurve';
+import { BAND_COLORS, EqGraph } from '../ui/EqGraph';
 import { fxType, fxTypePath } from '../xair/effects';
 import { dbToFader, faderToDb, formatDb } from '../xair/levels';
 
@@ -27,10 +27,11 @@ import { PresetsSheet } from './PresetsSheet';
 import { meterIndex } from '../xair/addresses';
 
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
-const BAND_COLORS = ['#60A5FA', '#34D399', '#FBBF24', '#F472B6'];
 type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx';
 
-export function ChannelScreen({ client, ch, theme, onClose }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void }) {
+/** Téléphone : plein écran, un bloc à la fois. Tablette (`wide`) : panneau latéral, tout visible d'un coup. */
+export function ChannelScreen({ client, ch, theme, onClose, wide }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void; wide?: boolean }) {
+  if (wide) return ch !== null ? <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} wide /> : null;
   return (
     <Modal visible={ch !== null} animationType="slide" onRequestClose={onClose}>
       {ch !== null && <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} />}
@@ -38,9 +39,11 @@ export function ChannelScreen({ client, ch, theme, onClose }: { client: XAirClie
   );
 }
 
-function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: number; theme: Theme; onClose: () => void }) {
+export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAirClient; ch: number; theme: Theme; onClose: () => void; wide?: boolean }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const [block, setBlock] = useState<Block>('eq');
+  const [blockSel, setBlock] = useState<Block>('eq');
+  const block = blockSel;
+  const show = (b: Block | Block[]) => wide || (Array.isArray(b) ? b.includes(block) : block === b);
   const [band, setBand] = useState(2);
   const [lib, setLib] = useState(false);
   const [fxOpen, setFxOpen] = useState<number | null>(null);
@@ -82,21 +85,16 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
   const active = (b: Block) => (b === 'hpf' ? hpOn : b === 'gate' ? gateOn : b === 'eq' ? eqOn : b === 'comp' ? dynOn : b === 'fx' ? fxCount > 0 : true);
 
   // EQ
-  const W = 330;
-  const H = 150;
-  const pts = curvePoints(bands, eqOn, hpOn ? fToHpfHz(hpf) : null);
-  const path = curvePath(pts, W, H);
-  const area = `${path} L${W} ${H / 2} L0 ${H / 2} Z`;
   const setBandG = (k: number, db: number) => client.set(eqPath(ch, k + 1, 'g'), f(eqGainToF(Math.max(-15, Math.min(15, db)))));
   const setBandF = (k: number, hz: number) => client.set(eqPath(ch, k + 1, 'f'), f(hzToF(Math.max(20, Math.min(20000, hz)))));
   const flat = () => bands.forEach((_, k) => setBandG(k, 0));
   const b = bands[band];
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.bg }, wide && styles.wideRoot]}>
       <View style={styles.head}>
-        <Pressable onPress={onClose} accessibilityLabel="Retour à la table" style={[styles.back, { backgroundColor: theme.panel }]}>
-          <Text style={{ color: theme.text, fontSize: 20 }}>‹</Text>
+        <Pressable onPress={onClose} accessibilityLabel={wide ? 'Fermer le panneau' : 'Retour à la table'} style={[styles.back, { backgroundColor: theme.panel }]}>
+          <Text style={{ color: theme.text, fontSize: 20 }}>{wide ? '×' : '‹'}</Text>
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>{name}</Text>
@@ -109,8 +107,8 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
         </Pressable>
       </View>
 
-      {/* LE TRAJET DU SON */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }} style={{ flexGrow: 0 }}>
+      {/* LE TRAJET DU SON (téléphone : navigation ; tablette : tout est affiché) */}
+      {!wide && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }} style={{ flexGrow: 0 }}>
         {BLOCKS.map((bl) => {
           const on = block === bl.id;
           const act = active(bl.id);
@@ -122,10 +120,10 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
             </Pressable>
           );
         })}
-      </ScrollView>
+      </ScrollView>}
 
-      <ScrollView contentContainerStyle={styles.body}>
-        {block === 'in' && (
+      <ScrollView contentContainerStyle={[styles.body, wide && { paddingTop: 4 }]}>
+        {show('in') && (
           <Card theme={theme} title="Entrée" color="#C9CED4">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={[styles.plug, { backgroundColor: theme.deep, borderColor: theme.line2 }]}>
@@ -154,24 +152,22 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
           </Card>
         )}
 
-        {(block === 'eq' || block === 'hpf') && (
+        {show(['eq', 'hpf']) && (
           <Card theme={theme} title="Égaliseur" color="#FBBF24" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
-            <View style={{ borderRadius: 12, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
-              <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-                <Line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke={theme.line} strokeWidth={1} />
-                {[100, 1000, 10000].map((hz) => (
-                  <Line key={hz} x1={xOf(hz) * W} y1={0} x2={xOf(hz) * W} y2={H} stroke={theme.line} strokeWidth={0.5} />
-                ))}
-                <Path d={area} fill="rgba(251,191,36,0.18)" />
-                <Path d={path} fill="none" stroke="#FBBF24" strokeWidth={3} strokeLinejoin="round" />
-                {bands.map((bd, k) => (
-                  <Circle key={k} cx={xOf(bd.hz) * W} cy={yOfDb(eqOn ? bd.db : 0, H)} r={11} fill={band === k ? '#FFFFFF' : BAND_COLORS[k]} stroke={theme.meterBg} strokeWidth={3} onPress={() => setBand(k)} />
-                ))}
-                {hpOn && <Line x1={xOf(fToHpfHz(hpf)) * W} y1={0} x2={xOf(fToHpfHz(hpf)) * W} y2={H} stroke="#60A5FA" strokeWidth={2} strokeDasharray="4 4" />}
-              </Svg>
-              <View style={{ position: 'absolute', left: 8, bottom: 4 }}><Text style={{ color: theme.muted, fontSize: 10 }}>graves</Text></View>
-              <View style={{ position: 'absolute', right: 8, bottom: 4 }}><Text style={{ color: theme.muted, fontSize: 10 }}>aigus</Text></View>
-            </View>
+            <EqGraph
+              bands={bands}
+              on={eqOn}
+              hpfHz={hpOn ? fToHpfHz(hpf) : null}
+              selected={band}
+              theme={theme}
+              onSelect={setBand}
+              onActivate={() => client.set(eqOnPath(ch), i(1))}
+              onChange={(k, hz, db) => {
+                setBandF(k, hz);
+                setBandG(k, db);
+              }}
+            />
+            <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center' }}>Glisse un point : gauche-droite = fréquence, haut-bas = plus ou moins. Les boutons − / + affinent.</Text>
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {bands.map((bd, k) => (
                 <Pressable key={k} onPress={() => setBand(k)} accessibilityState={{ selected: band === k }} style={[styles.bandBtn, { borderColor: band === k ? BAND_COLORS[k] : theme.line, backgroundColor: band === k ? theme.deep : theme.panel }]}>
@@ -218,14 +214,14 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
           </Card>
         )}
 
-        {block === 'gate' && (
+        {show('gate') && (
           <Card theme={theme} title="Gate" color="#9AA3AD" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
             <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Coupe le micro quand on ne joue pas. Utile sur le kick et les toms (il ne laisse passer que les coups). À éviter sur la voix.</Text>
             <HSlider label="Seuil" value={gateThr} valueText={`${fToGateDb(gateThr).toFixed(0)} dB`} onChange={(v) => client.set(gateThrPath(ch), f(v))} color={theme.ok} theme={theme} />
           </Card>
         )}
 
-        {block === 'comp' && (
+        {show('comp') && (
           <Card theme={theme} title="Compresseur" color="#34D399" on={dynOn} onToggle={() => client.set(dynOnPath(ch), i(dynOn ? 0 : 1))}>
             <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Rapproche les passages forts et faibles : la voix reste devant même quand on chante doucement. Seuil bas = plus de compression.</Text>
             <HSlider label="Seuil" value={dynThr} valueText={`${fToCompDb(dynThr).toFixed(0)} dB`} onChange={(v) => client.set(dynThrPath(ch), f(v))} color={theme.ok} theme={theme} />
@@ -239,7 +235,7 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
           </Card>
         )}
 
-        {block === 'fx' && (
+        {show('fx') && (
           <Card theme={theme} title={`Effets sur ${name}`} color="#C084FC">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {sends.map((v, k) => {
@@ -339,6 +335,7 @@ function Card(props: { theme: Theme; title: string; color: string; on?: boolean;
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: 48 },
+  wideRoot: { paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#2A3038' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 4 },
   back: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 12, gap: 12 },

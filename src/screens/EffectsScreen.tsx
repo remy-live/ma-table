@@ -12,6 +12,7 @@ import {
 } from '../xair/effects';
 import { formatDb } from '../xair/levels';
 import { useParam } from '../xair/useParam';
+import { FxVisual } from '../ui/FxVisual';
 import { XAirClient } from '../xair/XAirClient';
 
 const SLOT_COLORS = ['#C084FC', '#38BDF8', '#2DD4BF', '#F472B6'];
@@ -54,11 +55,20 @@ function SlotTab(props: { client: XAirClient; k: number; active: boolean; theme:
   const type = Number(useParam<number>(client, fxTypePath(k), 0));
   const ret = Number(useParam<number>(client, fxReturnPath(k), 0));
   const c = SLOT_COLORS[k - 1];
+  const t = fxType(type);
+  const kn = knobsFor(t.kind);
+  const p1 = Number(useParam<number>(client, fxParPath(k, kn[0].pars[0]), 0.5));
+  const p2 = Number(useParam<number>(client, fxParPath(k, kn[1].pars[0]), 0.5));
+  const p3 = Number(useParam<number>(client, fxParPath(k, kn[2].pars[0]), 0.5));
+  const [w, setW] = useState(0);
   return (
-    <Pressable onPress={props.onPress} accessibilityState={{ selected: props.active }} style={[styles.slot, { borderColor: props.active ? c : theme.line, backgroundColor: props.active ? theme.panel : theme.deep }]}>
-      <Text style={{ color: c, fontSize: 11, fontWeight: '800' }}>FX{k}</Text>
-      <Text numberOfLines={2} style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{fxType(type).fr}</Text>
-      <Text style={{ color: theme.muted, fontSize: 10 }}>{formatDb(ret)} dB</Text>
+    <Pressable onPress={props.onPress} accessibilityState={{ selected: props.active }} onLayout={(e) => setW(e.nativeEvent.layout.width)} style={[styles.slot, { borderColor: props.active ? c : theme.line, backgroundColor: props.active ? theme.panel : theme.deep }]}>
+      {w > 0 && <FxVisual kind={t.kind} color={c} a={p1} b={p2} c={p3} width={w - 16} height={44} bg={theme.meterBg} />}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, width: '100%' }}>
+        <Text style={{ color: c, fontSize: 11, fontWeight: '800' }}>FX{k}</Text>
+        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 12, fontWeight: '800', flex: 1 }}>{t.fr}</Text>
+        <Text style={{ color: ret > 0 ? theme.text : theme.muted, fontSize: 10, fontWeight: '700' }}>{ret > 0 ? `${formatDb(ret)} dB` : 'coupé'}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -139,16 +149,23 @@ function SlotBody(props: { client: XAirClient; k: number; theme: Theme }) {
 
       <Text style={[styles.kicker, { color: theme.muted }]}>RECETTES PRÊTES</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-        {RECIPES.map((r) => (
-          <Pressable key={r.id} onPress={() => recipe(r)} style={[styles.recipe, { borderColor: theme.line2, backgroundColor: theme.panel }]}>
-            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{r.name}</Text>
-            <Text style={{ color: theme.muted, fontSize: 11 }}>{r.desc}</Text>
-          </Pressable>
-        ))}
+        {RECIPES.map((r) => {
+          const rt = fxType(r.type);
+          const kn = knobsFor(rt.kind);
+          const v = (n: number) => r.pars[kn[n].pars[0]] ?? 0.5;
+          return (
+            <Pressable key={r.id} onPress={() => recipe(r)} style={[styles.recipe, { borderColor: theme.line, backgroundColor: theme.panel }]}>
+              <FxVisual kind={rt.kind} color={c} a={v(0)} b={v(1)} c={v(2)} width={160} height={40} bg={theme.meterBg} />
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{r.name}</Text>
+              <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 11 }}>{r.desc} · {rt.fr}</Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
 
       <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
         <Text style={[styles.kicker, { color: theme.muted }]}>CARACTÈRE</Text>
+        <BigVisual client={client} k={k} kind={type.kind} color={c} theme={theme} />
         {knobs.map((kn) => (
           <KnobRow key={kn.label} client={client} k={k} knob={kn} color={c} theme={theme} isTime={type.kind === 'delay' && kn.label === 'Temps'} />
         ))}
@@ -188,6 +205,19 @@ function SlotBody(props: { client: XAirClient; k: number; theme: Theme }) {
   );
 }
 
+function BigVisual({ client, k, kind, color, theme }: { client: XAirClient; k: number; kind: ReturnType<typeof fxType>['kind']; color: string; theme: Theme }) {
+  const kn = knobsFor(kind);
+  const a = Number(useParam<number>(client, fxParPath(k, kn[0].pars[0]), 0.5));
+  const b = Number(useParam<number>(client, fxParPath(k, kn[1].pars[0]), 0.5));
+  const cc = Number(useParam<number>(client, fxParPath(k, kn[2].pars[0]), 0.5));
+  const [w, setW] = useState(0);
+  return (
+    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ width: '100%' }}>
+      {w > 0 && <FxVisual kind={kind} color={color} a={a} b={b} c={cc} width={w} height={96} bg={theme.meterBg} />}
+    </View>
+  );
+}
+
 function KnobRow(props: { client: XAirClient; k: number; knob: ReturnType<typeof knobsFor>[number]; color: string; theme: Theme; isTime: boolean }) {
   const { client, k, knob } = props;
   const v = Number(useParam<number>(client, fxParPath(k, knob.pars[0]), 0.5));
@@ -209,13 +239,13 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },
-  slot: { flex: 1, minHeight: 72, borderRadius: 14, borderWidth: 1, padding: 8, gap: 2 },
+  slot: { flex: 1, minHeight: 84, borderRadius: 14, borderWidth: 2, padding: 8, gap: 6, alignItems: 'center' },
   card: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 },
   btn: { height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   chip: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: 'center' },
   typeRow: { borderWidth: 1, borderRadius: 12, padding: 10, minHeight: 52, gap: 2 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-  recipe: { width: 150, minHeight: 70, borderRadius: 14, borderWidth: 1, padding: 10, gap: 3 },
+  recipe: { width: 180, borderRadius: 14, borderWidth: 1, padding: 10, gap: 5 },
   tap: { height: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   mute: { height: 36, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
 });

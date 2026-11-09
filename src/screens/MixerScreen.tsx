@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId,
 } from '../xair/addresses';
@@ -63,6 +63,8 @@ type Item = { kind: 'ch'; ch: number; inOpenGroup: boolean } | { kind: 'group'; 
 
 export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextTheme: () => void }) {
   const { client, theme } = props;
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
   const [status, setStatus] = useState<Status>(client.status);
   useEffect(() => client.onStatus(setStatus), [client]);
 
@@ -260,6 +262,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
             <View style={[styles.master, { borderLeftColor: theme.line }]}>
               <OutStrip client={client} target={target} label={label(target)} color={target.kind === 'main' ? theme.accent : color} theme={theme} height={faderH} />
             </View>
+            {wide && detailCh !== null && (
+              <View style={{ width: Math.min(560, width * 0.46) }}>
+                <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} wide />
+              </View>
+            )}
           </>
         )}
       </View>
@@ -319,7 +326,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
         </View>
       )}
 
-      <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />
+      {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />}
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
