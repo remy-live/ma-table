@@ -3,14 +3,14 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../ui/theme';
 
-export type Tool = 'auto' | 'guide' | 'effets' | 'presets' | 'quientend' | 'groupes' | 'theme';
+export type Tool = 'branchements' | 'auto' | 'guide' | 'effets' | 'presets' | 'groupes' | 'theme';
 
 const ITEMS: [Tool, string, string, string][] = [
   ['auto', 'Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle', '#22C55E'],
   ['guide', 'Mode guidé', 'Installer un concert pas à pas, en 5 étapes', '#34D399'],
   ['effets', 'Effets de la table', 'Réverbes, échos, chorus · recettes prêtes · tap tempo', '#C084FC'],
   ['presets', 'Préréglages', 'Par instrument, avec variantes · mes réglages', '#F59E0B'],
-  ['quientend', 'Qui entend quoi', 'Le routage en clair, par personne ou par source', '#60A5FA'],
+  ['branchements', 'Branchements', 'La face arrière de la table, les fils, qui entend quoi', '#60A5FA'],
   ['groupes', 'Groupes', 'Batterie, Guitares… monter plusieurs voies d’un coup', '#FBBF24'],
   ['theme', 'Changer de thème', 'Nuit · Scène ambre · Plein jour', '#9AA3AD'],
 ];

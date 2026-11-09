@@ -17,7 +17,7 @@ import { Tool, ToolsSheet } from './ToolsSheet';
 import { EffectsScreen } from './EffectsScreen';
 import { PresetsSheet } from './PresetsSheet';
 import { GuideScreen } from './GuideScreen';
-import { WhoHearsScreen } from './WhoHearsScreen';
+import { WiringScreen } from './WiringScreen';
 import { ClipBanner } from './ClipBanner';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
 import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
@@ -335,7 +335,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       <PresetsSheet client={client} theme={theme} visible={tool === 'presets'} ch={null} onClose={() => setTool(null)} />
       <GuideScreen client={client} theme={theme} visible={tool === 'guide'} onClose={() => setTool(null)} />
       <AutoBalanceScreen client={client} theme={theme} visible={tool === 'auto'} onClose={() => setTool(null)} />
-      <WhoHearsScreen client={client} theme={theme} visible={tool === 'quientend'} onClose={() => setTool(null)} />
+      <WiringScreen client={client} theme={theme} visible={tool === 'branchements'} onClose={() => setTool(null)} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>

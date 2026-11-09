@@ -10,6 +10,7 @@ import { applyPreset, FAMILIES, LIBRARY, presetFromChannel, presetPaths } from '
 import { destinations, levelPaths, shares, sources, whoHearsPaths } from '../src/xair/whoHears';
 import { addAuto, AUTO_MAX, listAutos } from '../src/store/autoBackup';
 import { XAirClient } from '../src/xair/XAirClient';
+import { wiringPaths } from '../src/xair/wiring';
 import { NodeUdpTransport } from '../sim/nodeTransport';
 import { startSimulator } from '../sim/xr16-sim';
 
@@ -121,4 +122,50 @@ test('Alerte saturation et sauvegardes automatiques', async () => {
   const l = await listAutos();
   assert.equal(l.length, AUTO_MAX);
   assert.equal(l[0].at, AUTO_MAX + 1); // la plus récente d'abord
+});
+
+test('Branchements : prises, sorties, fils, relier et enlever', () =>
+  withTable(10174, wiringPaths(), async (c, sim) => {
+    const w = await import('../src/xair/wiring');
+    const P = w.plugs(c);
+    assert.equal(P.length, 18);
+    assert.deepEqual(P[0].chans, [1]); // prise 1 → voie 1 par défaut
+    assert.equal(P[0].name, 'Voix');
+    assert.equal(P[16].usb, true);
+    const O = w.outlets(c);
+    assert.equal(O.length, 7);
+    assert.equal(O[0].label, 'AUX 1');
+    assert.equal(O[0].name, 'Bassiste');
+    const before = w.wires(c);
+    assert.ok(before.some((x) => x.plug === 1 && x.out === 'main'));
+    assert.ok(!before.some((x) => x.plug === 1 && x.out === 'bus3'));
+    w.connect(c, P[0], { kind: 'bus', n: 3 });
+    await sleep(80);
+    assert.ok(Math.abs(faderToDb(sim.state.get(chLevelPath(1, { kind: 'bus', n: 3 }))!.v as number) - -6) < 0.1);
+    w.nudge(c, w.wirePaths(P[0], { kind: 'bus', n: 3 }), 2);
+    await sleep(80);
+    assert.ok(Math.abs(faderToDb(sim.state.get(chLevelPath(1, { kind: 'bus', n: 3 }))!.v as number) - -4) < 0.1);
+    w.disconnect(c, P[0], { kind: 'bus', n: 3 });
+    await sleep(80);
+    assert.equal(sim.state.get(chLevelPath(1, { kind: 'bus', n: 3 }))!.v, 0);
+    const n = w.toAllReturns(c, P[3]); // basse → retours nommés (1 Bassiste, 2 Mon retour) ; déjà dans le 1
+    assert.equal(n, 1);
+    assert.match(w.wireD(1, 'main'), /^M95 110 C/);
+    assert.ok(w.wireWidth(0) > w.wireWidth(-30));
+  }));
+
+test('Courbe EQ : plateaux, cloches, chemin SVG', async () => {
+  const e = await import('../src/xair/eqCurve');
+  const bands = [{ type: 1, hz: 100, db: -6, q: 1 }, { type: 2, hz: 1000, db: 4, q: 1 }, { type: 2, hz: 3000, db: 0, q: 1 }, { type: 4, hz: 10000, db: 3, q: 1 }];
+  assert.ok(e.bandGainAt(bands[0], 30) < -4); // plateau grave bien en dessous
+  assert.ok(Math.abs(e.bandGainAt(bands[1], 1000) - 4) < 0.01); // cloche au centre
+  assert.ok(e.bandGainAt(bands[1], 100) < 0.5);
+  assert.ok(e.bandGainAt(bands[3], 18000) > 2.5);
+  const pts = e.curvePoints(bands, true, 100);
+  assert.equal(pts.length, 65);
+  assert.ok(pts[0][1] < -6, 'coupe-bas + plateau en bas');
+  assert.ok(e.curvePoints(bands, false, null).every(([, g]) => g === 0));
+  assert.match(e.curvePath(pts, 330, 150), /^M0\.0 /);
+  assert.equal(e.bandName(80), 'Graves');
+  assert.equal(e.bandName(4000), 'Présence');
 });
