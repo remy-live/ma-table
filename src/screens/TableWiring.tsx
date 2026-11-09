@@ -2,7 +2,7 @@
 // Touche une prise : tu règles l'entrée (gain, nom, couleur, 48 V) ou tu la
 // relies aux sorties (un curseur par sortie). Touche une sortie : ce qu'elle
 // entend. Tout tient sur l'écran, sans défiler.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { f, i, s as oscS } from '../osc/osc';
@@ -14,7 +14,9 @@ import { dbToFader, faderToDb } from '../xair/levels';
 import { colorOf, TABLE_COLORS } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
 import { meterIndex } from '../xair/addresses';
-import { Outlet, Plug } from '../xair/wiring';
+import { Outlet, outlets, Plug, plugs, wires, wiringPaths } from '../xair/wiring';
+import { useAnyTick } from '../ui/useTick';
+import { MIX_COLORS } from './MixPicker';
 import { XAirClient } from '../xair/XAirClient';
 
 type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | null;
@@ -217,3 +219,15 @@ const styles = StyleSheet.create({
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   tg: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
 });
+
+/** Même vue, autonome : utilisée comme 4e vue de l'écran Table. */
+export function TableWiringStandalone({ client, theme }: { client: XAirClient; theme: Theme }) {
+  useAnyTick(client);
+  useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);
+  const P = plugs(client);
+  const O = outlets(client);
+  const W = wires(client);
+  const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
+  const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
+  return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />;
+}

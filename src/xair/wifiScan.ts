@@ -34,10 +34,10 @@ export async function scanWifi(): Promise<ScanInfo> {
     const r = await mod.scanFull();
     raw = r.nets;
     if (!r.wifiOn) { note = 'Le Wi-Fi du téléphone est éteint.'; fix = 'wifi'; }
-    else if (!r.locationOn) { note = 'Android cache les Wi-Fi tant que la localisation du téléphone est éteinte (il ne laisse aucune appli l’allumer elle-même).'; fix = 'location'; }
+    else if (!r.locationOn) { note = 'Android cache les Wi-Fi tant que la localisation du téléphone est éteinte, parce que la liste des réseaux permet de te localiser. Aucune appli ne peut l’allumer elle-même.'; fix = 'location'; }
     else if (!r.started || !r.fresh) note = 'Android limite les recherches (4 toutes les 2 minutes) : liste de la dernière recherche.';
   } else raw = await mod.scan();
-  if (!granted) { note = 'Autorise « Position » pour Ma table, sinon Android cache les Wi-Fi.'; fix = 'permission'; }
+  if (!granted) { note = 'Autorise « Position » pour Ma table : Android considère la liste des Wi-Fi comme une position (elle permet de te localiser). L’appli ne lit jamais ta position et n’envoie rien.'; fix = 'permission'; }
   const hidden = raw.filter((n) => !n.ssid).length;
   const best = new Map<string, WifiNet>();
   for (const n of raw) {

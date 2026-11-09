@@ -18,6 +18,8 @@ import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS, initials } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
 import { TableWiring } from './TableWiring';
+import { readGroups } from '../xair/groups';
+import { GROUP_COLORS } from './GroupsSheet';
 import { load, save } from '../store/persist';
 
 type View3 = 'table' | 'arriere' | 'colonnes' | 'niveaux' | 'bulles';
@@ -203,11 +205,12 @@ function Step({ n, c, t, theme }: { n: string; c: string; t: string; theme: Them
   );
 }
 
-// ---------- VUE « NIVEAUX » : la table, une entrée + une sortie = un curseur ----------
+// ---------- VUE « NIVEAUX » : une entrée + une sortie = un curseur, tout sur un écran ----------
 function Levels(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string }) {
   const { client, theme, P, O } = props;
-  const [inP, setInP] = useState<number | null>(null);
+  const [inP, setInP] = useState<number | null>(1);
   const [outId, setOutId] = useState<string | null>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
   const plug = inP ? P[inP - 1] : null;
   const out = outId ? O.find((o) => o.id === outId) ?? null : null;
   const linked = (n: number, id: string) => props.W.some((w) => w.plug === n && w.out === id);
@@ -215,49 +218,74 @@ function Levels(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[
   const v = path ? Number(client.get(path) ?? 0) : 0;
   const set = (x: number) => { if (plug && out) for (const c of plug.chans) client.set(chLevelPath(c, out.t), oscF(x)); };
   const dbTxt = (x: number) => { const d = faderToDb(x); return !isFinite(d) || x <= 0 ? 'rien' : `${d > 0 ? '+' : ''}${d.toFixed(1)} dB`; };
-  const Jack = ({ label, sub, color, on, link, onPress, dim }: { label: string; sub: string; color: string; on: boolean; link: boolean; onPress: () => void; dim?: boolean }) => (
-    <Pressable onPress={onPress} style={{ alignItems: 'center', width: 84, gap: 3, opacity: dim ? 0.35 : 1 }}>
-      <View style={{ width: 54, height: 54, borderRadius: 27, borderWidth: on ? 5 : 3, borderColor: on ? '#FFFFFF' : link ? color : '#3A414B', backgroundColor: '#1E2227', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: link ? color : '#0B0D10' }} />
+  // géométrie : 9 colonnes (prises 1-9 / 10-18), sorties sur une 3e rangée ; tout en % de la largeur
+  const COLS = 9;
+  const cell = box.w / COLS;
+  const R = Math.max(18, Math.min(30, cell * 0.3));
+  const rowY = [0.14, 0.42, 0.78]; // fractions de la hauteur
+  const H = Math.max(240, box.h);
+  const xIn = (n: number) => ((n - 1) % COLS + 0.5) * cell;
+  const yIn = (n: number) => rowY[n <= 9 ? 0 : 1] * H;
+  const xOut = (k: number) => (k + 0.5) * (box.w / O.length);
+  const yOut = rowY[2] * H;
+  const Jack = ({ x, y, label, sub, color, on, link, onPress, dim }: { x: number; y: number; label: string; sub: string; color: string; on: boolean; link: boolean; onPress: () => void; dim?: boolean }) => (
+    <Pressable onPress={onPress} style={{ position: 'absolute', left: x - cell / 2, top: y - R - 4, width: cell, alignItems: 'center', gap: 2, opacity: dim ? 0.35 : 1 }}>
+      <View style={{ width: R * 2, height: R * 2, borderRadius: R, borderWidth: on ? 4 : 3, borderColor: on ? '#FFFFFF' : link ? color : '#3A414B', backgroundColor: '#1E2227', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: R, height: R, borderRadius: R / 2, backgroundColor: link ? color : '#0B0D10' }} />
       </View>
-      <Text style={{ color: '#E8EAED', fontSize: 12, fontWeight: '800' }}>{label}</Text>
-      <Text numberOfLines={1} style={{ color: '#9AA3AD', fontSize: 10, maxWidth: 82 }}>{sub}</Text>
+      <Text style={{ color: '#E8EAED', fontSize: 11, fontWeight: '800' }}>{label}</Text>
+      <Text numberOfLines={1} style={{ color: '#9AA3AD', fontSize: 10, maxWidth: cell - 6 }}>{sub}</Text>
     </Pressable>
   );
+  const oi = out ? O.findIndex((o) => o.id === out.id) : -1;
   return (
-    <ScrollView contentContainerStyle={{ padding: 12, gap: 12 }}>
-      <View style={[styles.lvPanel]}>
-        <Text style={{ color: '#9AA3AD', fontSize: 11, fontWeight: '800' }}>1 · TOUCHE UNE ENTRÉE</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {P.map((p) => <Jack key={p.n} label={String(p.n)} sub={p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')} color={props.plugColor(p)} on={inP === p.n} link={out ? linked(p.n, out.id) : !!p.chans.length && !!p.name} dim={!p.chans.length} onPress={() => setInP(p.n)} />)}
-        </View>
-        <View style={{ height: 1, backgroundColor: '#2A3038' }} />
-        <Text style={{ color: '#9AA3AD', fontSize: 11, fontWeight: '800' }}>2 · PUIS UNE SORTIE</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {O.map((o) => <Jack key={o.id} label={o.label.replace('MAIN L/R', 'MAIN')} sub={o.name} color={props.outColor(o)} on={outId === o.id} link={plug ? linked(plug.n, o.id) : true} onPress={() => setOutId(o.id)} />)}
-        </View>
+    <View style={{ flex: 1, paddingHorizontal: 12, gap: 8 }}>
+      <View style={[styles.lvPanel, { flex: 1 }]} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width - 24, h: e.nativeEvent.layout.height - 24 })}>
+        {box.w > 0 && (
+          <>
+            <Svg width={box.w} height={H} style={{ position: 'absolute', left: 12, top: 12 }}>
+              {/* fils existants de la sélection, en fond */}
+              {props.W.filter((w) => (plug && w.plug === plug.n) || (out && w.out === out.id)).map((w) => {
+                const k = O.findIndex((o) => o.id === w.out);
+                if (k < 0) return null;
+                const a = { x: xIn(w.plug), y: yIn(w.plug) + R };
+                const b = { x: xOut(k), y: yOut - R };
+                const isSel = plug && out && w.plug === plug.n && w.out === out.id;
+                return <Path key={w.plug + w.out} d={`M${a.x} ${a.y} C ${a.x} ${a.y + 60}, ${b.x} ${b.y - 60}, ${b.x} ${b.y}`} fill="none" stroke={props.plugColor(P[w.plug - 1])} strokeWidth={isSel ? 6 : 3} opacity={isSel ? 1 : 0.35} strokeLinecap="round" />;
+              })}
+              {/* trait de la paire choisie, même pas encore reliée */}
+              {plug && out && !linked(plug.n, out.id) && (
+                <Path d={`M${xIn(plug.n)} ${yIn(plug.n) + R} C ${xIn(plug.n)} ${yIn(plug.n) + R + 60}, ${xOut(oi)} ${yOut - R - 60}, ${xOut(oi)} ${yOut - R}`} fill="none" stroke="#FFFFFF" strokeWidth={3} strokeDasharray="8 6" opacity={0.7} strokeLinecap="round" />
+              )}
+            </Svg>
+            <Text style={{ position: 'absolute', left: 12, top: 6, color: '#9AA3AD', fontSize: 10, fontWeight: '800' }}>ENTRÉES</Text>
+            <Text style={{ position: 'absolute', left: 12, top: rowY[2] * H - R - 26, color: '#9AA3AD', fontSize: 10, fontWeight: '800' }}>SORTIES</Text>
+            <View style={{ position: 'absolute', left: 12, top: 12, width: box.w, height: H }}>
+              {P.map((p) => <Jack key={p.n} x={xIn(p.n)} y={yIn(p.n)} label={String(p.n)} sub={p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')} color={props.plugColor(p)} on={inP === p.n} link={out ? linked(p.n, out.id) : !!p.name} dim={!p.chans.length} onPress={() => setInP(p.n)} />)}
+              {O.map((o, k) => <Jack key={o.id} x={xOut(k)} y={yOut} label={o.label.replace('MAIN L/R', 'MAIN')} sub={o.name} color={props.outColor(o)} on={outId === o.id} link={plug ? linked(plug.n, o.id) : true} onPress={() => setOutId(o.id)} />)}
+            </View>
+          </>
+        )}
       </View>
       <View style={[styles.lvBox, { backgroundColor: theme.panel, borderColor: plug && out ? props.outColor(out) : theme.line }]}>
         {plug && out && path ? (
-          <>
-            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', minWidth: 220 }}>
               <Text style={{ color: props.plugColor(plug) }}>{plug.n} · {plug.name || `voie ${plug.chans[0]}`}</Text>  →  <Text style={{ color: props.outColor(out) }}>{out.name}</Text>
             </Text>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>{v > 0 ? 'Combien cette entrée sort ici' : 'Pas encore relié : monte le curseur pour relier'}</Text>
-            <HSlider value={v} onChange={set} label="Niveau" valueText={dbTxt(v)} color={props.outColor(out)} theme={theme} />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {[-20, -10, -6, 0].map((d) => (
-                <Pressable key={d} onPress={() => set(dbToFader(d))} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>{d} dB</Text></Pressable>
-              ))}
-              <View style={{ flex: 1 }} />
-              <Pressable onPress={() => set(0)} style={[styles.small, { borderColor: theme.mute }]}><Text style={{ color: '#FCA5A5', fontWeight: '800' }}>✕ Retirer</Text></Pressable>
+            <View style={{ flex: 1, minWidth: 260 }}>
+              <HSlider value={v} onChange={set} label="" valueText={dbTxt(v)} color={props.outColor(out)} theme={theme} />
             </View>
-          </>
+            {[-20, -10, -6, 0].map((d) => (
+              <Pressable key={d} onPress={() => set(dbToFader(d))} style={[styles.small, { borderColor: theme.line2, height: 36 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>{d} dB</Text></Pressable>
+            ))}
+            <Pressable onPress={() => set(0)} style={[styles.small, { borderColor: theme.mute, height: 36 }]}><Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12 }}>✕ Retirer</Text></Pressable>
+          </View>
         ) : (
-          <Text style={{ color: theme.muted, fontSize: 14 }}>{!plug ? 'Touche une entrée en haut…' : !plug.chans.length ? 'Rien n’écoute cette prise : donne-lui une voie (Table › Changer l’entrée).' : '…puis une sortie : un curseur apparaît ici pour régler le niveau.'}</Text>
+          <Text style={{ color: theme.muted, fontSize: 14 }}>{!plug ? 'Touche une entrée…' : !plug.chans.length ? 'Rien n’écoute cette prise : donne-lui une voie (Table › Changer l’entrée).' : '…puis une sortie : le trait se dessine et le curseur apparaît ici.'}</Text>
         )}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -311,6 +339,19 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   latest.current = { P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut };
   const emptyRef = useRef(props.onEmpty);
   emptyRef.current = props.onEmpty;
+  // Groupes (DCA) repliés : une seule capsule pour toutes les prises du groupe
+  const groups = readGroups(props.client).filter((g) => g.members.length > 1);
+  const [open, setOpen] = useState<number[]>([]);
+  const plugOfCh = (c: number) => P.find((p) => p.chans.includes(c))?.n ?? null;
+  const gInfo = groups.map((g) => {
+    const plugs = g.members.map(plugOfCh).filter((n): n is number => n !== null).sort((a, b) => a - b);
+    return { k: g.k, name: g.name, plugs, anchor: plugs[0], folded: !open.includes(g.k) && plugs.length > 1 };
+  });
+  const groupOfPlug = (n: number) => gInfo.find((g) => g.plugs.includes(n));
+  const hiddenPlug = (n: number) => { const g = groupOfPlug(n); return !!g && g.folded && g.anchor !== n; };
+  const anchorOf = (n: number) => { const g = groupOfPlug(n); return g && g.folded ? g.anchor : n; };
+  const groupsRef = useRef(gInfo);
+  groupsRef.current = gInfo;
   const isSelPlug = (n: number) => sel?.kind === 'plug' && sel.n === n;
   const isSelOut = (id: string) => sel?.kind === 'out' && sel.id === id;
   const linkedPlug = (n: number) => sel?.kind === 'out' && props.W.some((w) => w.plug === n && w.out === sel.id);
@@ -318,7 +359,16 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
 
   // qu'y a-t-il sous le doigt ? (coordonnées du viewBox)
   const hit = (vx: number, vy: number): { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null => {
-    for (const p of latest.current.P) { const c = plugXY(p.n); if (Math.hypot(c.x - vx, c.y - vy) < 30) return { kind: 'plug', n: p.n }; }
+    for (const g of groupsRef.current) {
+      if (!g.folded && g.anchor) { const c = plugXY(g.anchor); if (Math.abs(c.x - vx) < 44 && vy > c.y - 62 && vy < c.y - 40) { setOpen((o) => o.filter((k) => k !== g.k)); return null; } }
+    }
+    for (const p of latest.current.P) {
+      const c = plugXY(p.n);
+      if (Math.hypot(c.x - vx, c.y - vy) < 30) {
+        const g = groupsRef.current.find((x) => x.plugs.includes(p.n));
+        return { kind: 'plug', n: g && g.folded ? g.anchor : p.n };
+      }
+    }
     for (const o of latest.current.O) { const c = outletXY(o.id); if (Math.hypot(c.x - vx, c.y - vy) < 30) return { kind: 'out', id: o.id }; }
     return null;
   };
@@ -344,13 +394,18 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
           if (!d) { if (!moved.current) emptyRef.current(); return null; }
           const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
           if (!moved.current || !t) {
-            // simple appui : sélectionner
-            if (d.from.kind === 'plug') latest.current.onPlug(latest.current.P[d.from.n - 1]);
+            // simple appui : déplier un groupe replié, sinon sélectionner
+            if (d.from.kind === 'plug') {
+              const g = groupsRef.current.find((x) => x.folded && x.anchor === (d.from as { n: number }).n);
+              if (g) { setOpen((o) => [...o, g.k]); return null; }
+              latest.current.onPlug(latest.current.P[d.from.n - 1]);
+            }
             else { const o = latest.current.O.find((x) => x.id === (d.from as { id: string }).id); if (o) latest.current.onOut(o); }
             return null;
           }
-          if (d.from.kind === 'plug' && t.kind === 'out') latest.current.onLink(d.from.n, t.id);
-          else if (d.from.kind === 'out' && t.kind === 'plug') latest.current.onLink(t.n, d.from.id);
+          const members = (n: number) => { const g = groupsRef.current.find((x) => x.folded && x.anchor === n); return g ? g.plugs : [n]; };
+          if (d.from.kind === 'plug' && t.kind === 'out') members(d.from.n).forEach((n) => latest.current.onLink(n, (t as { id: string }).id));
+          else if (d.from.kind === 'out' && t.kind === 'plug') members(t.n).forEach((n) => latest.current.onLink(n, (d.from as { id: string }).id));
           else if (d.from.kind === 'plug' && t.kind === 'plug' && t.n === d.from.n) latest.current.onPlug(latest.current.P[t.n - 1]);
           else if (d.from.kind === 'out' && t.kind === 'out' && t.id === d.from.id) { const o = latest.current.O.find((x) => x.id === t.id); if (o) latest.current.onOut(o); }
           return null;
@@ -414,9 +469,32 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             {P.map((p) => {
               const { x, y } = plugXY(p.n);
               const named = !!p.chans.length;
+              const g = groupOfPlug(p.n);
+              if (g && g.folded && g.anchor !== p.n) {
+                return <G key={p.n} opacity={0.22}><Circle cx={x} cy={y} r={21} fill="#1E2227" stroke={GROUP_COLORS[g.k - 1]} strokeWidth={2} /><SvgText x={x + 24} y={y - 14} fontSize={12} fontWeight="800" fill="#E8EAED">{p.n}</SvgText></G>;
+              }
+              if (g && g.folded) {
+                const gc = GROUP_COLORS[g.k - 1];
+                return (
+                  <G key={p.n}>
+                    <Rect x={x - 40} y={y - 26} width={80} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
+                    <SvgText x={x} y={y - 6} textAnchor="middle" fontSize={11} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
+                    <SvgText x={x} y={y + 9} textAnchor="middle" fontSize={9} fill="#E8EAED">{g.plugs.length} prises</SvgText>
+                    <SvgText x={x} y={y + 20} textAnchor="middle" fontSize={8} fill="#9AA3AD">▸ déplier</SvgText>
+                    <Rect x={x - 34} y={y + 30} width={68} height={12} rx={4} fill={gc} opacity={0.9} />
+                    <SvgText x={x} y={y + 39} textAnchor="middle" fontSize={8} fontWeight="800" fill="#0B0D10">{g.plugs.join(' · ').slice(0, 16)}</SvgText>
+                  </G>
+                );
+              }
               return (
                 <G key={p.n}>
-                  <Circle cx={x} cy={y} r={p.usb ? 15 : 21} fill="#1E2227" stroke="#3A414B" strokeWidth={2} />
+                  {g && g.anchor === p.n && (
+                    <G onPress={() => setOpen((o) => o.filter((k) => k !== g.k))}>
+                      <Rect x={x - 44} y={y - 60} width={88} height={18} rx={9} fill={GROUP_COLORS[g.k - 1]} />
+                      <SvgText x={x} y={y - 47} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">▾ replier {g.name.slice(0, 9)}</SvgText>
+                    </G>
+                  )}
+                  <Circle cx={x} cy={y} r={p.usb ? 15 : 21} fill="#1E2227" stroke={g ? GROUP_COLORS[g.k - 1] : '#3A414B'} strokeWidth={2} />
                   <Circle cx={x} cy={y} r={p.usb ? 6 : 13} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
                   <SvgText x={x + 24} y={y - 14} fontSize={12} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
                   {named && (
@@ -443,7 +521,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             })}
             {/* fils, écartés à l'arrivée */}
             {props.W.map((w) => {
-              const a = plugXY(w.plug);
+              const a = plugXY(anchorOf(w.plug));
               const b = endOf(w);
               const c = props.plugColor(P[w.plug - 1]);
               return (
@@ -554,7 +632,7 @@ const styles = StyleSheet.create({
   wire: { borderWidth: 1, borderRadius: 12, padding: 5, flexDirection: 'row', alignItems: 'center', gap: 5 },
   pm: { width: 36, height: 36, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   colItem: { borderWidth: 2, borderRadius: 12, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  lvPanel: { backgroundColor: '#15181C', borderColor: '#2A3038', borderWidth: 2, borderRadius: 18, padding: 12, gap: 10 },
-  lvBox: { borderWidth: 2, borderRadius: 18, padding: 14, gap: 10 },
+  lvPanel: { backgroundColor: '#15181C', borderColor: '#2A3038', borderWidth: 2, borderRadius: 18, padding: 12 },
+  lvBox: { borderWidth: 2, borderRadius: 18, padding: 12, marginBottom: 8 },
   toast: { position: 'absolute', left: 24, right: 24, top: 100, backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1, borderRadius: 12, padding: 10 },
 });

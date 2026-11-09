@@ -119,6 +119,15 @@ export async function addAuto(snap: Snapshot, reason: string): Promise<Auto[]> {
   await save(AUTO_KEY, list);
   return list;
 }
+export async function deleteAuto(at: number): Promise<Auto[]> {
+  const list = (await listAutos()).filter((a) => a.at !== at);
+  await save(AUTO_KEY, list);
+  return list;
+}
+export async function clearAutos(): Promise<Auto[]> {
+  await save(AUTO_KEY, []);
+  return [];
+}
 /** Photo de sécurité. Renvoie null si la table est muette ou en démo. */
 export async function safetyBackup(client: XAirClient, reason: string): Promise<Auto | null> {
   if (client.hostAddress === 'demo') return null;

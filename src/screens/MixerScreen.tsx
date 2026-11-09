@@ -9,6 +9,7 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
 import { GainTile } from '../ui/GainTile';
+import { TableWiringStandalone } from './TableWiring';
 import { Theme } from '../ui/theme';
 import { ChannelScreen } from './ChannelScreen';
 import { GroupsSheet } from './GroupsSheet';
@@ -121,12 +122,13 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     { id: 'full', label: 'Complète', icon: '▥' },
     { id: 'compact', label: 'Compacte', icon: '▤' },
     { id: 'gains', label: 'Gains', icon: '◎' },
+    { id: 'table', label: 'Table', icon: '▦' },
   ];
   const cycleView = () => {
     const n = VIEWS[(VIEWS.findIndex((v) => v.id === view) + 1) % VIEWS.length].id;
     setView(n);
     save('vueTable', n);
-    say(n === 'full' ? 'Vue complète' : n === 'compact' ? 'Vue compacte : faders plus grands' : 'Vue gains : un bouton par entrée, pour la balance');
+    say(n === 'full' ? 'Vue complète' : n === 'compact' ? 'Vue compacte : faders plus grands' : n === 'gains' ? 'Vue gains : un bouton par entrée, pour la balance' : 'Vue table : touche une prise pour la régler ou la relier');
   };
   const curView = VIEWS.find((v) => v.id === view)!;
   // vue gains : la plus grande taille de bouton qui fait tenir les 16 entrées sans défiler
@@ -246,7 +248,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
         </Pressable>
-        {view !== 'gains' && (
+        {view !== 'gains' && view !== 'table' && (
           <Pressable onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
             <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
           </Pressable>
@@ -259,12 +261,13 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <ClipBanner client={client} onOpen={setInputCh} />
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
+        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} />}
         {bodyH > 0 && view === 'gains' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12, justifyContent: 'center' }}>
             {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} />)}
           </ScrollView>
         )}
-        {bodyH > 0 && view !== 'gains' && (
+        {bodyH > 0 && view !== 'gains' && view !== 'table' && (
           <>
             <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={styles.strips}>
               {items.map((it) =>

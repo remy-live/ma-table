@@ -64,7 +64,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
 
 const styles = StyleSheet.create({
   rail: { width: 96, borderRightWidth: 1, paddingTop: 44, paddingBottom: 16, alignItems: 'center', gap: 6 },
-  bar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 18, paddingTop: 6, paddingHorizontal: 4, gap: 2 },
+  bar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 44, paddingTop: 6, paddingHorizontal: 4, gap: 2 },
   item: { width: 84, height: 70, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4 },
   itemSmall: { flex: 1, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
   help: { width: 84, height: 70, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 12 },

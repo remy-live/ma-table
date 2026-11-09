@@ -32,7 +32,7 @@ function AutoFader(props: React.ComponentProps<typeof Fader>) {
     </View>
   );
 }
-export type StripView = 'full' | 'compact' | 'gains';
+export type StripView = 'full' | 'compact' | 'gains' | 'table';
 const SUGGESTIONS = ['Voix', 'Guitare', 'Basse', 'Kick', 'Caisse claire', 'Charley', 'Toms', 'Overhead', 'Clavier'];
 
 /** Hauteur d'une tranche hors fader (en-tête, gain, nom, mute, dB, EQ/FX, marges). */

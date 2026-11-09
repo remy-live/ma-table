@@ -6,6 +6,7 @@ import { StageScreen } from './src/screens/StageScreen';
 import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
+import { BOTTOM_INSET } from './src/ui/safeArea';
 import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -157,7 +158,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, paddingBottom: wide ? BOTTOM_INSET : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}

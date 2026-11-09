@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  Auto, Current, current, deleteSession, exportSession, freeTableSlot, importText, listAutos, listSessions, loadFromTable, renameCurrent,
+  Auto, clearAutos, Current, current, deleteAuto, deleteSession, exportSession, freeTableSlot, importText, listAutos, listSessions, loadFromTable, renameCurrent,
   renameSession, safetyBackup, saveCurrentSession, saveToTable, Session, StartFrom, startNewSession, tableSnapPaths,
 } from '../store/sessions';
 import { load } from '../store/persist';
@@ -169,13 +169,25 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
           {/* FILETS DE SÉCURITÉ */}
           <Text style={[styles.kicker, { color: theme.muted, marginTop: 6 }]}>FILETS DE SÉCURITÉ</Text>
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-            <Text style={{ color: theme.text, fontWeight: '800' }}>Sauvegardes automatiques</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: theme.text, fontWeight: '800', flex: 1 }}>Sauvegardes automatiques</Text>
+              {autos.length > 0 && (
+                <Pressable onPress={() => Alert.alert('Tout effacer ?', `${autos.length} sauvegardes automatiques.`, [{ text: 'Annuler', style: 'cancel' }, { text: 'Effacer', style: 'destructive', onPress: async () => setAutos(await clearAutos()) }])} hitSlop={8}>
+                  <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Tout effacer</Text>
+                </Pressable>
+              )}
+            </View>
             <Text style={{ color: theme.muted, fontSize: 12 }}>À la connexion, toutes les 10 minutes, et avant chaque opération risquée. Les 12 dernières.</Text>
-            {autos.slice(0, 6).map((a) => (
-              <Pressable key={a.at} onPress={() => Alert.alert('Remettre la table comme à ce moment ?', `${when(a.at)} · ${a.reason}`, [{ text: 'Annuler', style: 'cancel' }, { text: 'Remettre', style: 'destructive', onPress: () => say(`${restore(client, a)} réglages remis`) }])} style={[styles.auto, { borderColor: theme.line2 }]}>
-                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{when(a.at)}</Text>
-                <Text style={{ color: theme.muted, fontSize: 11 }}>{a.reason}</Text>
-              </Pressable>
+            {autos.map((a) => (
+              <View key={a.at} style={[styles.auto, { borderColor: theme.line2 }]}>
+                <Pressable onPress={() => Alert.alert('Remettre la table comme à ce moment ?', `${when(a.at)} · ${a.reason}`, [{ text: 'Annuler', style: 'cancel' }, { text: 'Remettre', style: 'destructive', onPress: () => say(`${restore(client, a)} réglages remis`) }])} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{when(a.at)}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>{a.reason}</Text>
+                </Pressable>
+                <Pressable onPress={async () => setAutos(await deleteAuto(a.at))} hitSlop={8} accessibilityLabel="Supprimer cette sauvegarde" style={{ width: 34, height: 34, borderRadius: 9, borderWidth: 1, borderColor: '#7F1D1D', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FCA5A5', fontWeight: '800' }}>✕</Text>
+                </Pressable>
+              </View>
             ))}
             {autos.length === 0 && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucune pour l’instant.</Text>}
           </View>
