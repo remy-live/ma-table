@@ -4,7 +4,8 @@ import {
   allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId,
 } from '../xair/addresses';
 import { Clip, copyChannel, pasteChannel, swapChannels } from '../xair/clipboard';
-import { copyMainTo, Group } from '../xair/groups';
+import { Group } from '../xair/groups';
+import { CopyMixSheet } from './CopyMixSheet';
 import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
@@ -84,6 +85,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [sel, setSel] = useState<number | null>(null);
   const [mode, setMode] = useState<null | 'copy' | 'swap'>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
   const [pasteSel, setPasteSel] = useState<number[]>([]);
   const [cats, setCats] = useState<Category[]>(['eq', 'dyn', 'fx']);
   const [srcCh, setSrcCh] = useState<number | null>(null);
@@ -234,10 +236,10 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <View style={{ flex: 1 }}>
           <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
         </View>
-        {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact={!wide} />}
+        {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
         {target.kind === 'bus' && (
-          <Pressable onPress={() => { copyMainTo(client, target); say(`${mixInfo(client, target).name} entend maintenant comme le public`); }} style={[styles.hbtn, { borderColor: color }]}>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>Comme le public</Text>
+          <Pressable onPress={() => setCopyOpen(true)} style={[styles.hbtn, { borderColor: color }]}>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>⧉ Copier depuis…</Text>
           </Pressable>
         )}
         <Pressable onPress={cycleView} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
@@ -406,6 +408,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <PresetsSheet client={client} theme={theme} visible={presetCh !== null} ch={presetCh} onClose={() => setPresetCh(null)} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
+      <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>

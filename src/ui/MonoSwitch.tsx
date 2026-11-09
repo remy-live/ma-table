@@ -17,17 +17,24 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
     const n = await goStereo(client);
     if (!n) Alert.alert('Rien à remettre', 'Aucun panoramique gardé.');
   };
+  if (compact) {
+    // un seul bouton : montre l'état, un appui bascule
+    return (
+      <Pressable onPress={mono ? toStereo : toMono} accessibilityLabel={mono ? 'Une enceinte (mono). Passer à deux enceintes' : 'Deux enceintes (stéréo). Passer à une enceinte'} style={[styles.one, { borderColor: mono ? theme.accent : theme.line2, backgroundColor: mono ? 'rgba(245,158,11,0.15)' : 'transparent' }]}>
+        <Text style={{ fontSize: 13 }}>{mono ? '🔈' : '🔈🔈'}</Text>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 11 }}>{mono ? '1 enceinte' : '2 enceintes'}</Text>
+      </Pressable>
+    );
+  }
   return (
-    <View style={[styles.box, { borderColor: theme.line2 }, compact && { padding: 2 }]}>
+    <View style={[styles.box, { borderColor: theme.line2 }]}>
       <Pressable onPress={toStereo} accessibilityState={{ selected: !mono }} style={[styles.btn, !mono && { backgroundColor: theme.accent }]}>
-        <Text style={{ fontSize: compact ? 14 : 18 }}>🔊🔊</Text>
-        {!compact && <Text style={{ color: !mono ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>Deux enceintes</Text>}
-        {!compact && <Text style={{ color: !mono ? theme.onAccent : theme.muted, fontSize: 10 }}>stéréo, gauche ≠ droite</Text>}
+        <Text style={{ fontSize: 14 }}>🔈🔈</Text>
+        <Text style={{ color: !mono ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>Deux enceintes</Text>
       </Pressable>
       <Pressable onPress={toMono} accessibilityState={{ selected: mono }} style={[styles.btn, mono && { backgroundColor: theme.accent }]}>
-        <Text style={{ fontSize: compact ? 14 : 18 }}>🔊</Text>
-        {!compact && <Text style={{ color: mono ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>Une enceinte</Text>}
-        {!compact && <Text style={{ color: mono ? theme.onAccent : theme.muted, fontSize: 10 }}>mono : tout dans L et R</Text>}
+        <Text style={{ fontSize: 14 }}>🔈</Text>
+        <Text style={{ color: mono ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>Une enceinte</Text>
       </Pressable>
     </View>
   );
@@ -35,5 +42,6 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
 
 const styles = StyleSheet.create({
   box: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 3 },
-  btn: { minHeight: 44, paddingHorizontal: 10, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  btn: { minHeight: 40, paddingHorizontal: 10, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  one: { height: 40, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
 });

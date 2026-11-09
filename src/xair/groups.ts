@@ -51,3 +51,16 @@ export function copyMainTo(client: XAirClient, t: Target) {
     client.set(chLevelPath(ch, t), f(v));
   }
 }
+
+/** Copie ce qu'entend `src` vers `dst`, pour les voies données (toutes par défaut). Renvoie le nombre de voies copiées. */
+export function copyMix(client: XAirClient, src: Target, dst: Target, channels?: number[]): number {
+  const list = channels ?? Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+  let n = 0;
+  for (const ch of list) {
+    const v = client.get(chLevelPath(ch, src));
+    if (v === undefined) continue;
+    client.set(chLevelPath(ch, dst), f(Number(v)));
+    n++;
+  }
+  return n;
+}

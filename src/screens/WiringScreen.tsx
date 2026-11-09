@@ -24,7 +24,7 @@ import { GROUP_COLORS } from './GroupsSheet';
 import { load, save } from '../store/persist';
 
 type View3 = 'table' | 'arriere' | 'colonnes' | 'niveaux' | 'bulles';
-type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null;
+type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | null;
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 
@@ -63,7 +63,11 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
 
   const plugColor = (p: Plug) => (p.chans.length ? colorOf(Number(client.get(`/ch/${String(p.chans[0]).padStart(2, '0')}/config/color`) ?? 0)) : '#5B636D');
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
-  const touches = (w: { plug: number; out: string }) => !!sel && ((sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out));
+  const selGroup = sel?.kind === 'group' ? readGroups(client).find((g) => g.k === sel.k) ?? null : null;
+  const groupPlugs = selGroup ? P.filter((p) => p.chans.some((c) => selGroup.members.includes(c))) : [];
+  const groupLinked = (o: Outlet) => groupPlugs.length > 0 && groupPlugs.every((p) => W.some((w) => w.plug === p.n && w.out === o.id));
+  const groupSome = (o: Outlet) => groupPlugs.some((p) => W.some((w) => w.plug === p.n && w.out === o.id));
+  const touches = (w: { plug: number; out: string }) => !!sel && ((sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && groupPlugs.some((p) => p.n === w.plug)));
   const visibleWires = W.filter((w) => (sel ? touches(w) : showAll));
 
   // Un appui montre les liaisons ; pour relier, on glisse du doigt.
@@ -115,14 +119,14 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <>
             <View style={{ flex: 1 }}>
               {view === 'arriere' ? (
-                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onEmpty={() => setSel(null)} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
+                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onEmpty={() => setSel(null)} onGroup={(k) => setSel(sel?.kind === 'group' && sel.k === k ? null : { kind: 'group', k })} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}
             </View>
 
             {/* BAS : sélection */}
-            <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : theme.line, backgroundColor: theme.panel }]}>
+            <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : selGroup ? GROUP_COLORS[selGroup.k - 1] : theme.line, backgroundColor: theme.panel }]}>
               {!sel && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ color: theme.muted, fontSize: 12, flex: 1 }} numberOfLines={2}>Touche une <Text style={{ color: '#FBBF24', fontWeight: '800' }}>prise</Text> ou une <Text style={{ color: '#60A5FA', fontWeight: '800' }}>sortie</Text> pour voir ses fils, la renommer et régler les niveaux.</Text>
@@ -159,6 +163,39 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                   <AddRow theme={theme} label="Ajouter vers" items={O.filter((o) => !selWires.some((w) => w.out === o.id)).map((o) => ({ key: o.id, text: `${o.label.replace('MAIN L/R', 'MAIN')} · ${o.name}`, color: outColor(o), add: () => { if (!selPlug.chans.length) { say(`Rien n’écoute la prise ${selPlug.n}`); return; } connect(client, selPlug, o.t); say(`Prise ${selPlug.n} → ${o.label} · −6 dB`); } }))} />
                   <WireList theme={theme} items={selWires.map((w) => { const o = O.find((x) => x.id === w.out)!; return { key: w.out, short: o.label.replace('MAIN L/R', 'MAIN').replace('AUX ', 'A'), name: o.name, plug: o.label, color: outColor(o), db: w.db, paths: w.paths, cut: () => disconnect(client, selPlug, o.t) }; })} client={client} empty="Personne n’entend cette prise. Glisse-la vers AUX 1-6 ou MAIN." />
                   </>}
+                </>
+              )}
+              {selGroup && (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={[styles.num, { borderColor: GROUP_COLORS[selGroup.k - 1], width: 'auto', paddingHorizontal: 10, borderRadius: 12 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>GROUPE</Text></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{selGroup.name} · {groupPlugs.length} prises</Text>
+                      <Text style={{ color: theme.muted, fontSize: 11 }}>{groupPlugs.map((p) => p.n).join(' · ')} · glisse la capsule vers une sortie, ou touche une sortie ci-dessous</Text>
+                    </View>
+                    <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {O.map((o) => {
+                      const all = groupLinked(o);
+                      const some = groupSome(o);
+                      const c = outColor(o);
+                      return (
+                        <View key={o.id} style={[styles.wire, { backgroundColor: theme.deep, borderColor: all ? c : theme.line, borderStyle: all ? 'solid' : 'dashed' }]}>
+                          <Pressable onPress={() => { if (all) groupPlugs.forEach((p) => disconnect(client, p, o.t)); else groupPlugs.forEach((p) => { if (!W.some((w) => w.plug === p.n && w.out === o.id)) connect(client, p, o.t); }); say(all ? `${selGroup.name} retiré de ${o.label}` : `${selGroup.name} → ${o.label} (${o.name})`); }} style={{ height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 1, borderColor: c, backgroundColor: all ? c : 'transparent', justifyContent: 'center', minWidth: 120 }}>
+                            <Text numberOfLines={1} style={{ color: all ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{all ? '✓ ' : some ? '◐ ' : '+ '}{o.name}</Text>
+                          </Pressable>
+                          {(all || some) && (
+                            <>
+                              <Pressable onPress={() => nudge(client, groupPlugs.flatMap((p) => wirePaths(p, o.t)).filter((pa) => Number(client.get(pa) ?? 0) > 0), -2)} accessibilityLabel="Moins" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>−</Text></Pressable>
+                              <Pressable onPress={() => nudge(client, groupPlugs.flatMap((p) => wirePaths(p, o.t)).filter((pa) => Number(client.get(pa) ?? 0) > 0), 2)} accessibilityLabel="Plus" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>+</Text></Pressable>
+                            </>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>✓ tout le groupe y va · ◐ une partie seulement · − / + bougent toutes les prises du groupe ensemble</Text>
                 </>
               )}
               {selOut && (
@@ -331,7 +368,7 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
 // ---------- VUE 1 : FACE ARRIÈRE ----------
 // Relier au doigt : on appuie sur une prise, on glisse jusqu'à une sortie (ou l'inverse).
 // Les fils qui arrivent sur une même sortie sont écartés pour rester lisibles.
-function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void; onEmpty: () => void }) {
+function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void; onEmpty: () => void; onGroup: (k: number) => void }) {
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
@@ -341,6 +378,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   latest.current = { P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut };
   const emptyRef = useRef(props.onEmpty);
   emptyRef.current = props.onEmpty;
+  const groupCb = useRef(props.onGroup);
+  groupCb.current = props.onGroup;
   // Groupes (DCA) repliés : une seule capsule pour toutes les prises du groupe
   const groups = readGroups(props.client).filter((g) => g.members.length > 1);
   const [open, setOpen] = useState<number[]>([]);
@@ -362,7 +401,10 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   // qu'y a-t-il sous le doigt ? (coordonnées du viewBox)
   const hit = (vx: number, vy: number): { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null => {
     for (const g of groupsRef.current) {
-      if (!g.folded && g.anchor) { const c = plugXY(g.anchor); if (Math.abs(c.x - vx) < 44 && vy > c.y - 62 && vy < c.y - 40) { setOpen((o) => o.filter((k) => k !== g.k)); return null; } }
+      if (!g.anchor) continue;
+      const c = plugXY(g.anchor);
+      if (!g.folded && Math.abs(c.x - vx) < 44 && vy > c.y - 62 && vy < c.y - 40) { setOpen((o) => o.filter((k) => k !== g.k)); return null; }
+      if (g.folded && Math.abs(c.x - vx) < 44 && vy > c.y - 52 && vy < c.y - 30) { setOpen((o) => [...o, g.k]); return null; }
     }
     for (const p of latest.current.P) {
       const c = plugXY(p.n);
@@ -399,7 +441,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             // simple appui : déplier un groupe replié, sinon sélectionner
             if (d.from.kind === 'plug') {
               const g = groupsRef.current.find((x) => x.folded && x.anchor === (d.from as { n: number }).n);
-              if (g) { setOpen((o) => [...o, g.k]); return null; }
+              if (g) { groupCb.current(g.k); return null; }
               latest.current.onPlug(latest.current.P[d.from.n - 1]);
             }
             else { const o = latest.current.O.find((x) => x.id === (d.from as { id: string }).id); if (o) latest.current.onOut(o); }
@@ -482,7 +524,11 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                     <Rect x={x - 40} y={y - 26} width={80} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
                     <SvgText x={x} y={y - 6} textAnchor="middle" fontSize={11} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
                     <SvgText x={x} y={y + 9} textAnchor="middle" fontSize={9} fill="#E8EAED">{g.plugs.length} prises</SvgText>
-                    <SvgText x={x} y={y + 20} textAnchor="middle" fontSize={8} fill="#9AA3AD">▸ déplier</SvgText>
+                    <SvgText x={x} y={y + 20} textAnchor="middle" fontSize={8} fill="#9AA3AD">touche · glisse vers une sortie</SvgText>
+                    <G onPress={() => setOpen((o) => [...o, g.k])}>
+                      <Rect x={x - 44} y={y - 50} width={88} height={18} rx={9} fill="#1E2227" stroke={gc} strokeWidth={1.5} />
+                      <SvgText x={x} y={y - 37} textAnchor="middle" fontSize={9} fontWeight="800" fill={gc}>▸ déplier les prises</SvgText>
+                    </G>
                     <Rect x={x - 34} y={y + 30} width={68} height={12} rx={4} fill={gc} opacity={0.9} />
                     <SvgText x={x} y={y + 39} textAnchor="middle" fontSize={8} fontWeight="800" fill="#0B0D10">{g.plugs.join(' · ').slice(0, 16)}</SvgText>
                   </G>
@@ -529,7 +575,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
               return (
                 <G key={w.plug + w.out}>
                   <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke="#0B0D10" strokeWidth={wireWidth(w.db) + 3} strokeLinecap="round" opacity={!sel || (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.6 : 0} />
-                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke={c} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={!sel ? 0.55 : (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.95 : 0.12} />
+                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke={c} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={!sel ? 0.55 : (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && !!groupOfPlug(w.plug) && groupOfPlug(w.plug)!.k === sel.k) ? 0.95 : 0.12} />
                   <Circle cx={b.x} cy={b.y} r={4} fill={c} />
                 </G>
               );

@@ -275,7 +275,7 @@ export function OutStrip(props: { client: XAirClient; target: Target; label: str
       <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
         {props.label}
       </Text>
-      {target.kind === 'main' ? <View style={{ height: 110, justifyContent: 'center' }}><MonoSwitch client={client} theme={theme} compact /></View> : <View style={{ height: 110 }} />}
+      {target.kind === 'main' ? <View style={{ height: 110, justifyContent: 'center', alignItems: 'center' }}><MonoSwitch client={client} theme={theme} compact /></View> : <View style={{ height: 110 }} />}
       <MuteButton muted={muted} onPress={toggleMute} theme={theme} />
       <AutoFader value={level} onChange={setLevel} color={props.color} theme={theme} label={`Sortie ${props.label}`} meter={meter.level} clip={meter.clip} />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
