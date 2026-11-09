@@ -89,6 +89,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [pickerOpen, setPickerOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copySet, setCopySet] = useState<number | null | 0>(null); // voie de départ (0 = aucune choisie), null = fermé
+  const [copyTo, setCopyTo] = useState<number[]>([]);
+  const [copyDrag, setCopyDrag] = useState<{ ch: number; dx: number } | null>(null);
   const [srcCh, setSrcCh] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,6 +166,31 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     items.push({ kind: 'group', g });
     if (openGroups.includes(g.k)) order.filter((c) => g.members.includes(c)).forEach((c) => items.push({ kind: 'ch', ch: c, inOpenGroup: true }));
   }
+
+  // Glisser « Copier » sur une autre tranche : quelle tranche est sous le doigt ?
+  const itemAt = (ch: number, dx: number): Item | null => {
+    const widths = items.map((it) => (it.kind === 'group' ? 92 : stripW));
+    const idx = items.findIndex((it) => it.kind === 'ch' && it.ch === ch);
+    if (idx < 0) return null;
+    let x = 0;
+    const starts = widths.map((w) => { const s0 = x; x += w + 6; return s0; });
+    const center = starts[idx] + widths[idx] / 2 + dx;
+    const k = starts.findIndex((s0, n) => center >= s0 && center <= s0 + widths[n]);
+    return k >= 0 && k !== idx ? items[k] : null;
+  };
+  const copyTarget = copyDrag ? itemAt(copyDrag.ch, copyDrag.dx) : null;
+  const dropCopy = (ch: number, dx: number) => {
+    const t = itemAt(ch, dx);
+    setCopyDrag(null);
+    if (!t) return;
+    setCopyTo(t.kind === 'ch' ? [t.ch] : t.g.members.filter((c) => c !== ch));
+    setCopySet(ch);
+  };
+  const CopyHere = () => (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, borderRadius: 12, borderWidth: 4, borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.30)', alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '900', textAlign: 'center' }}>⧉{'\n'}Copier{'\n'}ici</Text>
+    </View>
+  );
 
   const onSelect = (ch: number) => {
     if (mode === 'swap' && sel !== null && ch !== sel) {
@@ -272,8 +299,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
             <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={styles.strips}>
               {items.map((it) =>
                 it.kind === 'group' ? (
+                  <View key={'g' + it.g.k}>
                   <GroupStrip
-                    key={'g' + it.g.k}
                     client={client}
                     group={it.g}
                     target={target}
@@ -284,6 +311,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                     virtual={virtual[targetId(target) + it.g.k] ?? 0.75}
                     setVirtual={(v) => setVirtual((m) => ({ ...m, [targetId(target) + it.g.k]: v }))}
                   />
+                  {copyTarget === it && <CopyHere />}
+                  </View>
                 ) : (
                   <View key={it.ch} style={drag && drag.ch === it.ch ? { transform: [{ translateX: drag.dx }], zIndex: 10, opacity: 0.9 } : undefined}>
                   <Strip
@@ -312,15 +341,18 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                       theme={theme}
                       isSource={mode !== null && it.ch === sel}
                       modeLabel="échange"
-                      onCopy={() => setCopySet(it.ch)}
+                      onCopy={() => { setCopyTo([]); setCopySet(it.ch); }}
                       onSwap={() => { setSel(it.ch); setMode('swap'); }}
                       onInput={() => setSrcCh(it.ch)}
                       onRename={() => setRenameCh(it.ch)}
                       onCancel={() => { setSel(null); setMode(null); }}
                       onDrag={(dx) => setDrag({ ch: it.ch, dx })}
                       onDrop={(dx) => { setDrag(null); moveBy(it.ch, Math.round(dx / (stripW + 6))); }}
+                      onCopyDrag={(dx) => setCopyDrag(dx === null ? null : { ch: it.ch, dx })}
+                      onCopyDrop={(dx) => dropCopy(it.ch, dx)}
                     />
                   )}
+                  {copyTarget === it && <CopyHere />}
                   </View>
                 ),
               )}
@@ -368,7 +400,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={drawerActions} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
-      <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} onClose={() => setCopySet(null)} />
+      <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} to={copyTo} onClose={() => { setCopySet(null); setCopyTo([]); }} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />

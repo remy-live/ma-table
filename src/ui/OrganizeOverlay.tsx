@@ -15,6 +15,9 @@ export function OrganizeOverlay(props: {
   onCancel: () => void;
   onDrag: (dx: number) => void;
   onDrop: (dx: number) => void;
+  /** glisser le bouton « Copier » sur une autre voie */
+  onCopyDrag?: (dx: number | null) => void;
+  onCopyDrop?: (dx: number) => void;
 }) {
   const { theme } = props;
   const latest = useRef(props);
@@ -28,6 +31,23 @@ export function OrganizeOverlay(props: {
       onPanResponderMove: (_e, g) => latest.current.onDrag(g.dx),
       onPanResponderRelease: (_e, g) => latest.current.onDrop(g.dx),
       onPanResponderTerminate: () => latest.current.onDrop(0),
+    }),
+  ).current;
+
+  // « Copier les réglages » : un appui ouvre la fenêtre, un glisser vise une voie
+  const copyPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderMove: (_e, g) => { if (Math.abs(g.dx) > 10) latest.current.onCopyDrag?.(g.dx); },
+      onPanResponderRelease: (_e, g) => {
+        latest.current.onCopyDrag?.(null);
+        if (Math.abs(g.dx) > 10 && latest.current.onCopyDrop) latest.current.onCopyDrop(g.dx);
+        else latest.current.onCopy();
+      },
+      onPanResponderTerminate: () => latest.current.onCopyDrag?.(null),
     }),
   ).current;
 
@@ -46,7 +66,10 @@ export function OrganizeOverlay(props: {
         <Text style={{ color: theme.accent, fontSize: 22, fontWeight: '800' }}>⇆</Text>
         <Text style={{ color: theme.text, fontSize: 10, fontWeight: '800', textAlign: 'center' }}>glisse pour déplacer</Text>
       </View>
-      <Pressable onPress={props.onCopy} style={[styles.btn, { backgroundColor: theme.accent, borderColor: theme.accent }]}><Text style={[styles.btnText, { color: theme.onAccent }]}>Copier les réglages</Text></Pressable>
+      <View {...copyPan.panHandlers} accessibilityRole="button" accessibilityLabel="Copier les réglages : toucher, ou glisser sur une autre voie" style={[styles.btn, { backgroundColor: theme.accent, borderColor: theme.accent, minHeight: 58 }]}>
+        <Text style={[styles.btnText, { color: theme.onAccent, fontSize: 13 }]}>⧉ Copier</Text>
+        <Text style={{ color: theme.onAccent, fontSize: 9, fontWeight: '700', textAlign: 'center' }}>touche, ou glisse ⇢</Text>
+      </View>
       <Pressable onPress={props.onSwap} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Échanger…</Text></Pressable>
       <Pressable onPress={props.onInput} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Entrée</Text></Pressable>
       <Pressable onPress={props.onRename} style={[styles.btn, { borderColor: theme.line2 }]}><Text style={[styles.btnText, { color: theme.text }]}>Renommer</Text></Pressable>

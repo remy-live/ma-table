@@ -10,21 +10,48 @@ import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
 import { CATEGORIES, Category, copySettings } from '../xair/clipboard';
-import { colorOf } from '../xair/smartName';
+import { readGroups } from '../xair/groups';
+import { colorOf, recognize } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 
 const ALL = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
 
-export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; from: number | null; onClose: () => void }) {
+export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; from: number | null; to?: number[]; onClose: () => void }) {
   const { client, theme } = props;
   const [srcs, setSrcs] = useState<number[]>([]);
   const [dsts, setDsts] = useState<number[]>([]);
   const [cats, setCats] = useState<Category[]>(['eq', 'dyn', 'fx']);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (props.visible) { setSrcs(props.from ? [props.from] : []); setDsts([]); } }, [props.visible, props.from]);
+  useEffect(() => { if (props.visible) { setSrcs(props.from ? [props.from] : []); setDsts((props.to ?? []).filter((c) => c !== props.from)); } }, [props.visible, props.from]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
   const col = (c: number) => colorOf(Number(client.get(`/ch/${String(c).padStart(2, '0')}/config/color`) ?? 0));
+
+  // Sélections rapides : les groupes de la table et les familles reconnues dans les noms (Voix, Batterie, Guitares…)
+  const packs: { label: string; chans: number[] }[] = [];
+  readGroups(client).filter((g) => g.members.length).forEach((g) => packs.push({ label: g.name, chans: g.members }));
+  const fams = new Map<string, number[]>();
+  ALL.forEach((c) => { const fm = recognize(String(client.get(chNamePath(c)) ?? ''))?.group; if (fm) fams.set(fm, [...(fams.get(fm) ?? []), c]); });
+  fams.forEach((chans, label) => { if (!packs.some((p) => p.label.toLowerCase() === label.toLowerCase()) && chans.length > 1) packs.push({ label: `Toutes : ${label}`, chans }); });
+  const pickSrc = (chans: number[]) => { setSrcs(chans); setDsts((d) => d.filter((x) => !chans.includes(x))); };
+  const pickDst = (chans: number[]) => {
+    const ok = chans.filter((c) => !srcs.includes(c));
+    setDsts(srcs.length > 1 ? ok.slice(0, srcs.length) : ok);
+  };
+  const Packs = ({ onPick }: { onPick: (chans: number[]) => void }) => (packs.length ? (
+    <View style={[styles.wrap, { alignItems: 'center' }]}>
+      <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700' }}>d’un coup :</Text>
+      {packs.map((p) => (
+        <Pressable key={p.label} onPress={() => onPick(p.chans)} style={[styles.pack, { borderColor: theme.line2 }]}>
+          <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{p.label} ({p.chans.length})</Text>
+        </Pressable>
+      ))}
+    </View>
+  ) : null);
+  const summary = !srcs.length || !dsts.length ? '' : srcs.length > 1
+    ? dsts.map((d, k) => `${name(srcs[k])} → ${name(d)}`).join('  ·  ')
+    : `${name(srcs[0])} → ${dsts.map(name).join(', ')}`;
+
   const many = srcs.length > 1;
   const missing = many ? srcs.length - dsts.length : 0;
   const ready = srcs.length > 0 && dsts.length > 0 && cats.length > 0 && (!many || missing === 0);
@@ -56,11 +83,13 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>Copier les réglages</Text>
           <ScrollView contentContainerStyle={{ gap: 8 }}>
             <Kicker theme={theme}>1 · JE PRENDS LES RÉGLAGES DE… (une ou plusieurs voies)</Kicker>
+            <Packs onPick={pickSrc} />
             <View style={styles.wrap}>
               {ALL.map((c) => <Tile key={c} c={c} on={srcs.includes(c)} badge={many && srcs.includes(c) ? String(srcs.indexOf(c) + 1) : undefined} onPress={() => { toggle(srcs, setSrcs, c); setDsts((d) => d.filter((x) => x !== c)); }} />)}
             </View>
 
             <Kicker theme={theme}>{many ? `2 · …ET JE LES DONNE À ${srcs.length} VOIES, DANS LE MÊME ORDRE` : '2 · …ET JE LES DONNE À (une ou plusieurs voies)'}</Kicker>
+            {srcs.length > 0 && <Packs onPick={pickDst} />}
             <View style={styles.wrap}>
               {ALL.map((c) => {
                 const on = dsts.includes(c);
@@ -81,6 +110,7 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
               })}
             </View>
           </ScrollView>
+ {!!summary && <Text numberOfLines={2} style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{summary}</Text>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Btn theme={theme} label="Annuler" onPress={props.onClose} style={{ flex: 1 }} />
             <Btn theme={theme} kind="primary" disabled={!ready || busy} onPress={go} style={{ flex: 2 }}
@@ -98,5 +128,6 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
   tile: { width: '11.8%', minWidth: 80, minHeight: 50, borderRadius: 10, borderWidth: 2, padding: 6 },
   badge: { position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  pack: { minHeight: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1, justifyContent: 'center' },
   cat: { minHeight: 40, paddingHorizontal: 12, borderRadius: 20, borderWidth: 2, justifyContent: 'center' },
 });
