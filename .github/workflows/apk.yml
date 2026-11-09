@@ -1,0 +1,83 @@
+# Fabrique l'APK Android à chaque envoi sur main, et le publie dans « Releases ».
+# Lien fixe vers la dernière version :
+#   https://github.com/remy-live/ma-table/releases/latest/download/ma-table.apk
+name: APK Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Tests (simulateur de XR16)
+        run: npm test
+
+      - name: Numéro de version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const a = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const base = a.expo.version.split('.').slice(0, 2).join('.');
+            a.expo.version = base + '.' + process.env.GITHUB_RUN_NUMBER;
+            a.expo.android = { ...a.expo.android, versionCode: Number(process.env.GITHUB_RUN_NUMBER) };
+            fs.writeFileSync('app.json', JSON.stringify(a, null, 2));
+            fs.appendFileSync(process.env.GITHUB_ENV, 'APP_VERSION=' + a.expo.version + '\n');
+          "
+
+      - name: Projet Android natif
+        run: npx expo prebuild -p android --no-install
+
+      - name: Même signature à chaque version (mise à jour sans désinstaller)
+        run: cp signing/debug.keystore android/app/debug.keystore
+
+      - name: Compilation de l'APK
+        working-directory: android
+        env:
+          NODE_ENV: production
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Renommer
+        run: cp android/app/build/outputs/apk/release/app-release.apk ma-table.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ma-table-${{ env.APP_VERSION }}
+          path: ma-table.apk
+
+      - name: Publier dans Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: Ma table ${{ env.APP_VERSION }}
+          body: |
+            APK Android autonome (pas besoin du Mac ni de `npm start`).
+            Sur le téléphone : télécharge ma-table.apk, ouvre-le, installe.
+            ${{ github.event.head_commit.message }}
+          files: ma-table.apk
+          make_latest: true

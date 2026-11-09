@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Ma table",
+    "slug": "ma-table-xr16",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "fr.remy.matable",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Ma table a besoin du réseau local pour piloter ta table de mixage."
+      }
+    },
+    "android": {
+      "package": "fr.remy.matable",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE"
+      ]
+    },
+    "scheme": "matable"
+  }
+}
