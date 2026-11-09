@@ -166,7 +166,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View style={{ flex: 1, paddingBottom: wide ? (prefs.immersive !== false ? 8 : BOTTOM_INSET) : 0 }}>
+    <View style={{ flex: 1, paddingBottom: wide ? (prefs.immersive !== false ? 24 : BOTTOM_INSET) : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}

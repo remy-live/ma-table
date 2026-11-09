@@ -120,7 +120,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   }, [client, target]);
 
   const [bodyH, setBodyH] = useState(0);
-  const faderH = Math.max(260, bodyH - 4); // hauteur totale d'une tranche ; le fader prend le reste
+  const faderH = Math.max(260, bodyH - 12); // la tranche tient entièrement dans la zone : rien de coupé, tout reste cliquable // hauteur totale d'une tranche ; le fader prend le reste
   const [view, setView] = useState<StripView>('full');
   useEffect(() => { load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []);
   const VIEWS: { id: StripView; label: string; icon: string }[] = [
