@@ -170,7 +170,7 @@ export class XAirClient {
         `/ch/${n}/config/name`, `/ch/${n}/mix/fader`, `/ch/${n}/mix/on`, `/ch/${n}/grp/dca`,
         `/ch/${n}/mix/pan`, `/ch/${n}/preamp/invert`, `/headamp/${n}/gain`, `/headamp/${n}/phantom`,
         `/ch/${n}/config/color`, `/ch/${n}/eq/on`, `/ch/${n}/mix/07/level`, `/ch/${n}/mix/08/level`,
-        `/ch/${n}/mix/09/level`, `/ch/${n}/mix/10/level`,
+        `/ch/${n}/mix/09/level`, `/ch/${n}/mix/10/level`, `/ch/${n}/config/insrc`,
       );
     }
     for (let k = 1; k <= 4; k++) paths.push(`/dca/${k}/config/name`, `/dca/${k}/fader`, `/dca/${k}/on`);

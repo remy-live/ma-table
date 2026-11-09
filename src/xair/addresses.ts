@@ -152,3 +152,26 @@ export function formatHz(hz: number): string {
 /** Bits du masque DCA. */
 export const inDca = (mask: number, k: number) => ((mask >> (k - 1)) & 1) === 1;
 export const toggleDca = (mask: number, k: number) => mask ^ (1 << (k - 1));
+
+// ---------- Source d'une voie (quelle prise arrive sur cette voie) ----------
+// À VÉRIFIER avec le rapport : /ch/NN/config/insrc, entier 0..17
+// (0 = prise 1 … 15 = prise 16, 16 = LINE 17 / USB gauche, 17 = LINE 18 / USB droite).
+export const insrcPath = (ch: number) => `/ch/${ch2(ch)}/config/insrc`;
+export const INSRC_COUNT = 18;
+export const insrcLabel = (i: number) => (i < 16 ? `Prise ${i + 1}` : i === 16 ? 'Ordi G (17)' : 'Ordi D (18)');
+/** Numéro de prise à l'arrière (1..18) pour une valeur insrc. */
+export const insrcPlug = (i: number) => i + 1;
+
+/** Type d'entrée d'une voie, pour l'étiquette sous le numéro de prise. */
+export function sourceKind(insrc: number, phantom: boolean): 'Micro' | 'Micro 48V' | 'Ligne' | 'USB' {
+  if (insrc >= 16) return 'USB';
+  if (insrc + 1 <= MODEL.preamps) return phantom ? 'Micro 48V' : 'Micro';
+  return 'Ligne';
+}
+
+// ---------- Snapshots internes de la table (64 emplacements) ----------
+// À VÉRIFIER : /-snap/save ,i N · /-snap/load ,i N · /-snap/NN/name
+export const SNAP_COUNT = 64;
+export const snapNamePath = (n: number) => `/-snap/${ch2(n)}/name`;
+export const SNAP_SAVE = '/-snap/save';
+export const SNAP_LOAD = '/-snap/load';

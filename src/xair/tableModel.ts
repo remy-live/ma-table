@@ -42,6 +42,9 @@ export class TableModel {
       if (path.endsWith('/mode')) return i(0);
     }
     if (path.startsWith('/config/chlink/')) return i(0);
+    const src = /^\/ch\/(\d\d)\/config\/insrc$/.exec(path);
+    if (src) return i(Number(src[1]) - 1);
+    if (/^\/-snap\/\d\d\/name$/.test(path)) return s('');
     if (path.endsWith('/dyn/ratio')) return i(4);
     if (path.endsWith('/dyn/attack')) return f(0.1);
     if (!path.startsWith('/ch/') && !path.startsWith('/bus/') && !path.startsWith('/dca/') &&

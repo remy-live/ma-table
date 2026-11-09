@@ -1,25 +1,34 @@
-// Écran « EQ · FX » d'une voie : préréglages par instrument en haut,
-// puis égaliseur, coupe-bas, gate, compresseur et envois vers les 4 effets.
+// La voie, visuelle : le trajet du son en blocs (Entrée › Coupe-bas › Gate ›
+// EQ › Comp › Effets), un égaliseur dessiné avec 4 points, des effets en
+// tuiles avec « Retirer », et en bas qui entend cette voie.
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { f, i } from '../osc/osc';
 import {
-  channelDetailPaths, chLevelPath, chNamePath, dynOnPath, dynThrPath, eqGainToF, eqOnPath, eqPath,
-  formatHz, fToCompDb, fToEqGain, fToGateDb, fToHpfHz, fToHz, FX_COUNT, gateOnPath, gateThrPath,
-  hpfPath, hpOnPath,
+  BUS_COUNT, channelDetailPaths, chLevelPath, chNamePath, dynOnPath, dynThrPath, eqGainToF, eqOnPath, eqPath, formatHz, fToCompDb,
+  fToEqGain, fToGainDb, fToGateDb, fToHpfHz, fToHz, fToQ, FX_COUNT, gateOnPath, gateThrPath, headampGainPath, hpfHzToF, hpfPath, hpOnPath,
+  hzToF, insrcPath, insrcPlug, MAIN, phantomPath, sourceKind, Target,
 } from '../xair/addresses';
-import { formatDb } from '../xair/levels';
-import { applyPreset, PRESETS } from '../xair/presets';
-import { useParam } from '../xair/useParam';
+import { Band, bandName, curvePath, curvePoints, xOf, yOfDb } from '../xair/eqCurve';
+import { fxType, fxTypePath } from '../xair/effects';
+import { dbToFader, faderToDb, formatDb } from '../xair/levels';
+
+import { useMeter } from '../xair/useMeter';
+import { useParam, useParamOpt } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { HSlider } from '../ui/HSlider';
 import { Theme } from '../ui/theme';
-import { fxType, fxTypePath } from '../xair/effects';
 import { EffectsScreen } from './EffectsScreen';
+import { InputSheet } from './InputSheet';
+import { InputSourceSheet } from './InputSourceSheet';
+import { mixInfo } from './MixPicker';
 import { PresetsSheet } from './PresetsSheet';
+import { meterIndex } from '../xair/addresses';
 
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
-const BAND_NAMES = ['Grave', 'Bas-médium', 'Médium', 'Aigu'];
+const BAND_COLORS = ['#60A5FA', '#34D399', '#FBBF24', '#F472B6'];
+type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx';
 
 export function ChannelScreen({ client, ch, theme, onClose }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void }) {
   return (
@@ -31,12 +40,16 @@ export function ChannelScreen({ client, ch, theme, onClose }: { client: XAirClie
 
 function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: number; theme: Theme; onClose: () => void }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const [preset, setPreset] = useState<string | null>(null);
+  const [block, setBlock] = useState<Block>('eq');
+  const [band, setBand] = useState(2);
   const [lib, setLib] = useState(false);
   const [fxOpen, setFxOpen] = useState<number | null>(null);
+  const [inputOpen, setInputOpen] = useState(false);
+  const [srcOpen, setSrcOpen] = useState(false);
 
   useEffect(() => {
-    client.loadPaths(channelDetailPaths(ch));
+    client.loadPaths([...channelDetailPaths(ch), insrcPath(ch), headampGainPath(ch), phantomPath(ch), ...Array.from({ length: BUS_COUNT }, (_, k) => chLevelPath(ch, { kind: 'bus', n: k + 1 })), chLevelPath(ch, MAIN)]);
+    client.startMeters();
   }, [client, ch]);
 
   const num = (p: string, fb: number) => Number(useParam<number>(client, p, fb));
@@ -47,8 +60,37 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
   const gateThr = num(gateThrPath(ch), 0.5);
   const dynOn = num(dynOnPath(ch), 0) === 1;
   const dynThr = num(dynThrPath(ch), 0.6);
-  const bands = [1, 2, 3, 4].map((b) => ({ b, g: num(eqPath(ch, b, 'g'), 0.5), fr: num(eqPath(ch, b, 'f'), 0.5) }));
+  const bands: Band[] = [1, 2, 3, 4].map((b) => ({ type: num(eqPath(ch, b, 'type'), 2), hz: fToHz(num(eqPath(ch, b, 'f'), 0.5)), db: fToEqGain(num(eqPath(ch, b, 'g'), 0.5)), q: fToQ(num(eqPath(ch, b, 'q'), 0.5)) }));
   const sends = Array.from({ length: FX_COUNT }, (_, k) => num(chLevelPath(ch, { kind: 'fx', n: k + 1 }), 0));
+  const insrc = num(insrcPath(ch), ch - 1);
+  const gain = useParamOpt(client, headampGainPath(ch));
+  const p48 = Number(useParamOpt(client, phantomPath(ch)) ?? 0) === 1;
+  const kind = sourceKind(insrc, p48);
+  const meter = useMeter(client, [meterIndex.ch(ch)], 120);
+  const dests: Target[] = [MAIN, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)];
+  const destLv = dests.map((t) => num(chLevelPath(ch, t), 0));
+
+  const fxCount = sends.filter((v) => v > 0).length;
+  const BLOCKS: { id: Block; icon: string; label: string; sub: string; color: string }[] = [
+    { id: 'in', icon: '🎤', label: 'Entrée', sub: `prise ${insrcPlug(insrc)} · ${gain === undefined ? kind : `${fToGainDb(Number(gain)) > 0 ? '+' : ''}${fToGainDb(Number(gain)).toFixed(0)} dB`}`, color: '#C9CED4' },
+    { id: 'hpf', icon: '⤴', label: 'Coupe-bas', sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
+    { id: 'gate', icon: '▯', label: 'Gate', sub: gateOn ? `${fToGateDb(gateThr).toFixed(0)} dB` : 'off', color: '#9AA3AD' },
+    { id: 'eq', icon: '〰', label: 'EQ', sub: eqOn ? '4 bandes' : 'off', color: '#FBBF24' },
+    { id: 'comp', icon: '◐', label: 'Comp', sub: dynOn ? `${fToCompDb(dynThr).toFixed(0)} dB` : 'off', color: '#34D399' },
+    { id: 'fx', icon: '✦', label: 'Effets', sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
+  ];
+  const active = (b: Block) => (b === 'hpf' ? hpOn : b === 'gate' ? gateOn : b === 'eq' ? eqOn : b === 'comp' ? dynOn : b === 'fx' ? fxCount > 0 : true);
+
+  // EQ
+  const W = 330;
+  const H = 150;
+  const pts = curvePoints(bands, eqOn, hpOn ? fToHpfHz(hpf) : null);
+  const path = curvePath(pts, W, H);
+  const area = `${path} L${W} ${H / 2} L0 ${H / 2} Z`;
+  const setBandG = (k: number, db: number) => client.set(eqPath(ch, k + 1, 'g'), f(eqGainToF(Math.max(-15, Math.min(15, db)))));
+  const setBandF = (k: number, hz: number) => client.set(eqPath(ch, k + 1, 'f'), f(hzToF(Math.max(20, Math.min(20000, hz)))));
+  const flat = () => bands.forEach((_, k) => setBandG(k, 0));
+  const b = bands[band];
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
@@ -57,121 +99,237 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
           <Text style={{ color: theme.text, fontSize: 20 }}>‹</Text>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>CH {ch}</Text>
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>{name}</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>
+            Voie {ch} · prise {insrcPlug(insrc)} · {kind.toLowerCase()}
+          </Text>
         </View>
+        <Pressable onPress={() => setLib(true)} style={[styles.chip, { borderColor: theme.accent, borderWidth: 1 }]}>
+          <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 13 }}>Préréglage ▾</Text>
+        </Pressable>
       </View>
 
+      {/* LE TRAJET DU SON */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }} style={{ flexGrow: 0 }}>
+        {BLOCKS.map((bl) => {
+          const on = block === bl.id;
+          const act = active(bl.id);
+          return (
+            <Pressable key={bl.id} onPress={() => setBlock(bl.id)} accessibilityState={{ selected: on }} accessibilityLabel={`${bl.label} · ${bl.sub}`} style={[styles.block, { borderColor: on ? bl.color : theme.line, backgroundColor: on ? theme.deep : theme.panel, opacity: act || on ? 1 : 0.6 }]}>
+              <Text style={{ fontSize: 18 }}>{bl.icon}</Text>
+              <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{bl.label}</Text>
+              <Text style={{ color: on ? bl.color : theme.muted, fontSize: 10 }} numberOfLines={1}>{bl.sub}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       <ScrollView contentContainerStyle={styles.body}>
-        <Text style={[styles.section, { color: theme.muted }]}>PRÉRÉGLAGE INSTRUMENT</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {PRESETS.map((p) => {
-            const on = preset === p.name;
-            return (
-              <Pressable
-                key={p.name}
-                onPress={() => {
-                  applyPreset(client, ch, p);
-                  setPreset(p.name);
-                }}
-                accessibilityState={{ selected: on }}
-                style={[styles.chip, on ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1, backgroundColor: theme.panel }]}
-              >
-                <Text style={{ color: on ? theme.onAccent : theme.text, fontWeight: on ? '700' : '500', fontSize: 14 }}>{p.name}</Text>
-              </Pressable>
-            );
-          })}
-          <Pressable onPress={() => setLib(true)} style={[styles.chip, { borderColor: theme.accent, borderWidth: 1 }]}>
-            <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 14 }}>Bibliothèque…</Text>
-          </Pressable>
-        </ScrollView>
-        {preset && <Text style={{ color: theme.muted, fontSize: 12 }}>Point de départ « {preset} » appliqué : ajuste à l'oreille.</Text>}
-
-        <Card theme={theme} title="Égaliseur" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
-          {bands.map(({ b, g, fr }) => (
-            <HSlider
-              key={b}
-              label={`${BAND_NAMES[b - 1]} · ${formatHz(fToHz(fr))}`}
-              value={g}
-              center
-              valueText={`${fToEqGain(g) > 0 ? '+' : ''}${fToEqGain(g).toFixed(1)} dB`}
-              onChange={(v) => client.set(eqPath(ch, b, 'g'), f(v))}
-              color={theme.accent}
-              theme={theme}
-            />
-          ))}
-          <Pressable onPress={() => [1, 2, 3, 4].forEach((b) => client.set(eqPath(ch, b, 'g'), f(eqGainToF(0))))}>
-            <Text style={{ color: theme.muted, fontSize: 13, paddingVertical: 8 }}>Remettre l'EQ à plat</Text>
-          </Pressable>
-        </Card>
-
-        <Card theme={theme} title="Coupe-bas" on={hpOn} onToggle={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))}>
-          <HSlider label="Fréquence" value={hpf} valueText={formatHz(fToHpfHz(hpf))} onChange={(v) => client.set(hpfPath(ch), f(v))} color="#60A5FA" theme={theme} />
-        </Card>
-
-        <Card theme={theme} title="Gate" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
-          <HSlider label="Seuil" value={gateThr} valueText={`${fToGateDb(gateThr).toFixed(0)} dB`} onChange={(v) => client.set(gateThrPath(ch), f(v))} color={theme.ok} theme={theme} />
-        </Card>
-
-        <Card theme={theme} title="Compresseur" on={dynOn} onToggle={() => client.set(dynOnPath(ch), i(dynOn ? 0 : 1))}>
-          <HSlider label="Seuil" value={dynThr} valueText={`${fToCompDb(dynThr).toFixed(0)} dB`} onChange={(v) => client.set(dynThrPath(ch), f(v))} color={theme.ok} theme={theme} />
-        </Card>
-
-        <Card theme={theme} title="Effets de la table">
-          {sends.map((v, k) => (
-            <View key={k} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-              <View style={{ flex: 1 }}>
-            <HSlider
-              label={`FX${k + 1} · ${fxType(Number(client.get(fxTypePath(k + 1)) ?? 0)).fr}`}
-              value={v}
-              valueText={formatDb(v)}
-              onChange={(x) => client.set(chLevelPath(ch, { kind: 'fx', n: k + 1 }), f(x))}
-              color={FX_COLORS[k]}
-              theme={theme}
-            />
+        {block === 'in' && (
+          <Card theme={theme} title="Entrée" color="#C9CED4">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={[styles.plug, { backgroundColor: theme.deep, borderColor: theme.line2 }]}>
+                <Text style={{ color: theme.muted, fontSize: 10 }}>PRISE</Text>
+                <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>{insrcPlug(insrc)}</Text>
               </View>
-              <Pressable
-                onPress={() => client.set(chLevelPath(ch, { kind: 'fx', n: k + 1 }), f(0))}
-                disabled={v <= 0}
-                accessibilityLabel={`Retirer l’effet ${k + 1} de cette voie`}
-                style={[styles.chip, { height: 36, paddingHorizontal: 10, borderWidth: 1, borderColor: v > 0 ? theme.mute : theme.line, opacity: v > 0 ? 1 : 0.4 }]}
-              >
-                <Text style={{ color: v > 0 ? theme.mute : theme.muted, fontWeight: '800', fontSize: 12 }}>{v > 0 ? 'Retirer' : 'Aucun'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{kind}</Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{insrc >= 16 ? 'Le son de l’ordinateur par USB.' : `Branché à l’arrière de la table, prise n°${insrcPlug(insrc)}.`}</Text>
+              </View>
+              <Pressable onPress={() => setSrcOpen(true)} style={[styles.chip, { borderColor: theme.line2, borderWidth: 1 }]}>
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>Changer</Text>
               </Pressable>
             </View>
-          ))}
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-            {[1, 2, 3, 4].map((k) => (
-              <Pressable key={k} onPress={() => setFxOpen(k)} style={[styles.chip, { borderColor: FX_COLORS[k - 1], borderWidth: 1, backgroundColor: theme.panel }]}>
-                <Text style={{ color: FX_COLORS[k - 1], fontWeight: '700', fontSize: 13 }}>Régler FX{k}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </Card>
-        <View style={{ height: 40 }} />
+            <View style={{ gap: 4 }}>
+              <View style={{ height: 14, borderRadius: 7, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+                <View style={{ width: `${Math.round(meter.level * 100)}%`, height: 14, backgroundColor: meter.db > -3 ? theme.mute : meter.db > -18 ? theme.ok : '#FCD34D' }} />
+              </View>
+              <Text style={{ color: meter.db > -3 ? theme.mute : meter.db > -18 ? theme.ok : theme.muted, fontSize: 11, fontWeight: '700' }}>
+                {meter.db < -55 ? 'Rien n’arrive' : meter.db > -3 ? 'Niveau d’entrée : trop fort, baisse le gain' : meter.db > -18 ? 'Niveau d’entrée : parfait' : 'Niveau d’entrée : un peu faible'}
+              </Text>
+            </View>
+            <Pressable onPress={() => setInputOpen(true)} style={[styles.wide, { backgroundColor: theme.accent }]}>
+              <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 14 }}>Gain · 48 V · phase · pan</Text>
+            </Pressable>
+          </Card>
+        )}
+
+        {(block === 'eq' || block === 'hpf') && (
+          <Card theme={theme} title="Égaliseur" color="#FBBF24" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
+            <View style={{ borderRadius: 12, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+              <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+                <Line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke={theme.line} strokeWidth={1} />
+                {[100, 1000, 10000].map((hz) => (
+                  <Line key={hz} x1={xOf(hz) * W} y1={0} x2={xOf(hz) * W} y2={H} stroke={theme.line} strokeWidth={0.5} />
+                ))}
+                <Path d={area} fill="rgba(251,191,36,0.18)" />
+                <Path d={path} fill="none" stroke="#FBBF24" strokeWidth={3} strokeLinejoin="round" />
+                {bands.map((bd, k) => (
+                  <Circle key={k} cx={xOf(bd.hz) * W} cy={yOfDb(eqOn ? bd.db : 0, H)} r={11} fill={band === k ? '#FFFFFF' : BAND_COLORS[k]} stroke={theme.meterBg} strokeWidth={3} onPress={() => setBand(k)} />
+                ))}
+                {hpOn && <Line x1={xOf(fToHpfHz(hpf)) * W} y1={0} x2={xOf(fToHpfHz(hpf)) * W} y2={H} stroke="#60A5FA" strokeWidth={2} strokeDasharray="4 4" />}
+              </Svg>
+              <View style={{ position: 'absolute', left: 8, bottom: 4 }}><Text style={{ color: theme.muted, fontSize: 10 }}>graves</Text></View>
+              <View style={{ position: 'absolute', right: 8, bottom: 4 }}><Text style={{ color: theme.muted, fontSize: 10 }}>aigus</Text></View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {bands.map((bd, k) => (
+                <Pressable key={k} onPress={() => setBand(k)} accessibilityState={{ selected: band === k }} style={[styles.bandBtn, { borderColor: band === k ? BAND_COLORS[k] : theme.line, backgroundColor: band === k ? theme.deep : theme.panel }]}>
+                  <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{bandName(bd.hz)}</Text>
+                  <Text style={{ color: BAND_COLORS[k], fontSize: 11, fontWeight: '700' }}>{`${bd.db > 0 ? '+' : ''}${bd.db.toFixed(0)} dB`}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Pressable onPress={() => setBandG(band, b.db - 1)} accessibilityLabel="Baisser la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>−</Text></Pressable>
+              <Text style={{ flex: 1, textAlign: 'center', color: theme.text, fontSize: 15, fontWeight: '800' }}>{`${b.db > 0 ? '+' : ''}${b.db.toFixed(1)} dB`}</Text>
+              <Pressable onPress={() => setBandG(band, b.db + 1)} accessibilityLabel="Monter la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>+</Text></Pressable>
+              <Pressable onPress={() => setBandF(band, b.hz / 1.2)} accessibilityLabel="Plus grave" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>◀</Text></Pressable>
+              <Text style={{ width: 64, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '700' }}>{formatHz(b.hz)}</Text>
+              <Pressable onPress={() => setBandF(band, b.hz * 1.2)} accessibilityLabel="Plus aigu" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>▶</Text></Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                ['Moins de boum', () => setBandG(1, bands[1].db - 2)],
+                ['Plus de clarté', () => setBandG(2, bands[2].db + 2)],
+                ['Plus d’air', () => setBandG(3, bands[3].db + 2)],
+                ['Remettre à plat', flat],
+              ].map(([label, go]) => (
+                <Pressable key={label as string} onPress={go as () => void} style={[styles.quick, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{label as string}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={[styles.sub, { borderTopColor: theme.line }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ color: theme.text, fontWeight: '800', flex: 1 }}>Coupe-bas</Text>
+                <Toggle on={hpOn} theme={theme} onPress={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))} />
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>Enlève le grondement sous la voix (100 Hz) ou sous les guitares (80 Hz). Garde-le coupé pour le kick et la basse.</Text>
+              <HSlider label="Fréquence" value={hpf} valueText={formatHz(fToHpfHz(hpf))} onChange={(v) => client.set(hpfPath(ch), f(v))} color="#60A5FA" theme={theme} />
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[80, 100, 150].map((hz) => (
+                  <Pressable key={hz} onPress={() => { client.set(hpfPath(ch), f(hpfHzToF(hz))); client.set(hpOnPath(ch), i(1)); }} style={[styles.quick, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{hz} Hz</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </Card>
+        )}
+
+        {block === 'gate' && (
+          <Card theme={theme} title="Gate" color="#9AA3AD" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
+            <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Coupe le micro quand on ne joue pas. Utile sur le kick et les toms (il ne laisse passer que les coups). À éviter sur la voix.</Text>
+            <HSlider label="Seuil" value={gateThr} valueText={`${fToGateDb(gateThr).toFixed(0)} dB`} onChange={(v) => client.set(gateThrPath(ch), f(v))} color={theme.ok} theme={theme} />
+          </Card>
+        )}
+
+        {block === 'comp' && (
+          <Card theme={theme} title="Compresseur" color="#34D399" on={dynOn} onToggle={() => client.set(dynOnPath(ch), i(dynOn ? 0 : 1))}>
+            <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Rapproche les passages forts et faibles : la voix reste devant même quand on chante doucement. Seuil bas = plus de compression.</Text>
+            <HSlider label="Seuil" value={dynThr} valueText={`${fToCompDb(dynThr).toFixed(0)} dB`} onChange={(v) => client.set(dynThrPath(ch), f(v))} color={theme.ok} theme={theme} />
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {[['Léger', -24], ['Moyen', -18], ['Ferme', -12]].map(([l, db]) => (
+                <Pressable key={l as string} onPress={() => { client.set(dynThrPath(ch), f(((db as number) + 60) / 60)); client.set(dynOnPath(ch), i(1)); }} style={[styles.quick, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{l as string}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Card>
+        )}
+
+        {block === 'fx' && (
+          <Card theme={theme} title={`Effets sur ${name}`} color="#C084FC">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {sends.map((v, k) => {
+                const on = v > 0;
+                const t = fxType(Number(client.get(fxTypePath(k + 1)) ?? 0));
+                const c = FX_COLORS[k];
+                const path = chLevelPath(ch, { kind: 'fx', n: k + 1 });
+                const db = faderToDb(v);
+                return (
+                  <View key={k} style={[styles.fxTile, { borderColor: on ? c : theme.line, backgroundColor: theme.deep, opacity: on ? 1 : 0.7 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={[styles.fxBadge, { backgroundColor: c }]}><Text style={{ color: '#0B0D10', fontSize: 11, fontWeight: '800' }}>FX{k + 1}</Text></View>
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{t.fr}</Text>
+                        <Text style={{ color: theme.muted, fontSize: 10 }}>{t.family.toLowerCase()}</Text>
+                      </View>
+                    </View>
+                    <View style={{ height: 10, borderRadius: 5, backgroundColor: theme.panel, overflow: 'hidden' }}>
+                      <View style={{ width: `${on ? Math.max(4, Math.round(((db + 40) / 40) * 100)) : 0}%`, height: 10, backgroundColor: c }} />
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.max(-40, db - 2)) : 0))} accessibilityLabel={`Moins de ${t.fr}`} style={[styles.pm, { width: 40, height: 40, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
+                      <Text style={{ flex: 1, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{on ? `${formatDb(v)} dB` : 'aucun'}</Text>
+                      <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.min(0, db + 2)) : dbToFader(-20)))} accessibilityLabel={`Plus de ${t.fr}`} style={[styles.pm, { width: 40, height: 40, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <Pressable onPress={() => client.set(path, f(on ? 0 : dbToFader(-14)))} style={[styles.quick, { flex: 1, borderColor: on ? theme.mute : theme.line2, alignItems: 'center' }]}>
+                        <Text style={{ color: on ? '#FCA5A5' : theme.text, fontSize: 12, fontWeight: '800' }}>{on ? '✕ Retirer' : '+ Ajouter'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => setFxOpen(k + 1)} style={[styles.quick, { borderColor: c, alignItems: 'center' }]}>
+                        <Text style={{ color: c, fontSize: 12, fontWeight: '800' }}>Régler</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        )}
+
+        {/* QUI ENTEND CETTE VOIE */}
+        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, borderWidth: 1 }]}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>QUI ENTEND « {name.toUpperCase()} »</Text>
+          {dests.map((t, k) => {
+            const m = mixInfo(client, t);
+            const db = faderToDb(destLv[k]);
+            const on = destLv[k] > 0;
+            const path = chLevelPath(ch, t);
+            return (
+              <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
+                <View style={[styles.avatar, { backgroundColor: m.color }]}><Text style={{ color: '#0B0D10', fontSize: 10, fontWeight: '800' }}>{m.ini}</Text></View>
+                <Text numberOfLines={1} style={{ width: 86, color: theme.text, fontSize: 13, fontWeight: '700' }}>{m.name}</Text>
+                <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+                  <View style={{ width: `${on ? Math.max(3, Math.round(((db + 40) / 50) * 100)) : 0}%`, height: 12, backgroundColor: m.color }} />
+                </View>
+                <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.max(-40, db - 2)) : 0))} accessibilityLabel={`Moins pour ${m.name}`} style={[styles.pm, { width: 38, height: 38, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>−</Text></Pressable>
+                <Text style={{ width: 48, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '800' }}>{on ? formatDb(destLv[k]) : 'rien'}</Text>
+                <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.min(10, db + 2)) : dbToFader(-10)))} accessibilityLabel={`Plus pour ${m.name}`} style={[styles.pm, { width: 38, height: 38, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>+</Text></Pressable>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={{ height: 30 }} />
       </ScrollView>
+
       <PresetsSheet client={client} theme={theme} visible={lib} ch={ch} onClose={() => setLib(false)} />
       <EffectsScreen client={client} theme={theme} visible={fxOpen !== null} startSlot={fxOpen ?? 1} onClose={() => setFxOpen(null)} />
+      <InputSheet client={client} ch={inputOpen ? ch : null} theme={theme} onClose={() => setInputOpen(false)} />
+      <InputSourceSheet client={client} ch={srcOpen ? ch : null} theme={theme} onClose={() => setSrcOpen(false)} />
     </View>
   );
 }
 
-function Card(props: { theme: Theme; title: string; on?: boolean; onToggle?: () => void; children: React.ReactNode }) {
+function Toggle(props: { on: boolean; theme: Theme; onPress: () => void }) {
+  const { theme, on } = props;
+  return (
+    <Pressable onPress={props.onPress} accessibilityRole="switch" accessibilityState={{ checked: on }} style={[styles.toggle, on ? { backgroundColor: theme.ok } : { borderColor: theme.line2, borderWidth: 1 }]}>
+      <Text style={{ color: on ? '#0B0D10' : theme.muted, fontWeight: '700', fontSize: 12 }}>{on ? 'ACTIF' : 'COUPÉ'}</Text>
+    </Pressable>
+  );
+}
+
+function Card(props: { theme: Theme; title: string; color: string; on?: boolean; onToggle?: () => void; children: React.ReactNode }) {
   const { theme } = props;
   return (
-    <View style={[styles.card, { backgroundColor: theme.panel }]}>
+    <View style={[styles.card, { backgroundColor: theme.panel, borderColor: props.color, borderWidth: 2 }]}>
       <View style={styles.cardHead}>
-        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{props.title}</Text>
-        {props.onToggle && (
-          <Pressable
-            onPress={props.onToggle}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: !!props.on }}
-            style={[styles.toggle, props.on ? { backgroundColor: theme.ok } : { borderColor: theme.line2, borderWidth: 1 }]}
-          >
-            <Text style={{ color: props.on ? '#0B0D10' : theme.muted, fontWeight: '700', fontSize: 12 }}>{props.on ? 'ACTIF' : 'COUPÉ'}</Text>
-          </Pressable>
-        )}
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{props.title}</Text>
+        {props.onToggle && <Toggle on={!!props.on} theme={theme} onPress={props.onToggle} />}
       </View>
       {props.children}
     </View>
@@ -181,12 +339,23 @@ function Card(props: { theme: Theme; title: string; on?: boolean; onToggle?: () 
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: 48 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 4 },
   back: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 16, gap: 12 },
-  section: { fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
-  chip: { height: 40, paddingHorizontal: 14, borderRadius: 20, justifyContent: 'center' },
-  card: { borderRadius: 16, padding: 12, gap: 2 },
-  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  body: { padding: 12, gap: 12 },
+  chip: { height: 40, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center' },
+  block: { width: 78, height: 70, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
+  card: { borderRadius: 18, padding: 14, gap: 10 },
+  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   toggle: { height: 32, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center' },
+  plug: { width: 64, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  wide: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  bandBtn: { flex: 1, height: 50, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  pm: { width: 46, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  pmText: { fontSize: 20, fontWeight: '800' },
+  quick: { minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, justifyContent: 'center' },
+  sub: { borderTopWidth: 1, paddingTop: 10, gap: 8 },
+  fxTile: { width: '48%', flexGrow: 1, borderRadius: 14, borderWidth: 2, padding: 10, gap: 8 },
+  fxBadge: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
 });

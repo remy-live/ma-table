@@ -6,6 +6,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import {
   chDcaPath, chLevelPath, chNamePath, chOnPath, dcaFaderPath, dcaOnPath, fToGainDb, fToPan, headampGainPath,
   inDca, invertPath, meterIndex, outOnPath, outPath, panPath, phantomPath, Target,
+  insrcPath, insrcPlug, sourceKind,
 } from '../xair/addresses';
 import { Group, moveMembers, snapshot } from '../xair/groups';
 import { dbToFader, faderToDb, formatDb } from '../xair/levels';
@@ -31,6 +32,12 @@ interface StripProps {
   height: number;
   selected: boolean;
   inOpenGroup: boolean;
+  /** mode copier/échanger : cette voie est une cible possible */
+  pasteTarget?: boolean;
+  pasted?: boolean;
+  pasteLabel?: string;
+  onPasteToggle?: (ch: number) => void;
+  dim?: boolean;
   onSelect: (ch: number) => void;
   onRename: (ch: number) => void;
   onOpenInput: (ch: number) => void;
@@ -53,25 +60,39 @@ export function Strip(p: StripProps) {
   const fxOn = fxVals.some((v) => Number(v ?? 0) > 0);
   const meter = useMeter(client, [meterIndex.ch(ch)]);
   const gainDb = gain === undefined ? null : fToGainDb(Number(gain));
+  const insrc = Number(useParam<number>(client, insrcPath(ch), ch - 1));
+  const kind = sourceKind(insrc, p48);
 
   const bg = p.selected ? '#1F1C14' : p.inOpenGroup ? '#1C1A14' : theme.panel;
   const border = p.selected ? GROUP_COLOR : p.inOpenGroup ? '#4A3B12' : theme.line;
 
   return (
-    <View style={[styles.strip, { backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1 }]}>
+    <View style={[styles.strip, { backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1, opacity: p.dim ? 0.45 : 1 }]}>
       {p.selected && (
         <View style={{ position: 'absolute', top: -1, left: -1, right: -1, zIndex: 2, backgroundColor: GROUP_COLOR, borderTopLeftRadius: 14, borderTopRightRadius: 14, paddingVertical: 3, alignItems: 'center' }}>
           <Text style={{ color: '#1A1204', fontSize: 11, fontWeight: '800' }}>✓ SÉLECTIONNÉE</Text>
         </View>
       )}
+      {p.pasteTarget && (
+        <Pressable
+          onPress={() => p.onPasteToggle?.(ch)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !!p.pasted }}
+          accessibilityLabel={`${p.pasteLabel ?? 'Coller ici'} : ${name}`}
+          style={[StyleSheet.absoluteFill, { zIndex: 5, borderRadius: 12, borderWidth: 3, borderStyle: 'dashed', borderColor: p.pasted ? '#34D399' : GROUP_COLOR, backgroundColor: p.pasted ? 'rgba(52,211,153,0.28)' : 'rgba(245,158,11,0.14)', alignItems: 'center', justifyContent: 'center', padding: 6 }]}
+        >
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800', textAlign: 'center' }}>{p.pasted ? '✓' : '+'}</Text>
+          <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{p.pasteLabel ?? 'Coller ici'}</Text>
+        </Pressable>
+      )}
       <Pressable
-        onPress={() => p.onSelect(ch)}
+        onPress={() => p.onOpenInput(ch)}
         accessibilityRole="button"
-        accessibilityState={{ selected: p.selected }}
-        accessibilityLabel={`Actions sur ${name}`}
-        style={[styles.head, { backgroundColor: p.selected ? GROUP_COLOR : theme.track }]}
+        accessibilityLabel={`Prise ${insrcPlug(insrc)} · ${kind}`}
+        style={[styles.head, { backgroundColor: theme.deep, borderColor: theme.line, borderWidth: 1, height: 34 }]}
       >
-        <Text style={{ color: p.selected ? '#1A1204' : theme.text, fontSize: 11, fontWeight: '800' }}>CH {ch} ⋯</Text>
+        <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>PRISE {insrcPlug(insrc)}</Text>
+        <Text style={{ color: kind === 'Micro 48V' ? '#F87171' : kind === 'USB' ? '#A3E635' : theme.text, fontSize: 10, fontWeight: '700' }}>{kind}</Text>
       </Pressable>
 
       <Pressable onPress={() => p.onOpenInput(ch)} accessibilityRole="button" accessibilityLabel={`Entrée de ${name}`} style={styles.inputZone}>
@@ -110,9 +131,18 @@ export function Strip(p: StripProps) {
       />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
 
-      <View style={{ flexDirection: 'row', gap: 4, width: '100%' }}>
+      <View style={{ flexDirection: 'row', gap: 3, width: '100%' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} />
         <SmallBtn label="FX" on={fxOn} onColor="#C084FC" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Effets de ${name}`} />
+        <Pressable
+          onPress={() => p.onSelect(ch)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: p.selected }}
+          accessibilityLabel={`Actions sur ${name} : déplacer, copier, échanger, entrée`}
+          style={[styles.small, { flex: 0, width: 26, borderColor: p.selected ? GROUP_COLOR : theme.line, backgroundColor: p.selected ? GROUP_COLOR : theme.deep }]}
+        >
+          <Text style={{ color: p.selected ? '#1A1204' : theme.text, fontSize: 13, fontWeight: '800' }}>⋯</Text>
+        </Pressable>
       </View>
     </View>
   );

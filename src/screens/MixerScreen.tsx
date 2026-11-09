@@ -12,7 +12,6 @@ import { Theme } from '../ui/theme';
 import { ChannelScreen } from './ChannelScreen';
 import { GroupsSheet } from './GroupsSheet';
 import { InputSheet } from './InputSheet';
-import { PasteSheet } from './PasteSheet';
 import { SmartRenameSheet } from './SmartRenameSheet';
 import { Tool, ToolsSheet } from './ToolsSheet';
 import { EffectsScreen } from './EffectsScreen';
@@ -21,6 +20,10 @@ import { GuideScreen } from './GuideScreen';
 import { WhoHearsScreen } from './WhoHearsScreen';
 import { ClipBanner } from './ClipBanner';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
+import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
+import { InputSourceSheet } from './InputSourceSheet';
+import { CATEGORIES, Category } from '../xair/clipboard';
+import { insrcPath, insrcPlug } from '../xair/addresses';
 
 const CHANNELS = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
 const BUS_COLORS = ['#60A5FA', '#34D399', '#38BDF8', '#A3E635', '#FB923C', '#F87171'];
@@ -72,9 +75,12 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
   const [openGroups, setOpenGroups] = useState<number[]>([]);
   const [order, setOrder] = useState<number[]>(CHANNELS);
   const [sel, setSel] = useState<number | null>(null);
-  const [mode, setMode] = useState<null | 'move' | 'swap'>(null);
+  const [mode, setMode] = useState<null | 'copy' | 'swap'>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pasteSel, setPasteSel] = useState<number[]>([]);
+  const [cats, setCats] = useState<Category[]>(['eq', 'dyn', 'fx']);
+  const [srcCh, setSrcCh] = useState<number | null>(null);
   const [clip, setClip] = useState<Clip | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { busName, groups } = useMixerLabels(client);
@@ -124,6 +130,10 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
   }
 
   const onSelect = (ch: number) => {
+    if (mode === 'copy' && sel !== null && ch !== sel) {
+      togglePaste(ch);
+      return;
+    }
     if (mode === 'swap' && sel !== null && ch !== sel) {
       const a = sel;
       setMode(null);
@@ -133,6 +143,31 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
     }
     setMode(null);
     setSel((s) => (s === ch ? null : ch));
+  };
+
+  const togglePaste = (ch: number) => setPasteSel((a) => (a.includes(ch) ? a.filter((x) => x !== ch) : [...a, ch]));
+  const doSwap = async (ch: number) => {
+    if (sel === null || ch === sel) return;
+    const a = sel;
+    setMode(null);
+    setSel(null);
+    await swapChannels(client, a, ch);
+    // la place à l'écran suit aussi
+    const o = order.slice();
+    const ia = o.indexOf(a);
+    const ib = o.indexOf(ch);
+    [o[ia], o[ib]] = [o[ib], o[ia]];
+    setAndSaveOrder(o);
+    say(`Voies ${a} et ${ch} échangées (réglages et place)`);
+  };
+  const doPaste = async () => {
+    if (sel === null || !pasteSel.length) return;
+    const c = clip ?? (await copyChannel(client, sel));
+    pasteChannel(client, c, pasteSel, cats);
+    say(`Réglages de ${name(sel)} collés sur ${pasteSel.length} voie${pasteSel.length > 1 ? 's' : ''}`);
+    setMode(null);
+    setPasteSel([]);
+    setSel(null);
   };
 
   const move = (dir: -1 | 1) => {
@@ -168,33 +203,14 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       </View>
       <ClipBanner client={client} onOpen={setInputCh} />
 
-      <View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.targets}>
-          {allTargets().map((t) => {
-            const on = targetId(t) === targetId(target);
-            const c = targetColor(t, theme);
-            return (
-              <Pressable
-                key={targetId(t)}
-                onPress={() => setTarget(t)}
-                accessibilityState={{ selected: on }}
-                style={[styles.target, on ? { backgroundColor: c } : { backgroundColor: theme.panel, borderColor: theme.line, borderWidth: 1 }]}
-              >
-                {!on && <View style={[styles.tdot, { backgroundColor: c }]} />}
-                <Text style={{ color: on ? '#0B0D10' : theme.text, fontWeight: on ? '800' : '600', fontSize: 13 }}>{label(t)}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-      {target.kind === 'bus' && (
-        <View style={[styles.hintRow, { backgroundColor: theme.panel }]}>
-          <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>Les faders règlent ce qu’il y a dans « {label(target)} ».</Text>
-          <Pressable onPress={() => { copyMainTo(client, target); say('Mix façade copié dans ' + label(target)); }} style={[styles.copy, { backgroundColor: color }]}>
-            <Text style={{ color: '#0B0D10', fontWeight: '700', fontSize: 12 }}>Copier la façade</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 8 }}>
+        <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
+        {target.kind === 'bus' && (
+          <Pressable onPress={() => { copyMainTo(client, target); say(`${mixInfo(client, target).name} entend maintenant comme le public`); }} style={[styles.copy, { backgroundColor: theme.panel, borderColor: color, borderWidth: 1, height: 54 }]}>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>Comme{'\n'}le public</Text>
           </Pressable>
-        </View>
-      )}
+        )}
+      </View>
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
         {bodyH > 0 && (
@@ -225,6 +241,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
                     height={faderH}
                     selected={sel === it.ch}
                     inOpenGroup={it.inOpenGroup}
+                    pasteTarget={mode !== null && sel !== null && it.ch !== sel}
+                    pasted={pasteSel.includes(it.ch)}
+                    pasteLabel={mode === 'swap' ? 'Échanger ⇄' : 'Coller ici'}
+                    onPasteToggle={(ch) => (mode === 'swap' ? doSwap(ch) : togglePaste(ch))}
+                    dim={false}
                     onSelect={onSelect}
                     onRename={setRenameCh}
                     onOpenInput={setInputCh}
@@ -241,36 +262,51 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       </View>
 
       {sel !== null && (
-        <View style={[styles.bar, { backgroundColor: '#20242A', borderColor: theme.line2 }]}>
+        <View style={[styles.bar, { backgroundColor: '#1F1C14', borderColor: '#F59E0B', borderWidth: 2 }]}>
           <View style={styles.barHead}>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>
-              {name(sel)} · CH {sel}
-            </Text>
-            <Pressable onPress={() => { setSel(null); setMode(null); }} accessibilityLabel="Fermer" style={styles.close}>
-              <Text style={{ color: theme.muted, fontSize: 20 }}>×</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{name(sel)}</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>
+                Prise {insrcPlug(Number(client.get(insrcPath(sel)) ?? sel - 1))} · {mode === 'copy' ? 'touche les voies qui reçoivent ces réglages' : mode === 'swap' ? 'touche la voie avec laquelle échanger (réglages et place)' : 'que faire ?'}
+              </Text>
+            </View>
+            <Pressable onPress={() => { setSel(null); setMode(null); setPasteSel([]); }} accessibilityLabel="Fermer" style={styles.close}>
+              <Text style={{ color: theme.muted, fontSize: 22 }}>×</Text>
             </Pressable>
           </View>
           {mode === null && (
-            <View style={styles.barRow}>
-              <BarBtn label="Copier" primary theme={theme} onPress={async () => { const c = await copyChannel(client, sel); setClip(c); say(`Réglages de ${name(sel)} copiés`); }} />
-              <BarBtn label="Coller" theme={theme} disabled={!clip} onPress={() => clip && setPasteOpen(true)} />
-              <BarBtn label="Déplacer" theme={theme} onPress={() => setMode('move')} />
-              <BarBtn label="Échanger" theme={theme} onPress={() => setMode('swap')} />
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.barRow}>
+              <BarBtn label="◀ Déplacer" theme={theme} onPress={() => move(-1)} />
+              <BarBtn label="Déplacer ▶" theme={theme} onPress={() => move(1)} />
+              <BarBtn label="Copier les réglages vers…" primary theme={theme} onPress={() => { setClip(null); setPasteSel([]); setMode('copy'); }} />
+              <BarBtn label="Échanger avec…" theme={theme} onPress={() => setMode('swap')} />
+              <BarBtn label="Changer l’entrée" theme={theme} onPress={() => setSrcCh(sel)} />
+              <BarBtn label="Renommer" theme={theme} onPress={() => setRenameCh(sel)} />
+            </ScrollView>
           )}
-          {mode === 'move' && (
-            <View style={styles.barRow}>
-              <BarBtn label="◀" theme={theme} onPress={() => move(-1)} />
-              <BarBtn label="▶" theme={theme} onPress={() => move(1)} />
-              <BarBtn label="Terminé" primary theme={theme} onPress={() => setMode(null)} />
-            </View>
+          {mode === 'copy' && (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.barRow}>
+                {CATEGORIES.filter((c) => c.id !== 'nom').map((c) => {
+                  const on = cats.includes(c.id);
+                  return (
+                    <Pressable key={c.id} onPress={() => setCats((a) => (on ? a.filter((x) => x !== c.id) : [...a, c.id]))} accessibilityState={{ selected: on }} style={[styles.chip, on ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+                      <Text style={{ color: on ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '700' }}>{c.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.barRow}>
+                <BarBtn label={pasteSel.length ? `Coller sur ${pasteSel.length} voie${pasteSel.length > 1 ? 's' : ''}` : 'Touche une ou plusieurs voies'} primary theme={theme} disabled={!pasteSel.length || !cats.length} onPress={doPaste} />
+                <BarBtn label="Annuler" theme={theme} onPress={() => { setMode(null); setPasteSel([]); }} />
+              </View>
+            </>
           )}
           {mode === 'swap' && (
-            <Text style={{ color: '#FBBF24', fontSize: 13, paddingVertical: 8 }}>Touche le « CH ⋯ » de la voie avec laquelle tout échanger.</Text>
+            <View style={styles.barRow}>
+              <BarBtn label="Annuler" theme={theme} onPress={() => setMode(null)} />
+            </View>
           )}
-          <Text style={{ color: theme.muted, fontSize: 11 }}>
-            {mode === 'move' ? 'Déplacer change l’ordre à l’écran, pas les branchements.' : clip ? `Presse-papiers : ${name(clip.from)}` : 'Copier garde les réglages ; Coller les applique à d’autres voies.'}
-          </Text>
         </View>
       )}
 
@@ -300,21 +336,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       <GuideScreen client={client} theme={theme} visible={tool === 'guide'} onClose={() => setTool(null)} />
       <AutoBalanceScreen client={client} theme={theme} visible={tool === 'auto'} onClose={() => setTool(null)} />
       <WhoHearsScreen client={client} theme={theme} visible={tool === 'quientend'} onClose={() => setTool(null)} />
-      <PasteSheet
-        client={client}
-        clip={clip}
-        visible={pasteOpen}
-        preselect={sel}
-        theme={theme}
-        onClose={() => setPasteOpen(false)}
-        onPaste={(targets, cats) => {
-          if (!clip) return;
-          pasteChannel(client, clip, targets, cats);
-          setPasteOpen(false);
-          setSel(null);
-          say(`Collé sur ${targets.length} voie${targets.length > 1 ? 's' : ''}`);
-        }}
-      />
+      <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
+      <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>
   );
 }
@@ -342,7 +365,7 @@ const styles = StyleSheet.create({
   target: { height: 42, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tdot: { width: 8, height: 8, borderRadius: 4 },
   hintRow: { marginHorizontal: 16, marginBottom: 4, borderRadius: 10, paddingHorizontal: 10, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  copy: { height: 34, paddingHorizontal: 10, borderRadius: 9, justifyContent: 'center' },
+  copy: { paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center' },
   body: { flex: 1, flexDirection: 'row', paddingTop: 6, paddingBottom: 10 },
   strips: { gap: 6, paddingHorizontal: 10, alignItems: 'flex-start' },
   master: { paddingHorizontal: 8, borderLeftWidth: 1 },
@@ -350,6 +373,7 @@ const styles = StyleSheet.create({
   barHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 4 },
   close: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   barRow: { flexDirection: 'row', gap: 6 },
+  chip: { height: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, justifyContent: 'center' },
   barBtn: { flex: 1, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', left: 24, right: 24, top: 104, backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1, borderRadius: 12, padding: 10 },
 });
