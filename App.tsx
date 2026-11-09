@@ -7,7 +7,7 @@ import { StageScreen } from './src/screens/StageScreen';
 import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
-import { autoBackup } from './src/store/autoBackup';
+import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { keepAwake } from './src/ui/keepAwake';
 import { initStorage } from './src/store/persist';
 import { THEME_ORDER, THEMES } from './src/ui/theme';
@@ -39,10 +39,14 @@ export default function App() {
     }
   }, []);
 
-  // Écran allumé tant qu'une table est connectée
+  // Écran allumé tant qu'une table est connectée, et photo de sécurité toutes les 10 min
   useEffect(() => {
     keepAwake(!!client);
-    return () => keepAwake(false);
+    const stop = client ? startPeriodicBackup(client, undefined, (a) => a && dbg.info('Sauvegarde automatique (10 min)')) : null;
+    return () => {
+      keepAwake(false);
+      stop?.();
+    };
   }, [client]);
 
   // QR code scanné avec l'appareil photo → l'appli s'ouvre sur matable://retour?…
@@ -89,7 +93,7 @@ export default function App() {
               setMonitor({ cfg: mon, owner: false });
             } else {
               // photo de sécurité de la table, sans bloquer l'écran
-              setTimeout(() => autoBackup(c).then((sn) => sn && dbg.info('Sauvegarde automatique faite')).catch(() => {}), 1500);
+              setTimeout(() => safetyBackup(c, 'connexion').then((sn) => sn && dbg.info('Sauvegarde automatique faite')).catch(() => {}), 1500);
             }
             setClient(c);
           }}

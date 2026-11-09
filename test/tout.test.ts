@@ -8,7 +8,7 @@ import { applyNeed, currentNeed, gainAdvice, nudgeGain } from '../src/xair/guide
 import { dbToFader, faderToDb } from '../src/xair/levels';
 import { applyPreset, FAMILIES, LIBRARY, presetFromChannel, presetPaths } from '../src/xair/presets';
 import { destinations, levelPaths, shares, sources, whoHearsPaths } from '../src/xair/whoHears';
-import { addAuto, AUTO_MAX, listAutos } from '../src/store/autoBackup';
+import { addAuto, AUTO_MAX, listAutos } from '../src/store/sessions';
 import { XAirClient } from '../src/xair/XAirClient';
 import { wiringPaths } from '../src/xair/wiring';
 import { NodeUdpTransport } from '../sim/nodeTransport';
@@ -118,7 +118,7 @@ test('Alerte saturation et sauvegardes automatiques', async () => {
   m[2] = -30;
   assert.deepEqual(clipped(m, 3000, last), [3]); // reste affiché un moment
   assert.deepEqual(clipped(m, 6000, last), []);
-  for (let k = 0; k < AUTO_MAX + 2; k++) await addAuto({ name: 'x', at: k, values: { '/lr/mix/fader': dbToFader(0) } });
+  for (let k = 0; k < AUTO_MAX + 2; k++) await addAuto({ name: 'x', at: k, values: { '/lr/mix/fader': dbToFader(0) } }, 'test');
   const l = await listAutos();
   assert.equal(l.length, AUTO_MAX);
   assert.equal(l[0].at, AUTO_MAX + 1); // la plus récente d'abord
@@ -169,3 +169,41 @@ test('Courbe EQ : plateaux, cloches, chemin SVG', async () => {
   assert.equal(e.bandName(80), 'Graves');
   assert.equal(e.bandName(4000), 'Présence');
 });
+
+test('Soirées : en cours, enregistrer, nouvelle, reprendre, export/import, table', () =>
+  withTable(10175, [], async (c, sim) => {
+    const S = await import('../src/store/sessions');
+    const cur = await S.current();
+    assert.match(cur.name, /^Soirée du/);
+    await S.renameCurrent('Répèt chez Seb');
+    const saved = await S.saveCurrentSession(c);
+    assert.equal(saved.name, 'Répèt chez Seb');
+    assert.ok(Object.keys(saved.snap.values).length > 50);
+    // nouvelle soirée depuis une table vide : noms effacés, gains intacts
+    const g = sim.state.get('/headamp/01/gain')!.v;
+    const n = await S.startNewSession(c, 'blank');
+    await sleep(150);
+    assert.notEqual(n.id, cur.id);
+    assert.equal(sim.state.get('/ch/01/config/name')!.v, '');
+    assert.equal(sim.state.get('/ch/01/mix/fader')!.v, 0);
+    assert.equal(sim.state.get('/headamp/01/gain')!.v, g);
+    // reprendre l'ancienne
+    const list = await S.listSessions();
+    assert.equal(list[0].name, 'Répèt chez Seb');
+    const { restore } = await import('../src/xair/snapshot');
+    restore(c, list[0].snap);
+    await sleep(200);
+    assert.equal(sim.state.get('/ch/01/config/name')!.v, 'Voix');
+    // export / import
+    const txt = await S.exportSession(list[0]);
+    assert.ok(txt.length > 1000);
+    await S.deleteSession(list[0].id);
+    assert.equal((await S.listSessions()).filter((x) => x.name === 'Répèt chez Seb').length, 0);
+    const r = await S.importText(txt);
+    assert.ok(r.restored.some((x) => x.includes('Répèt chez Seb')));
+    assert.throws(() => JSON.parse('nope'));
+    // snapshot interne de la table : nom + commande
+    S.saveToTable(c, 3, 'Salle des fêtes 2026');
+    await sleep(80);
+    assert.equal(sim.state.get('/-snap/03/name')!.v, 'Salle des fê');
+  }));

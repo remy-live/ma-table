@@ -7,8 +7,7 @@ import { isPersistent, load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { NetworkSetupScreen } from './NetworkSetupScreen';
 import { DebugScreen } from './DebugScreen';
-import { listAutos } from '../store/autoBackup';
-import { restore, Snapshot } from '../xair/snapshot';
+import { SessionsScreen } from './SessionsScreen';
 
 const KEYS = ['balance', 'ordre', 'mesPresets', 'autos'];
 
@@ -18,15 +17,7 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
   const [importText, setImportText] = useState('');
   const [netOpen, setNetOpen] = useState(false);
   const [dbgOpen, setDbgOpen] = useState(false);
-  const [autos, setAutos] = useState<Snapshot[]>([]);
-  useEffect(() => {
-    listAutos().then(setAutos);
-  }, []);
-  const askAuto = (a: Snapshot) =>
-    Alert.alert('Remettre la table comme à cette connexion ?', `${new Date(a.at).toLocaleString('fr-FR')} · tout ce qui a changé depuis sera remplacé.`, [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Remettre', style: 'destructive', onPress: () => Alert.alert('Fait', `${restore(client, a)} réglages remis.`) },
-    ]);
+  const [sessOpen, setSessOpen] = useState(false);
   useEffect(() => client.onStatus(setStatus), [client]);
   useEffect(() => {
     const t = setInterval(() => setSilence(client.silenceSeconds()), 1000);
@@ -122,21 +113,16 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
         </Text>
       </View>
 
-      <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 6 }]}>
-        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Sauvegardes automatiques</Text>
-        <Text style={{ color: theme.muted, fontSize: 12 }}>À chaque connexion, l’appli photographie toute la table (les 5 dernières sont gardées).</Text>
-        {autos.length === 0 && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucune pour l’instant.</Text>}
-        {autos.map((a) => (
-          <Pressable key={a.at} onPress={() => askAuto(a)} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{new Date(a.at).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <Pressable onPress={() => setSessOpen(true)} style={[styles.card, { backgroundColor: theme.panel, borderColor: '#34D399', gap: 2 }]}>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Mes soirées et sauvegardes ›</Text>
+        <Text style={{ color: theme.muted, fontSize: 12 }}>Enregistrer la soirée, en démarrer une nouvelle, reprendre, sauvegardes automatiques, copie dans la table.</Text>
+      </Pressable>
 
       <Pressable onPress={() => setDbgOpen(true)} style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line2, gap: 2 }]}>
         <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Débogage ›</Text>
         <Text style={{ color: theme.muted, fontSize: 12 }}>Journal, diagnostic de la table, envoyer le rapport</Text>
       </Pressable>
+      <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => setSessOpen(false)} />
       <DebugScreen client={client} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
 
       <Pressable onPress={onDisconnect} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}>

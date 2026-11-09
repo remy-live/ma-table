@@ -18,6 +18,8 @@ import { EffectsScreen } from './EffectsScreen';
 import { PresetsSheet } from './PresetsSheet';
 import { GuideScreen } from './GuideScreen';
 import { WiringScreen } from './WiringScreen';
+import { SessionsScreen } from './SessionsScreen';
+import { safetyBackup } from '../store/sessions';
 import { ClipBanner } from './ClipBanner';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
 import { MixPickerButton, MixPickerSheet, mixInfo } from './MixPicker';
@@ -163,6 +165,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
   const doPaste = async () => {
     if (sel === null || !pasteSel.length) return;
     const c = clip ?? (await copyChannel(client, sel));
+    if (pasteSel.length > 1) safetyBackup(client, `avant collage sur ${pasteSel.length} voies`).catch(() => {});
     pasteChannel(client, c, pasteSel, cats);
     say(`Réglages de ${name(sel)} collés sur ${pasteSel.length} voie${pasteSel.length > 1 ? 's' : ''}`);
     setMode(null);
@@ -335,6 +338,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; onNextThe
       <PresetsSheet client={client} theme={theme} visible={tool === 'presets'} ch={null} onClose={() => setTool(null)} />
       <GuideScreen client={client} theme={theme} visible={tool === 'guide'} onClose={() => setTool(null)} />
       <AutoBalanceScreen client={client} theme={theme} visible={tool === 'auto'} onClose={() => setTool(null)} />
+      <SessionsScreen client={client} theme={theme} visible={tool === 'soirees'} onClose={() => setTool(null)} />
       <WiringScreen client={client} theme={theme} visible={tool === 'branchements'} onClose={() => setTool(null)} />
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />

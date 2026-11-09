@@ -13,6 +13,7 @@ import {
 } from '../xair/autoBalance';
 import { swapChannels } from '../xair/clipboard';
 import { capture, restore, Snapshot } from '../xair/snapshot';
+import { addAuto } from '../store/sessions';
 import { XAirClient } from '../xair/XAirClient';
 import { whoHearsPaths } from '../xair/whoHears';
 
@@ -174,6 +175,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     const r = R.current;
     await client.loadPaths([...whoHearsPaths(), ...Array.from({ length: 8 }, (_, k) => `/headamp/0${k + 1}/gain`), ...Array.from({ length: CH_COUNT }, (_, k) => [gateOnPath(k + 1), dynOnPath(k + 1)]).flat()]);
     r.undo = await capture(client, 'Avant la balance automatique');
+    addAuto(r.undo, 'avant balance automatique').catch(() => {});
     r.steps = list;
     r.samples = new Map();
     r.solos = new Map();

@@ -3,7 +3,7 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../ui/theme';
 
-export type Tool = 'branchements' | 'auto' | 'guide' | 'effets' | 'presets' | 'groupes' | 'theme';
+export type Tool = 'soirees' | 'branchements' | 'auto' | 'guide' | 'effets' | 'presets' | 'groupes' | 'theme';
 
 const ITEMS: [Tool, string, string, string][] = [
   ['auto', 'Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle', '#22C55E'],
@@ -12,6 +12,7 @@ const ITEMS: [Tool, string, string, string][] = [
   ['presets', 'Préréglages', 'Par instrument, avec variantes · mes réglages', '#F59E0B'],
   ['branchements', 'Branchements', 'La face arrière de la table, les fils, qui entend quoi', '#60A5FA'],
   ['groupes', 'Groupes', 'Batterie, Guitares… monter plusieurs voies d’un coup', '#FBBF24'],
+  ['soirees', 'Mes soirées', 'Enregistrer, nouvelle soirée, reprendre, sauvegardes', '#34D399'],
   ['theme', 'Changer de thème', 'Nuit · Scène ambre · Plein jour', '#9AA3AD'],
 ];
 
