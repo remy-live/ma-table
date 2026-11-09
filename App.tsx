@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Linking, StatusBar, View } from 'react-native';
+import { AppState, Alert, Linking, StatusBar, View } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { MixerScreen } from './src/screens/MixerScreen';
 import { StageScreen } from './src/screens/StageScreen';
@@ -102,6 +102,13 @@ export default function App() {
     ]);
   }, [invite, client]);
 
+  useEffect(() => {
+    if (prefs.immersive === false) return;
+    const timers = [600, 2000, 5000].map((ms) => setTimeout(() => setImmersive(true), ms));
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') setTimeout(() => setImmersive(true), 300); });
+    return () => { timers.forEach(clearTimeout); sub.remove(); };
+  }, [prefs.immersive]);
+  useEffect(() => { if (prefs.immersive !== false) setImmersive(true); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const go = (t: Section) => {
     if (locked && t !== 'scene') {
       Alert.alert('Verrouillé', 'Déverrouille d’abord depuis l’écran Scène.');

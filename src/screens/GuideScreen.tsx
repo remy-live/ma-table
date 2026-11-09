@@ -23,7 +23,7 @@ const STEPS = ['Ce qui est branché', 'Mes groupes', 'Qui veut entendre quoi', '
 
 function useTick(client: XAirClient) {
   const [t, setT] = useState(0);
-  useEffect(() => client.on('*', (_v, p) => (p.endsWith('/config/name') || p.endsWith('/grp/dca') || p.includes('/level')) && setT((x) => x + 1)), [client]);
+  useEffect(() => client.on('*', (_v, p) => (p.endsWith('/config/name') || p.endsWith('/grp/dca') || p.includes('/level') || p.endsWith('/mix/fader') || p.endsWith('/config/color') || p.includes('/headamp/')) && setT((x) => x + 1)), [client]);
   return t;
 }
 
