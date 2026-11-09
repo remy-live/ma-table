@@ -43,5 +43,5 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
 const styles = StyleSheet.create({
   box: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 3 },
   btn: { minHeight: 40, paddingHorizontal: 10, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  one: { height: 40, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  one: { height: 54, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
 });

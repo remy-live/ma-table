@@ -252,11 +252,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
         </Pressable>
-        {view !== 'gains' && view !== 'table' && (
-          <Pressable onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
-            <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
-          </Pressable>
-        )}
+        <Pressable disabled={view === 'gains' || view === 'table'} onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); setPasteSel([]); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, (view === 'gains' || view === 'table') && { opacity: 0.35 }]}>
+          <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
+        </Pressable>
         <Pressable onPress={() => setGroupsOpen(true)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
           <Text style={{ color: '#FBBF24', fontSize: 13, fontWeight: '700' }}>Groupes</Text>
         </Pressable>
@@ -430,10 +428,10 @@ function BarBtn(props: { label: string; onPress: () => void; theme: Theme; prima
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  header: { height: 62, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700' },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  hbtn: { height: 40, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
+  hbtn: { height: 54, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, justifyContent: 'center' },
   targets: { gap: 6, paddingHorizontal: 16, paddingBottom: 8 },
   target: { height: 42, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tdot: { width: 8, height: 8, borderRadius: 4 },
