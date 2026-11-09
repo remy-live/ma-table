@@ -17,8 +17,10 @@ import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS, initials } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
+import { TableWiring } from './TableWiring';
+import { load, save } from '../store/persist';
 
-type View3 = 'arriere' | 'colonnes' | 'niveaux' | 'bulles';
+type View3 = 'table' | 'arriere' | 'colonnes' | 'niveaux' | 'bulles';
 type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | null;
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
@@ -40,7 +42,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const tick = useTick(client);
-  const [view, setView] = useState<View3>(width > 700 ? 'arriere' : 'colonnes');
+  const [view, setView] = useState<View3>(width > 700 ? 'table' : 'colonnes');
+  useEffect(() => { load<View3>('vueBranchements', width > 700 ? 'table' : 'colonnes').then((v) => v && setView(v)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
   const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
@@ -84,7 +87,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Branchements</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-              {view === 'bulles' ? 'Une bulle = un son dans une oreille' : 'Glisse d’une prise à une sortie pour relier · appui = voir'}
+              {view === 'bulles' ? 'Une bulle = un son dans une oreille' : view === 'table' ? 'Touche une prise : règle-la ou relie-la · touche une sortie : ce qu’elle entend' : 'Glisse d’une prise à une sortie pour relier · appui = voir'}
             </Text>
           </View>
           {!props.embedded && (<Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
@@ -92,8 +95,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
             </Pressable>)}
         </View>
         <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['niveaux', 'Niveaux'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
-            <Pressable key={v} onPress={() => { setView(v); setSel(null); }} style={[styles.segBtn, view === v && { backgroundColor: theme.accent }]}>
+          {([['table', 'Table'], ['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['niveaux', 'Niveaux'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
+            <Pressable key={v} onPress={() => { setView(v); setSel(null); save('vueBranchements', v); }} style={[styles.segBtn, view === v && { backgroundColor: theme.accent }]}>
               <Text style={{ color: view === v ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
             </Pressable>
           ))}
@@ -101,6 +104,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
 
         {view === 'bulles' ? (
           <WhoHearsScreen client={client} theme={theme} visible embedded onClose={props.onClose} />
+        ) : view === 'table' ? (
+          <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />
         ) : view === 'niveaux' ? (
           <Levels client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />
         ) : (
@@ -541,7 +546,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, marginHorizontal: 14, marginBottom: 8 },
-  segBtn: { flex: 1, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  segBtn: { flex: 1, height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   bottom: { marginHorizontal: 10, marginBottom: 8, borderWidth: 2, borderRadius: 16, padding: 8, gap: 6 },
   small: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   num: { width: 38, height: 38, borderRadius: 19, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
