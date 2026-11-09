@@ -6,8 +6,7 @@ import { StageScreen } from './src/screens/StageScreen';
 import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
-import { BOTTOM_INSET } from './src/ui/safeArea';
-import { setImmersive } from './src/ui/immersive';
+import { setImmersive, useBottomInset } from './src/ui/immersive';
 import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -31,6 +30,7 @@ export default function App() {
   const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal', immersive: true });
   const themeKey = prefs.theme;
   const [tab, setTab] = useState<Section>('table');
+  const bottomInset = useBottomInset(prefs.immersive !== false);
   const [fxCh, setFxCh] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
   const { width } = useWindowDimensions();
@@ -166,7 +166,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View style={{ flex: 1, paddingBottom: wide ? (prefs.immersive !== false ? 24 : BOTTOM_INSET) : 0 }}>
+    <View style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
@@ -175,7 +175,7 @@ export default function App() {
     </View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column' }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
       {wide && <NavBar theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       {body}

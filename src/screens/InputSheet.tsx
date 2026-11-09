@@ -2,6 +2,7 @@
 // Le contenu est le tiroir commun : voir ChannelDrawer.
 import React from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { readInset } from '../ui/immersive';
 import { Theme } from '../ui/theme';
 import { colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
@@ -22,7 +23,7 @@ export function InputSheet({ client, ch, theme, onClose, actions }: { client: XA
       <View style={styles.backdrop}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Fermer" />
         {ch !== null && (
-          <View style={[styles.sheet, { backgroundColor: theme.panel, borderColor: color, height: Math.min(420, height * 0.6) }]}>
+          <View style={[styles.sheet, { backgroundColor: theme.panel, borderColor: color, height: Math.min(420, height * 0.6) + readInset(), paddingBottom: 14 + readInset() }]}>
             <ChannelDrawer client={client} theme={theme} ch={ch} actions={wrapped} onClose={onClose} />
           </View>
         )}
