@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { f, s } from '../src/osc/osc';
+import { f, i, s } from '../src/osc/osc';
 import { chLevelPath, MAIN } from '../src/xair/addresses';
 import { clipped } from '../src/xair/clip';
 import { applyRecipe, fToMs, fxParPath, fxReturnPath, fxType, fxTypePath, knobsFor, msToF, rackPaths, RECIPES, setKnob, tapTempo } from '../src/xair/effects';
@@ -206,4 +206,39 @@ test('Soirées : en cours, enregistrer, nouvelle, reprendre, export/import, tabl
     S.saveToTable(c, 3, 'Salle des fêtes 2026');
     await sleep(80);
     assert.equal(sim.state.get('/-snap/03/name')!.v, 'Salle des fê');
+  }));
+
+test('Journal : regroupe les gestes rapprochés, distingue moi / autre, phrases en clair', () =>
+  withTable(10176, ['/headamp/01/gain', ...Array.from({ length: 6 }, (_, k) => `/bus/${k + 1}/mix/fader`)], async (c, sim) => {
+    const { Journal } = await import('../src/store/journal');
+    const j = new Journal();
+    j.entries = [];
+    const off = c.onChange((p, v, b, who) => j.record(c, p, v, b, who, Date.now()));
+    c.set('/ch/01/mix/fader', f(0.8));
+    c.set('/ch/01/mix/fader', f(0.85));
+    c.set('/ch/01/mix/fader', f(0.9));
+    assert.equal(j.entries.length, 1, 'trois gestes rapides = une ligne');
+    assert.match(j.entries[0].text, /^Voix : façade/);
+    assert.match(j.entries[0].text, /\+6\.0 dB$/);
+    assert.equal(j.entries[0].who, 'moi');
+    c.set('/ch/04/mix/on', i(0));
+    assert.match(j.entries[0].text, /Basse : coupée/);
+    // changement venu d'un autre appareil : le simulateur pousse une valeur (après l'écho de 300 ms)
+    await sleep(350);
+    sim.externalSet('/headamp/01/gain', f(0.6));
+    await sleep(120);
+    assert.equal(j.entries[0].who, 'autre');
+    assert.match(j.entries[0].text, /Prise 1 : gain/);
+    off();
+    const { rescue, unrescue, checklist } = await import('../src/xair/rescue');
+    const before = sim.state.get('/bus/1/mix/fader')!.v;
+    const st = rescue(c);
+    await sleep(80);
+    assert.ok(faderToDb(sim.state.get('/bus/1/mix/fader')!.v as number) < faderToDb(before as number) - 5);
+    unrescue(c, st);
+    await sleep(80);
+    assert.equal(sim.state.get('/bus/1/mix/fader')!.v, before);
+    const ck = checklist(c, { balanceSaved: false, sessionSaved: true, wifiClient: true, limiters: 0, namedReturns: 1 });
+    assert.equal(ck.find((x) => x.id === 'balance')!.ok, false);
+    assert.equal(ck.find((x) => x.id === 'link')!.ok, true);
   }));

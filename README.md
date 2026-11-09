@@ -23,6 +23,25 @@ Trois onglets en bas : **Table**, **Scène**, **Connexion**.
   par mix (façade ou retour), pause de la façade, verrou (bloque les autres onglets).
 - **Connexion** : état de la liaison, reconnexions, sauvegarde (export / import), conseil routeur, déconnexion.
 
+## Nouveau dans la 0.8 : UX v2 (après le premier test sur la XR18)
+
+- **Console** : en haut, « Les faders règlent ce qu'entend : Le public ▾ » (choix avec des visages ; les effets à part, en
+  avancé). Chaque voie affiche sa **prise** et son type (micro, 48 V, ligne, USB). **⋯** sous la voie → bandeau
+  « ✓ SÉLECTIONNÉE » et barre : ◀ Déplacer ▶, **Copier les réglages vers…** (les autres voies deviennent des cibles
+  « + Coller ici »), **Échanger avec…** (réglages ET place), **Changer l'entrée** (quelle prise, ou l'USB), Renommer.
+- **Voie** : le trajet du son en blocs (Entrée › Coupe-bas › Gate › EQ › Comp › Effets), **EQ dessiné** (4 points, raccourcis
+  « Moins de boum », « Plus de clarté »…), effets en tuiles avec **✕ Retirer**, et « Qui entend cette voie ».
+- **Branchements** (Outils) : 3 vues — **face arrière** de la XR18 en vectoriel (prises numérotées, fils source → sortie,
+  épaisseur = niveau), **colonnes** (téléphone), **bulles** (le tableau « Qui entend quoi »). Touche une prise puis une
+  sortie = un fil. « Vers tous les retours », « Comme le public ».
+- **Inviter** : des visages (prénoms pris sur les noms des retours), QR code en 3 images, droits en tuiles.
+- **Mes soirées** : la soirée en cours, Enregistrer, **Nouvelle soirée** (repartir du même réglage, de la balance, ou d'une
+  table vide), Reprendre, Envoyer / Recevoir (texte), **copie dans la table** (64 emplacements internes, rappelables
+  sans téléphone avec l'appli X AIR).
+- **Sauvegardes en couches** : à la connexion, toutes les 10 min, avant chaque opération risquée (12 gardées).
+- **Scène** : bouton **AU SECOURS · larsen** (tous les retours −6 dB, réversible), **check-list avant concert**,
+  **journal** (qui a changé quoi, et quand — cet appareil ou un autre), modes **Concert** (verrouillé) / **Balance**.
+
 ## Nouveau dans la 0.7 : Balance automatique (Outils › Balance automatique)
 
 Pose le téléphone : il dit **à voix haute** qui doit jouer (« Batteur. Grosse caisse seule : un coup par seconde, fort »),

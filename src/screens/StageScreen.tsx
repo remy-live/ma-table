@@ -13,6 +13,7 @@ import { load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { MonConfig } from '../xair/monitor';
 import { InviteSheet } from './InviteSheet';
+import { ChecklistSheet, JournalSheet, RescueButton } from './ConcertExtras';
 
 const MIX_COLORS = ['#E8EAED', '#60A5FA', '#34D399', '#38BDF8', '#A3E635', '#FB923C', '#F87171'];
 
@@ -35,6 +36,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [changed, setChanged] = useState(0);
   const [mix, setMix] = useState<Target>({ kind: 'main' });
   const [invite, setInvite] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const lrOn = Number(useParam<number>(client, '/lr/mix/on', 1)) === 1;
 
@@ -79,14 +82,14 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text, flex: 1 }]}>Sur scène</Text>
+        <View style={{ flex: 1 }}><Text style={[styles.title, { color: theme.text }]}>Sur scène</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{props.locked ? 'Mode Concert : gros boutons, pas de fausse manip' : 'Mode Balance : tout est accessible'}</Text></View>
         <Pressable
           onPress={props.onToggleLock}
           accessibilityRole="switch"
           accessibilityState={{ checked: props.locked }}
           style={[styles.lock, props.locked ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}
         >
-          <Text style={{ color: props.locked ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{props.locked ? 'Verrouillé' : 'Déverrouillé'}</Text>
+          <Text style={{ color: props.locked ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{props.locked ? '🔒 Concert' : 'Balance'}</Text>
         </Pressable>
       </View>
 
@@ -140,6 +143,19 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           <Text style={{ color: '#6EE7B7', fontSize: 12 }}>QR code : il règle son retour depuis son téléphone, et rien d’autre.</Text>
         </Pressable>
 
+        <RescueButton client={client} theme={theme} />
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable onPress={() => setCheckOpen(true)} style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>✅ Avant le concert</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>La check-list : connexion, noms, retours, balance…</Text>
+          </Pressable>
+          <Pressable onPress={() => setJournalOpen(true)} style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>📓 Journal</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>Qui a changé quoi, et quand</Text>
+          </Pressable>
+        </View>
+
         <Pressable
           onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))}
           style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}
@@ -148,6 +164,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 11 }}>Les retours ne sont pas coupés</Text>
         </Pressable>
       </ScrollView>
+      <ChecklistSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
+      <JournalSheet theme={theme} visible={journalOpen} onClose={() => setJournalOpen(false)} />
       <InviteSheet client={client} theme={theme} visible={invite} onClose={() => setInvite(false)} onTryHere={(cfg) => { setInvite(false); props.onMonitor(cfg); }} />
     </View>
   );

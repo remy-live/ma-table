@@ -8,6 +8,7 @@ import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
 import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
+import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
 import { initStorage } from './src/store/persist';
 import { THEME_ORDER, THEMES } from './src/ui/theme';
@@ -43,9 +44,11 @@ export default function App() {
   useEffect(() => {
     keepAwake(!!client);
     const stop = client ? startPeriodicBackup(client, undefined, (a) => a && dbg.info('Sauvegarde automatique (10 min)')) : null;
+    if (client) journal.start(client);
     return () => {
       keepAwake(false);
       stop?.();
+      journal.stop();
     };
   }, [client]);
 

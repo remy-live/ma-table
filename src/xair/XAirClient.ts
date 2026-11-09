@@ -26,6 +26,7 @@ export interface TableInfo {
 }
 
 export type Status = 'déconnecté' | 'connexion' | 'connecté' | 'perdu';
+export type ChangeListener = (path: string, value: OscValue, before: OscValue, origin: 'moi' | 'autre') => void;
 
 type Listener = (value: OscValue | undefined, path: string) => void;
 
@@ -44,6 +45,9 @@ export class XAirClient {
     return this.host;
   }
   private state = new Map<string, OscValue>();
+  private changeListeners = new Set<ChangeListener>();
+  /** adresses dont on attend une réponse à une lecture (pas un changement) */
+  private reading = new Set<string>();
   private listeners = new Map<string, Set<Listener>>();
   private statusListeners = new Set<(s: Status) => void>();
   private pending = new Map<string, Uint8Array>();
@@ -128,6 +132,12 @@ export class XAirClient {
   /** Nombre de reconnexions réussies depuis le début. */
   reconnections = 0;
 
+  /** Journal : chaque changement de valeur, avec son origine (moi / un autre appareil). */
+  onChange(cb: ChangeListener): () => void {
+    this.changeListeners.add(cb);
+    return () => this.changeListeners.delete(cb);
+  }
+
   onStatus(cb: (s: Status) => void): () => void {
     this.statusListeners.add(cb);
     return () => this.statusListeners.delete(cb);
@@ -149,9 +159,11 @@ export class XAirClient {
 
   /** Modifie une valeur : mise à jour locale immédiate, envoi lissé vers la table. */
   set(path: string, arg: OscArg) {
+    const before = this.state.get(path);
     this.state.set(path, arg.v as OscValue);
     this.lastLocal.set(path, this.now());
     this.emit(path);
+    if (before !== undefined && before !== arg.v) this.changeListeners.forEach((cb) => cb(path, arg.v as OscValue, before, 'moi'));
     this.pending.set(path, encode(path, [arg]));
     if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), FLUSH_MS);
   }
@@ -185,7 +197,10 @@ export class XAirClient {
     if (remember) paths.forEach((p) => this.extra.add(p));
     // Par paquets de 8 pour ne pas saturer le Wi-Fi du téléphone.
     for (let k = 0; k < paths.length; k += 8) {
-      paths.slice(k, k + 8).forEach((p) => this.raw(p));
+      paths.slice(k, k + 8).forEach((p) => {
+        this.reading.add(p);
+        this.raw(p);
+      });
       await sleep(10);
     }
     await sleep(150); // laisse arriver les dernières réponses
@@ -281,8 +296,12 @@ export class XAirClient {
     const local = this.lastLocal.get(m.address);
     if (local !== undefined && this.now() - local < ECHO_GUARD_MS) return;
 
+    const before = this.state.get(m.address);
     this.state.set(m.address, m.args[0]);
     this.emit(m.address);
+    // Un changement venu d'ailleurs (autre téléphone, appli X AIR), pas une simple lecture
+    if (before !== undefined && before !== m.args[0] && !this.reading.has(m.address)) this.changeListeners.forEach((cb) => cb(m.address, m.args[0], before, 'autre'));
+    this.reading.delete(m.address);
   }
 
   private emit(path: string) {
