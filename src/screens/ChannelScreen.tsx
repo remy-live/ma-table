@@ -19,7 +19,8 @@ import { useParam, useParamOpt } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { HSlider } from '../ui/HSlider';
 import { Theme } from '../ui/theme';
-import { EffectsScreen } from './EffectsScreen';
+import { EffectDetail } from './EffectDetail';
+import { FxNames, loadFxNames, saveFxNames } from '../xair/fxSlots';
 import { InputSheet } from './InputSheet';
 import { InputSourceSheet } from './InputSourceSheet';
 import { mixInfo } from './MixPicker';
@@ -47,6 +48,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
   const [band, setBand] = useState(2);
   const [lib, setLib] = useState(false);
   const [fxOpen, setFxOpen] = useState<number | null>(null);
+  const [fxNames, setFxNames] = useState<FxNames>({});
+  useEffect(() => { loadFxNames().then(setFxNames); }, []);
   const [inputOpen, setInputOpen] = useState(false);
   const [srcOpen, setSrcOpen] = useState(false);
 
@@ -78,7 +81,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
     { id: 'in', icon: '🎤', label: 'Entrée', sub: `prise ${insrcPlug(insrc)} · ${gain === undefined ? kind : `${fToGainDb(Number(gain)) > 0 ? '+' : ''}${fToGainDb(Number(gain)).toFixed(0)} dB`}`, color: '#C9CED4' },
     { id: 'hpf', icon: '⤴', label: 'Coupe-bas', sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
     { id: 'gate', icon: '▯', label: 'Gate', sub: gateOn ? `${fToGateDb(gateThr).toFixed(0)} dB` : 'off', color: '#9AA3AD' },
-    { id: 'eq', icon: '〰', label: 'EQ', sub: eqOn ? '4 bandes' : 'off', color: '#FBBF24' },
+    { id: 'eq', icon: '〰', label: 'EQ', sub: eqOn ? '4 bandes' : 'off', color: theme.accent },
     { id: 'comp', icon: '◐', label: 'Comp', sub: dynOn ? `${fToCompDb(dynThr).toFixed(0)} dB` : 'off', color: '#34D399' },
     { id: 'fx', icon: '✦', label: 'Effets', sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
   ];
@@ -103,7 +106,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
           </Text>
         </View>
         <Pressable onPress={() => setLib(true)} style={[styles.chip, { borderColor: theme.accent, borderWidth: 1 }]}>
-          <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 13 }}>Préréglage ▾</Text>
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>Préréglage ▾</Text>
         </Pressable>
       </View>
 
@@ -303,7 +306,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
       </ScrollView>
 
       <PresetsSheet client={client} theme={theme} visible={lib} ch={ch} onClose={() => setLib(false)} />
-      <EffectsScreen client={client} theme={theme} visible={fxOpen !== null} startSlot={fxOpen ?? 1} onClose={() => setFxOpen(null)} />
+      <EffectDetail client={client} theme={theme} slot={fxOpen} names={fxNames} onNames={(n) => { setFxNames(n); saveFxNames(n); }} onClose={() => setFxOpen(null)} onOpen={setFxOpen} />
       <InputSheet client={client} ch={inputOpen ? ch : null} theme={theme} onClose={() => setInputOpen(false)} />
       <InputSourceSheet client={client} ch={srcOpen ? ch : null} theme={theme} onClose={() => setSrcOpen(false)} />
     </View>
@@ -334,7 +337,7 @@ function Card(props: { theme: Theme; title: string; color: string; on?: boolean;
 
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 48 },
+  root: { flex: 1, paddingTop: 40 },
   wideRoot: { paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#2A3038' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 4 },
   back: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

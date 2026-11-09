@@ -430,7 +430,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                   }}
                   style={[styles.small, { borderColor: theme.accent, flex: 0, paddingHorizontal: 14 }]}
                 >
-                  <Text style={{ color: '#FBBF24', fontWeight: '800' }}>Garder</Text>
+                  <Text style={{ color: theme.accent, fontWeight: '800' }}>Garder</Text>
                 </Pressable>
               </View>
             </View>
@@ -442,7 +442,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingTop: 40, paddingHorizontal: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700' },
   quit: { height: 44, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },

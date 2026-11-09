@@ -117,7 +117,7 @@ export function JournalSheet({ theme, visible, onClose }: { theme: Theme; visibl
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingTop: 40, paddingHorizontal: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center' },

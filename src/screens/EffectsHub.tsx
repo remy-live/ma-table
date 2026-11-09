@@ -13,6 +13,7 @@ import { fxParPath, fxType, fxTypePath, knobsFor } from '../xair/effects';
 import { chName, FxNames, fxLabel, fxPaths, loadFxNames, saveFxNames, sendPath, shareText, SLOT_COLORS, users } from '../xair/fxSlots';
 import { dbToFader, faderToDb } from '../xair/levels';
 import { XAirClient } from '../xair/XAirClient';
+import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { EffectDetail } from './EffectDetail';
 import { FxSaveSheet, SaveMode } from './FxSaveSheet';
 import { useAnyTick } from '../ui/useTick';
@@ -52,22 +53,10 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={styles.head}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Effets</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>4 effets pour toute la table · chaque voie choisit combien elle envoie dans chacun</Text>
-        </View>
-        <Pressable onPress={() => setSaveMode({ kind: 'all' })} style={[styles.saveAll, { backgroundColor: theme.accent }]} accessibilityLabel="Enregistrer ou charger les 4 effets">
-          <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 13 }}>💾 Enregistrer · Charger les 4</Text>
-        </Pressable>
-        <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['fx', 'Par effet'], ['ch', 'Par voie'], ['grid', 'Tableau']] as [V, string][]).map(([id, l]) => (
-            <Pressable key={id} onPress={() => setView(id)} accessibilityState={{ selected: view === id }} style={[styles.segBtn, view === id && { backgroundColor: theme.accent }]}>
-              <Text style={{ color: view === id ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      <ScreenHeader theme={theme} title="Effets" sub="4 effets pour toute la table · chaque voie dose ce qu’elle y envoie">
+        <Segmented theme={theme} value={view} onChange={setView} options={[['fx', 'Par effet'], ['ch', 'Par voie'], ['grid', 'Tableau']] as const} />
+        <Btn theme={theme} kind="primary" icon="💾" label="Enregistrer · Charger" a11y="Enregistrer ou charger les 4 effets" onPress={() => setSaveMode({ kind: 'all' })} />
+      </ScreenHeader>
 
       {view === 'fx' && (
         <ScrollView horizontal={width < 900} contentContainerStyle={{ flexDirection: 'row', gap: 12, padding: 14, paddingTop: 4 }}>
@@ -219,7 +208,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
 }
 
 const styles = StyleSheet.create({
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 48, paddingHorizontal: 14, paddingBottom: 10, flexWrap: 'wrap' },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 40, paddingHorizontal: 14, paddingBottom: 10, flexWrap: 'wrap' },
   title: { fontSize: 24, fontWeight: '700' },
   saveAll: { height: 44, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3 },

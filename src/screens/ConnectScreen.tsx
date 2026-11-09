@@ -365,7 +365,7 @@ function Radar({ color, theme }: { color: string; theme: Theme }) {
 }
 
 const styles = StyleSheet.create({
-  root: { padding: 20, paddingTop: 56, gap: 16, paddingBottom: 40 },
+  root: { padding: 20, paddingTop: 40, gap: 16, paddingBottom: 40 },
   title: { fontSize: 30, fontWeight: '800' },
   logo: { width: 56, height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },

@@ -117,7 +117,7 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TextInput value={newName} onChangeText={setNewName} placeholder={`ex. « Ma voix »`} placeholderTextColor={theme.muted} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
                 <Pressable onPress={keep} style={[styles.go, { borderColor: theme.accent }]}>
-                  <Text style={{ color: '#FBBF24', fontWeight: '800' }}>Garder</Text>
+                  <Text style={{ color: theme.accent, fontWeight: '800' }}>Garder</Text>
                 </Pressable>
               </View>
             </View>
@@ -129,7 +129,7 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingTop: 40, paddingHorizontal: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },

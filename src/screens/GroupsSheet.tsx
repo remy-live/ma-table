@@ -176,7 +176,7 @@ function GroupMeter({ client, members }: { client: XAirClient; members: number[]
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 16, paddingTop: 52, gap: 12 },
+  root: { flex: 1, padding: 16, paddingTop: 40, gap: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 24, fontWeight: '800' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },

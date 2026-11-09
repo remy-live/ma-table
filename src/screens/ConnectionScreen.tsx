@@ -48,7 +48,6 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.body}>
-      <Text style={[styles.title, { color: theme.text }]}>Connexion et sauvegarde</Text>
 
       {status === 'perdu' && (
         <View style={[styles.banner, { backgroundColor: '#2A1414', borderColor: '#7F1D1D' }]}>
@@ -111,7 +110,7 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
       </View>
 
       <View style={[styles.card, { backgroundColor: theme.deep, borderColor: theme.line2, borderStyle: 'dashed' }]}>
-        <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 13 }}>Conseil pour la scène</Text>
+        <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>Conseil pour la scène</Text>
         <Text style={{ color: theme.text, fontSize: 12, lineHeight: 18 }}>
           Le Wi-Fi intégré de la XR16 est faible. Un petit routeur près de la scène, câblé à la table, rend la liaison bien plus stable, surtout à deux téléphones.
         </Text>
@@ -137,7 +136,7 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
 }
 
 const styles = StyleSheet.create({
-  body: { padding: 16, paddingTop: 56, gap: 12, paddingBottom: 40 },
+  body: { padding: 16, paddingTop: 4, gap: 12, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '700' },
   banner: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 2 },
   card: { borderWidth: 1, borderRadius: 16, padding: 14 },

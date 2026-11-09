@@ -256,7 +256,7 @@ export function EffectDetail({ client, theme, slot, names, onNames, onClose, onO
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 48, paddingHorizontal: 14, paddingBottom: 8, flexWrap: 'wrap' },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 40, paddingHorizontal: 14, paddingBottom: 8, flexWrap: 'wrap' },
   btn: { minHeight: 40, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   nameIn: { minWidth: 200, height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 20, fontWeight: '800' },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },

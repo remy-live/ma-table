@@ -138,7 +138,7 @@ export function DebugScreen({ client, theme, visible, onClose }: { client: XAirC
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 52, paddingBottom: 24, gap: 8 },
+  root: { flex: 1, paddingTop: 40, paddingBottom: 24, gap: 8 },
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   row: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   btn: { flex: 1, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

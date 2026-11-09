@@ -110,7 +110,7 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
                   <Pic icon="🎧" text="Il règle son retour, rien d’autre" theme={theme} />
                 </View>
                 <Pressable onPress={() => setShowCode((x) => !x)} style={{ padding: 4 }}>
-                  <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '700' }}>{showCode ? 'Masquer le code à taper' : 'Pas d’appareil photo ? Le code à taper'}</Text>
+                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>{showCode ? 'Masquer le code à taper' : 'Pas d’appareil photo ? Le code à taper'}</Text>
                 </Pressable>
                 {showCode && (
                   <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>
@@ -130,7 +130,7 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
               <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={[styles.kicker, { color: theme.muted, flex: 1 }]}>SES VOIES (bouton « Plus de moi »)</Text>
-                  <Pressable onPress={() => setEditMe((x) => !x)} style={{ padding: 4 }}><Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '700' }}>{editMe ? 'OK' : 'Changer'}</Text></Pressable>
+                  <Pressable onPress={() => setEditMe((x) => !x)} style={{ padding: 4 }}><Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>{editMe ? 'OK' : 'Changer'}</Text></Pressable>
                 </View>
                 {!editMe && <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{me.length ? me.map((c) => `${c} · ${chName(c)}`).join(', ') : 'Aucune : « Plus de moi » sera grisé'}</Text>}
                 {editMe && (
@@ -179,7 +179,7 @@ function Pic({ icon, text, theme }: { icon: string; text: string; theme: Theme }
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingTop: 40, paddingHorizontal: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   back: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 22, fontWeight: '700' },

@@ -17,7 +17,9 @@ import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS, initials } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
+import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { TableWiring } from './TableWiring';
+import { useAnyTick } from '../ui/useTick';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { readGroups } from '../xair/groups';
 import { GROUP_COLORS } from './GroupsSheet';
@@ -28,23 +30,11 @@ type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: '
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 
-function useTick(client: XAirClient) {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    let p: ReturnType<typeof setTimeout> | null = null;
-    const off = client.on('*', () => {
-      if (p) return;
-      p = setTimeout(() => { p = null; setT((x) => x + 1); }, 80);
-    });
-    return () => { off(); if (p) clearTimeout(p); };
-  }, [client]);
-  return t;
-}
 
 export function WiringScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; embedded?: boolean }) {
   const { client, theme } = props;
   const { width } = useWindowDimensions();
-  const tick = useTick(client);
+  const tick = useAnyTick(client);
   const [view, setView] = useState<View3>(width > 700 ? 'table' : 'colonnes');
   useEffect(() => { load<View3>('vueBranchements', width > 700 ? 'table' : 'colonnes').then((v) => v && setView(v)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
@@ -90,24 +80,10 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <View style={styles.head}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: theme.text }]}>Branchements</Text>
-            <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-              {view === 'bulles' ? 'Une bulle = un son dans une oreille' : view === 'table' ? 'Touche une prise : règle-la ou relie-la · touche une sortie : ce qu’elle entend' : 'Glisse d’une prise à une sortie pour relier · appui = voir'}
-            </Text>
-          </View>
-          {!props.embedded && (<Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
-              <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Terminé</Text>
-            </Pressable>)}
-        </View>
-        <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['table', 'Table'], ['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['niveaux', 'Niveaux'], ['bulles', 'Bulles']] as const).map(([v, l]) => (
-            <Pressable key={v} onPress={() => { setView(v); setSel(null); save('vueBranchements', v); }} style={[styles.segBtn, view === v && { backgroundColor: theme.accent }]}>
-              <Text style={{ color: view === v ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <ScreenHeader theme={theme} title="Branchements" sub={view === 'bulles' ? 'Une bulle = un son dans une oreille' : view === 'table' || view === 'niveaux' ? 'Touche une prise, puis règle ou relie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+          <Segmented theme={theme} value={view} onChange={(v) => { setView(v); setSel(null); save('vueBranchements', v); }} options={[['table', 'Table'], ['arriere', 'Face arrière'], ['colonnes', 'Colonnes'], ['niveaux', 'Niveaux'], ['bulles', 'Bulles']] as const} />
+          {!props.embedded && <Btn theme={theme} kind="primary" label="Terminé" onPress={props.onClose} />}
+        </ScreenHeader>
 
         {view === 'bulles' ? (
           <WhoHearsScreen client={client} theme={theme} visible embedded onClose={props.onClose} />
@@ -129,7 +105,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
             <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : selGroup ? GROUP_COLORS[selGroup.k - 1] : theme.line, backgroundColor: theme.panel }]}>
               {!sel && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: theme.muted, fontSize: 12, flex: 1 }} numberOfLines={2}>Touche une <Text style={{ color: '#FBBF24', fontWeight: '800' }}>prise</Text> ou une <Text style={{ color: '#60A5FA', fontWeight: '800' }}>sortie</Text> pour voir ses fils, la renommer et régler les niveaux.</Text>
+                  <Text style={{ color: theme.muted, fontSize: 12, flex: 1 }} numberOfLines={2}>Touche une <Text style={{ color: theme.accent, fontWeight: '800' }}>prise</Text> ou une <Text style={{ color: '#60A5FA', fontWeight: '800' }}>sortie</Text> pour voir ses fils, la renommer et régler les niveaux.</Text>
                   <Pressable onPress={() => setShowAll((x) => !x)} style={[styles.small, { borderColor: theme.line2 }]}>
                     <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{showAll ? 'Masquer les fils' : 'Montrer les fils'}</Text>
                   </Pressable>
@@ -154,7 +130,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                       <Pressable onPress={() => setRen({ path: chNamePath(selPlug.chans[0]), v: selPlug.name })} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>✎ Renommer</Text></Pressable>
                     )}
                     <Pressable onPress={() => { const n = toAllReturns(client, selPlug); say(n ? `Envoyée dans ${n} retour${n > 1 ? 's' : ''} à −8 dB` : 'Déjà dans tous les retours nommés'); }} style={[styles.small, { borderColor: theme.accent }]}>
-                      <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Vers tous les retours</Text>
+                      <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '800' }}>Vers tous les retours</Text>
                     </Pressable>
                     <Pressable onPress={() => setFold((x) => !x)} accessibilityLabel={fold ? 'Déplier' : 'Réduire'} style={styles.close}><Text style={{ color: theme.muted, fontSize: 18 }}>{fold ? '▴' : '▾'}</Text></Pressable>
                     <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
@@ -212,7 +188,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     {selOut.t.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
                     {selOut.t.kind !== 'main' && (
                       <Pressable onPress={() => { likeMain(client, selOut.t); say(`${selOut.name} entend comme le public (−2 dB)`); }} style={[styles.small, { borderColor: theme.accent }]}>
-                        <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Comme le public</Text>
+                        <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '800' }}>Comme le public</Text>
                       </Pressable>
                     )}
                     <Pressable onPress={() => setFold((x) => !x)} accessibilityLabel={fold ? 'Déplier' : 'Réduire'} style={styles.close}><Text style={{ color: theme.muted, fontSize: 18 }}>{fold ? '▴' : '▾'}</Text></Pressable>
@@ -667,7 +643,7 @@ function Columns(props: { theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: numbe
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50 },
+  root: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 8 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },

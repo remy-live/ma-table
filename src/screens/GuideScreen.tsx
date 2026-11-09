@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { FxVisual } from '../ui/FxVisual';
 import { GainTile } from '../ui/GainTile';
+import { useAnyTick } from '../ui/useTick';
 import { GROUP_COLORS } from './GroupsSheet';
 import { MIX_COLORS } from './MixPicker';
 import { i, s } from '../osc/osc';
@@ -21,16 +22,11 @@ import { AutoBalanceScreen } from './AutoBalanceScreen';
 
 const STEPS = ['Ce qui est branché', 'Mes groupes', 'Qui veut entendre quoi', 'L’ambiance', 'La balance'];
 
-function useTick(client: XAirClient) {
-  const [t, setT] = useState(0);
-  useEffect(() => client.on('*', (_v, p) => (p.endsWith('/config/name') || p.endsWith('/grp/dca') || p.includes('/level') || p.endsWith('/mix/fader') || p.endsWith('/config/color') || p.includes('/headamp/')) && setT((x) => x + 1)), [client]);
-  return t;
-}
 
 export function GuideScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
   const { client, theme } = props;
   const [step, setStep] = useState(0);
-  useTick(client);
+  useAnyTick(client, 120);
   useEffect(() => {
     if (!props.visible) return;
     const p: string[] = [];
@@ -218,7 +214,7 @@ function StepGroups({ client, theme }: { client: XAirClient; theme: Theme }) {
           <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>✨ Ranger d’après les noms</Text>
         </Pressable>
         <Pressable onPress={() => setOpen(true)} style={[styles.big, { flex: 1, borderColor: theme.accent }]}>
-          <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 15 }}>Modifier à la main</Text>
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 15 }}>Modifier à la main</Text>
         </Pressable>
       </View>
       {!!msg && <Text style={{ color: '#34D399', fontWeight: '800' }}>{msg}</Text>}
@@ -283,7 +279,7 @@ function StepNeeds({ client, theme }: { client: XAirClient; theme: Theme }) {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TextInput autoFocus value={ren.v} onChangeText={(v) => setRen({ ...ren, v })} placeholder={`Qui écoute AUX ${ren.n} ?`} placeholderTextColor={theme.muted} style={[styles.input, { color: theme.text, borderColor: theme.accent, backgroundColor: theme.deep }]} />
           <Pressable onPress={() => { if (ren.v.trim()) client.set(busNamePath(ren.n), s(ren.v.trim().slice(0, 12))); setRen(null); }} style={[styles.small, { borderColor: theme.accent, height: 46 }]}>
-            <Text style={{ color: '#FBBF24', fontWeight: '800' }}>OK</Text>
+            <Text style={{ color: theme.accent, fontWeight: '800' }}>OK</Text>
           </Pressable>
         </View>
       )}
@@ -353,7 +349,7 @@ function StepBalance({ client, theme }: { client: XAirClient; theme: Theme }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingTop: 40, paddingHorizontal: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   title: { fontSize: 22, fontWeight: '700' },
   quit: { height: 44, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },

@@ -9,6 +9,7 @@ import {
 } from '../store/sessions';
 import { load } from '../store/persist';
 import { Theme } from '../ui/theme';
+import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { Shell } from '../ui/Shell';
 import { changedCount, restore, Snapshot } from '../xair/snapshot';
 import { XAirClient } from '../xair/XAirClient';
@@ -98,15 +99,9 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <View style={styles.head}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: theme.text }]}>Mes soirées</Text>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Une soirée = tout le réglage de la table, gardé dans l’appli</Text>
-          </View>
-          {!props.embedded && (<Pressable onPress={props.onClose} style={[styles.done, { backgroundColor: theme.accent }]}>
-              <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Fermer</Text>
-            </Pressable>)}
-        </View>
+        <ScreenHeader theme={theme} title="Mes soirées" sub="Une soirée = tout le réglage de la table, gardé dans l’appli" style={{ paddingHorizontal: 0 }}>
+          {!props.embedded && <Btn theme={theme} kind="primary" label="Fermer" onPress={props.onClose} />}
+        </ScreenHeader>
         <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
           {/* EN COURS */}
           {cur && (
@@ -142,7 +137,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
           {/* ENREGISTRÉES */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={[styles.kicker, { color: theme.muted, flex: 1 }]}>SOIRÉES ENREGISTRÉES</Text>
-            <Pressable onPress={() => setImportOpen((x) => !x)} style={{ padding: 4 }}><Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '700' }}>Recevoir une soirée</Text></Pressable>
+            <Pressable onPress={() => setImportOpen((x) => !x)} style={{ padding: 4 }}><Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Recevoir une soirée</Text></Pressable>
           </View>
           {importOpen && (
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
@@ -161,7 +156,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
                 <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{s.name}</Text>
                 <Text style={{ color: theme.muted, fontSize: 11 }}>{Object.keys(s.snap.values).length} réglages{s.tableSlot ? ` · dans la table n°${s.tableSlot}` : ''}</Text>
               </View>
-              <Pressable onPress={() => doLoad(s)} style={[styles.small, { borderColor: theme.accent }]}><Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>Reprendre</Text></Pressable>
+              <Pressable onPress={() => doLoad(s)} style={[styles.small, { borderColor: theme.accent }]}><Text style={{ color: theme.accent, fontSize: 12, fontWeight: '800' }}>Reprendre</Text></Pressable>
               <Pressable onPress={() => more(s)} accessibilityLabel="Plus d’actions" style={[styles.small, { borderColor: theme.line2, width: 44, paddingHorizontal: 0, alignItems: 'center' }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>⋯</Text></Pressable>
             </View>
           ))}
@@ -198,7 +193,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
             {tableSlots.map((x) => (
               <Pressable key={x.n} onPress={() => Alert.alert(`Rappeler l’emplacement ${x.n} ?`, `« ${x.name} » remplace tout le réglage actuel de la table.`, [{ text: 'Annuler', style: 'cancel' }, { text: 'Rappeler', style: 'destructive', onPress: () => { loadFromTable(client, x.n); say(`Emplacement ${x.n} rappelé`); setTimeout(() => client.loadState(), 800); } }])} style={[styles.auto, { borderColor: theme.line2 }]}>
                 <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{x.n} · {x.name}</Text>
-                <Text style={{ color: '#FBBF24', fontSize: 11, fontWeight: '700' }}>Rappeler</Text>
+                <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>Rappeler</Text>
               </Pressable>
             ))}
           </View>
@@ -229,7 +224,7 @@ function RenameBox({ initial, theme, onDone }: { initial: string; theme: Theme; 
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50, paddingHorizontal: 14 },
+  root: { flex: 1, paddingHorizontal: 16 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },

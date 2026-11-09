@@ -256,7 +256,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
           <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
         </Pressable>
         <Pressable onPress={() => setGroupsOpen(true)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
-          <Text style={{ color: '#FBBF24', fontSize: 13, fontWeight: '700' }}>Groupes</Text>
+          <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Groupes</Text>
         </Pressable>
       </View>
       {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}

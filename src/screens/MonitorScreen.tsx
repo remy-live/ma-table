@@ -282,7 +282,7 @@ function Row(props: { theme: Theme; name: string; color: string; db: number; che
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 44 },
+  root: { flex: 1, paddingTop: 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingBottom: 8 },
   avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#0B0D10', fontSize: 13, fontWeight: '800' },

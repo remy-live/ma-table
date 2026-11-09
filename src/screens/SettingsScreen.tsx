@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, V
 import { Fader } from '../ui/Fader';
 import { Knob } from '../ui/Knob';
 import { canImmersive } from '../ui/immersive';
+import { ScreenHeader, Segmented } from '../ui/kit';
 import { Theme, THEME_ORDER, THEMES } from '../ui/theme';
 import { XAirClient } from '../xair/XAirClient';
 import { ConnectionScreen } from './ConnectionScreen';
@@ -27,16 +28,9 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
   const cols = wide ? 4 : width > 600 ? 3 : 2;
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={styles.head}>
-        <Text style={[styles.title, { color: theme.text }]}>Réglages</Text>
-        <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          {([['look', 'Apparence'], ['conn', 'Connexion et réseau']] as const).map(([id, l]) => (
-            <Pressable key={id} onPress={() => setPart(id)} accessibilityState={{ selected: part === id }} style={[styles.segBtn, part === id && { backgroundColor: theme.accent }]}>
-              <Text style={{ color: part === id ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{l}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      <ScreenHeader theme={theme} title="Réglages" sub={part === 'look' ? 'L’allure de l’appli et le confort' : 'La liaison avec la table et les sauvegardes'}>
+        <Segmented theme={theme} value={part} onChange={setPart} options={[['look', 'Apparence'], ['conn', 'Connexion']] as const} />
+      </ScreenHeader>
       {part === 'conn' ? (
         <ConnectionScreen client={props.client} theme={theme} onDisconnect={props.onDisconnect} />
       ) : (
@@ -130,7 +124,7 @@ function LivePreview({ theme, small }: { theme: Theme; small?: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  head: { paddingTop: 48, paddingHorizontal: 14, paddingBottom: 8, gap: 10 },
+  head: { paddingTop: 40, paddingHorizontal: 14, paddingBottom: 8, gap: 10 },
   title: { fontSize: 24, fontWeight: '700' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, alignSelf: 'flex-start' },
   segBtn: { height: 40, paddingHorizontal: 16, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

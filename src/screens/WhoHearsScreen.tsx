@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { f } from '../osc/osc';
 import { Theme } from '../ui/theme';
+import { useAnyTick } from '../ui/useTick';
 import { Target } from '../xair/addresses';
 import { dbToFader } from '../xair/levels';
 import { shift } from '../xair/monitor';
@@ -17,22 +18,10 @@ const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '
 const CELL = 64;
 const LABEL_W = 150;
 
-function useAnyChange(client: XAirClient) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | null = null;
-    const off = client.on('*', () => {
-      if (t) return;
-      t = setTimeout(() => { t = null; setTick((x) => x + 1); }, 80);
-    });
-    return () => { off(); if (t) clearTimeout(t); };
-  }, [client]);
-  return tick;
-}
 
 export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; embedded?: boolean }) {
   const { client, theme } = props;
-  useAnyChange(client);
+  useAnyTick(client);
   const [isoD, setIsoD] = useState<string | null>(null);
   const [isoS, setIsoS] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -125,7 +114,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
             <Pressable onPress={() => shift(client, pickPaths, -2)} accessibilityLabel="Moins" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
             <Pressable onPress={() => shift(client, pickPaths, 2, true)} accessibilityLabel="Plus" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
             {pickDest.t.kind !== 'main' && (
-              <Pressable onPress={sameAsMain} style={[styles.small, { borderColor: theme.accent }]}><Text style={{ color: '#FBBF24', fontSize: 11, fontWeight: '800' }}>Comme le public</Text></Pressable>
+              <Pressable onPress={sameAsMain} style={[styles.small, { borderColor: theme.accent }]}><Text style={{ color: theme.accent, fontSize: 11, fontWeight: '800' }}>Comme le public</Text></Pressable>
             )}
             <Pressable onPress={() => setPick(null)} accessibilityLabel="Fermer" style={{ width: 36, alignItems: 'center' }}><Text style={{ color: theme.muted, fontSize: 20 }}>×</Text></Pressable>
           </View>
@@ -139,7 +128,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
   if (props.embedded) return <View style={{ flex: 1 }}>{body}</View>;
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+      <View style={[styles.root, { backgroundColor: theme.bg }, props.embedded && { paddingTop: 0 }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Qui entend quoi</Text>
@@ -156,7 +145,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 50 },
+  root: { flex: 1, paddingTop: 40 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 10 },
   title: { fontSize: 22, fontWeight: '700' },
   done: { height: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' },

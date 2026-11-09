@@ -5,6 +5,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, Vi
 import { f, i } from '../osc/osc';
 import { colorOf } from '../xair/smartName';
 import { GROUP_COLORS } from './GroupsSheet';
+import { ScreenHeader, Segmented } from '../ui/kit';
+import { MIX_COLORS } from './MixPicker';
 import { useAnyTick } from '../ui/useTick';
 import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, Target, targetId } from '../xair/addresses';
 import { Group, moveMembers, snapshot as sendSnap } from '../xair/groups';
@@ -18,7 +20,6 @@ import { MonConfig } from '../xair/monitor';
 import { InviteSheet } from './InviteSheet';
 import { ChecklistSheet, JournalSheet, RescueButton } from './ConcertExtras';
 
-const MIX_COLORS = ['#E8EAED', '#60A5FA', '#34D399', '#38BDF8', '#A3E635', '#FB923C', '#F87171'];
 
 function useGroups(client: XAirClient): Group[] {
   const [tick, setTick] = useState(0);
@@ -97,22 +98,9 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Sur scène</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>La télécommande du concert : gros boutons, l’essentiel seulement</Text>
-        </View>
-        <View style={[styles.seg, { borderColor: theme.line2 }]}>
-          <Pressable onPress={() => props.locked && props.onToggleLock()} accessibilityState={{ selected: !props.locked }} style={[styles.segBtn, !props.locked && { backgroundColor: theme.accent }]}>
-            <Text style={{ color: !props.locked ? theme.onAccent : theme.text, fontWeight: '800' }}>🎚 Balance</Text>
-            <Text style={{ color: !props.locked ? theme.onAccent : theme.muted, fontSize: 10 }}>je règle tout</Text>
-          </Pressable>
-          <Pressable onPress={() => !props.locked && props.onToggleLock()} accessibilityState={{ selected: props.locked }} style={[styles.segBtn, props.locked && { backgroundColor: theme.accent }]}>
-            <Text style={{ color: props.locked ? theme.onAccent : theme.text, fontWeight: '800' }}>🔒 Concert</Text>
-            <Text style={{ color: props.locked ? theme.onAccent : theme.muted, fontSize: 10 }}>pas de fausse manip</Text>
-          </Pressable>
-        </View>
-      </View>
+      <ScreenHeader theme={theme} title="Sur scène" sub="La télécommande du concert : gros boutons, l’essentiel seulement">
+        <Segmented theme={theme} value={props.locked ? 'concert' : 'balance'} onChange={(v) => { if ((v === 'concert') !== props.locked) props.onToggleLock(); }} options={[['balance', '🎚 Balance', 'je règle tout'], ['concert', '🔒 Concert', 'pas de fausse manip']] as const} />
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={{ flexDirection: wide ? 'row' : 'column', gap: 12 }}>
@@ -281,7 +269,7 @@ const hhmm = (t: number) => {
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 48 },
+  root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
   title: { fontSize: 22, fontWeight: '700' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 3 },

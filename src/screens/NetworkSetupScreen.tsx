@@ -130,7 +130,7 @@ export function NetworkSetupScreen({ client, theme, visible, onClose }: { client
         )}
 
         <View style={[styles.card, { backgroundColor: theme.deep, borderColor: theme.line2 }]}>
-          <Text style={{ color: '#FBBF24', fontWeight: '800', fontSize: 13 }}>Bon à savoir</Text>
+          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>Bon à savoir</Text>
           <Text style={{ color: theme.text, fontSize: 12, lineHeight: 18 }}>
             Ce qui passe entre le téléphone et la table ne consomme pas de données mobiles. Coupe les mises à jour automatiques des autres appareils branchés sur ton partage.
           </Text>
@@ -141,7 +141,7 @@ export function NetworkSetupScreen({ client, theme, visible, onClose }: { client
 }
 
 const styles = StyleSheet.create({
-  body: { padding: 16, paddingTop: 56, gap: 10, paddingBottom: 40 },
+  body: { padding: 16, paddingTop: 40, gap: 10, paddingBottom: 40 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   close: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   card: { borderRadius: 16, padding: 14, gap: 4 },
