@@ -240,11 +240,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
           <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
         </View>
         {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
-        {target.kind === 'bus' && (
-          <Pressable onPress={() => setCopyOpen(true)} style={[styles.hbtn, { borderColor: color }]}>
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>⧉ Copier depuis…</Text>
-          </Pressable>
-        )}
+        <Pressable onPress={() => setCopyOpen(true)} accessibilityLabel="Copier ce qu’entend une personne vers une ou plusieurs autres" style={[styles.hbtn, { borderColor: theme.line2 }]}>
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 12, textAlign: 'center' }}>⧉ Copier{'\n'}un mix</Text>
+        </Pressable>
         <Pressable onPress={cycleView} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
           <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>{curView.icon}</Text>
           <View>
