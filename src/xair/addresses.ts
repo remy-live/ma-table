@@ -61,9 +61,15 @@ export const dcaFaderPath = (k: number) => `/dca/${k}/fader`;
 export const dcaOnPath = (k: number) => `/dca/${k}/on`;
 export const dcaNamePath = (k: number) => `/dca/${k}/config/name`;
 
-// Entrée d'une voie (étape 4)
-// Sur la XR16, seules les entrées 1 à 8 ont un préampli micro (gain + 48 V) :
-// la table ne répond pas pour les autres, l'appli affiche alors « — ».
+// Entrée d'une voie
+// Préamplis micro (gain + 48 V) : XR18 / MR18 → entrées 1 à 16, XR16 → 1 à 8, XR12 → 1 à 4.
+// Le modèle vient de /xinfo à la connexion.
+export const MODEL = { name: 'XR16', preamps: 8 };
+export function setModel(model: string) {
+  const m = model.toUpperCase();
+  MODEL.name = model;
+  MODEL.preamps = /18/.test(m) ? 16 : /12/.test(m) ? 4 : 8;
+}
 export const headampGainPath = (ch: number) => `/headamp/${ch2(ch)}/gain`;
 export const phantomPath = (ch: number) => `/headamp/${ch2(ch)}/phantom`;
 export const invertPath = (ch: number) => `/ch/${ch2(ch)}/preamp/invert`;

@@ -12,6 +12,7 @@
 
 import { decode, encode, OscArg, OscValue, s as oscS } from '../osc/osc';
 import { ch2 } from './levels';
+import { setModel } from './addresses';
 import { Remote, Transport } from './transport';
 import * as dbg from '../debug/log';
 
@@ -68,6 +69,7 @@ export class XAirClient {
     await this.transport.open((b, from) => this.onPacket(b, from));
     const info = await this.askInfo(timeoutMs);
     dbg.info(`Table : ${info.name} · ${info.model} · firmware ${info.firmware} · ${info.ip}`);
+    setModel(info.model);
     this.keepTimer = setInterval(() => this.keepAlive(channels), KEEPALIVE_MS);
     this.raw('/xremote');
     await this.loadState(channels);

@@ -1,6 +1,6 @@
 // Mode guidé : la logique (testable sans téléphone).
 import { f } from '../osc/osc';
-import { chLevelPath, fToGainDb, gainDbToF, headampGainPath, Target } from './addresses';
+import { chLevelPath, fToGainDb, gainDbToF, headampGainPath, MODEL, Target } from './addresses';
 import { dbToFader, faderToDb } from './levels';
 import { XAirClient } from './XAirClient';
 
@@ -44,10 +44,10 @@ export function gainAdvice(db: number): Advice {
   return { text: 'Trop fort : baisse le gain', tone: 'high' };
 }
 
-/** Gain d'un préampli (entrées 1 à 8 sur la XR16) : +/- en dB. */
+/** Gain d'un préampli : +/- en dB. */
 export function nudgeGain(client: XAirClient, ch: number, db: number) {
   const cur = fToGainDb(Number(client.get(headampGainPath(ch)) ?? 0.5));
   client.set(headampGainPath(ch), f(gainDbToF(Math.max(-12, Math.min(60, cur + db)))));
 }
 
-export const hasPreamp = (ch: number) => ch >= 1 && ch <= 8;
+export const hasPreamp = (ch: number) => ch >= 1 && ch <= MODEL.preamps;

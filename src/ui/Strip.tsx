@@ -58,7 +58,12 @@ export function Strip(p: StripProps) {
   const border = p.selected ? GROUP_COLOR : p.inOpenGroup ? '#4A3B12' : theme.line;
 
   return (
-    <View style={[styles.strip, { backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 2 : 1 }]}>
+    <View style={[styles.strip, { backgroundColor: bg, borderColor: border, borderWidth: p.selected ? 3 : 1 }]}>
+      {p.selected && (
+        <View style={{ position: 'absolute', top: -1, left: -1, right: -1, zIndex: 2, backgroundColor: GROUP_COLOR, borderTopLeftRadius: 14, borderTopRightRadius: 14, paddingVertical: 3, alignItems: 'center' }}>
+          <Text style={{ color: '#1A1204', fontSize: 11, fontWeight: '800' }}>✓ SÉLECTIONNÉE</Text>
+        </View>
+      )}
       <Pressable
         onPress={() => p.onSelect(ch)}
         accessibilityRole="button"

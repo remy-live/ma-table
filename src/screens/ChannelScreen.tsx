@@ -119,8 +119,9 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
 
         <Card theme={theme} title="Effets de la table">
           {sends.map((v, k) => (
+            <View key={k} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+              <View style={{ flex: 1 }}>
             <HSlider
-              key={k}
               label={`FX${k + 1} · ${fxType(Number(client.get(fxTypePath(k + 1)) ?? 0)).fr}`}
               value={v}
               valueText={formatDb(v)}
@@ -128,6 +129,16 @@ function ChannelBody({ client, ch, theme, onClose }: { client: XAirClient; ch: n
               color={FX_COLORS[k]}
               theme={theme}
             />
+              </View>
+              <Pressable
+                onPress={() => client.set(chLevelPath(ch, { kind: 'fx', n: k + 1 }), f(0))}
+                disabled={v <= 0}
+                accessibilityLabel={`Retirer l’effet ${k + 1} de cette voie`}
+                style={[styles.chip, { height: 36, paddingHorizontal: 10, borderWidth: 1, borderColor: v > 0 ? theme.mute : theme.line, opacity: v > 0 ? 1 : 0.4 }]}
+              >
+                <Text style={{ color: v > 0 ? theme.mute : theme.muted, fontWeight: '800', fontSize: 12 }}>{v > 0 ? 'Retirer' : 'Aucun'}</Text>
+              </Pressable>
+            </View>
           ))}
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {[1, 2, 3, 4].map((k) => (
