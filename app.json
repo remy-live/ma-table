@@ -18,8 +18,29 @@
         "INTERNET",
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_MULTICAST_STATE"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0E1014"
+      },
+      "softwareKeyboardLayoutMode": "pan"
     },
-    "scheme": "matable"
+    "scheme": "matable",
+    "icon": "./assets/icon.png",
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0E1014"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#0E1014"
+        }
+      ]
+    ]
   }
 }
