@@ -170,7 +170,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   const begin = async () => {
     const list = buildSteps(client, mode);
     if (!list.length) {
-      Alert.alert('Aucune voie nommée', 'Dis d’abord ce qui est branché (Outils › Mode guidé, étape 1), pour que l’appli sache qui appeler.');
+      Alert.alert('Aucune voie nommée', 'Dis d’abord ce qui est branché (Aide-moi › Mode guidé, étape 1), pour que l’appli sache qui appeler.');
       return;
     }
     const r = R.current;

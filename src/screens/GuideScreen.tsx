@@ -100,17 +100,17 @@ const iconFor = (name: string) => {
 };
 
 function Jack({ n, name, color, sel, onPress, small }: { n: number; name: string; color: string; sel: boolean; onPress: () => void; small?: boolean }) {
-  const s = small ? 54 : 70;
+  const s = small ? 34 : 54;
   return (
-    <Pressable onPress={onPress} accessibilityLabel={`Prise ${n} : ${name || 'rien'}`} style={{ alignItems: 'center', width: s + 26, gap: 4 }}>
+    <Pressable onPress={onPress} accessibilityLabel={`Prise ${n} : ${name || 'rien'}`} style={{ alignItems: 'center', width: '12.5%', gap: 4, paddingVertical: 4 }}>
       <Text style={{ color: '#9AA3AD', fontSize: 12, fontWeight: '800' }}>{n}</Text>
       <View style={{ width: s, height: s, borderRadius: s / 2, borderWidth: sel ? 5 : 4, borderColor: sel ? '#FFFFFF' : name ? color : '#3A414B', backgroundColor: '#1E2227', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ width: s * 0.55, height: s * 0.55, borderRadius: s, backgroundColor: '#0B0D10', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: small ? 16 : 20 }}>{iconFor(name)}</Text>
+          <Text style={{ fontSize: small ? 11 : 17 }}>{iconFor(name)}</Text>
         </View>
       </View>
-      <View style={{ minHeight: 20, paddingHorizontal: 6, borderRadius: 6, backgroundColor: name ? color : 'transparent', justifyContent: 'center' }}>
-        <Text numberOfLines={1} style={{ color: name ? '#0B0D10' : '#5B636D', fontSize: 11, fontWeight: '800', maxWidth: s + 20 }}>{name || 'libre'}</Text>
+      <View style={{ minHeight: 20, paddingHorizontal: 4, maxWidth: "96%", borderRadius: 6, backgroundColor: name ? color : 'transparent', justifyContent: 'center' }}>
+        <Text numberOfLines={1} style={{ color: name ? '#0B0D10' : '#5B636D', fontSize: small ? 8 : 10, fontWeight: '800' }}>{name || 'libre'}</Text>
       </View>
     </Pressable>
   );
@@ -143,7 +143,7 @@ function StepPlugged({ client, theme }: { client: XAirClient; theme: Theme }) {
         <View style={[styles.card, { flex: 1.4, backgroundColor: '#15181C', borderColor: '#2A3038' }]}>
           <Text style={{ color: '#E8EAED', fontSize: 16, fontWeight: '800', alignSelf: 'flex-end' }}>{MODEL.name}</Text>
           {[1, 9].map((f0) => (
-            <View key={f0} style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <View key={f0} style={{ flexDirection: 'row' }}>
               {row(f0).map((c) => <Jack key={c} n={c} name={nameOf(c)} color={colOf(c)} sel={pick === c} small={!wide} onPress={() => setPick(c)} />)}
             </View>
           ))}

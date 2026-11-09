@@ -537,7 +537,7 @@ function Columns(props: { theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: numbe
           ))}
         </View>
       </View>
-      {used.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Aucune voie nommée. Nomme ce qui est branché (Outils › Mode guidé).</Text>}
+      {used.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Aucune voie nommée. Nomme ce qui est branché (Aide-moi › Mode guidé).</Text>}
     </ScrollView>
   );
 }

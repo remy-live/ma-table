@@ -160,7 +160,7 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
         <HSlider
           value={master}
           onChange={(v) => client.set(busFaderPath(bus), f(v))}
-          label="Volume du casque"
+          label="Volume"
           valueText={formatDb(master) + ' dB'}
           color={ME}
           theme={theme}

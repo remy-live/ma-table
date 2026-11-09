@@ -91,7 +91,7 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
                   </Pressable>
                 ))}
               </View>
-              <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Les prénoms viennent des noms des retours sur la table (« Retour Remy » → Rémy). L’instrument est deviné d’après ses voies. Pour nommer un retour : Outils › Mode guidé, étape 3.</Text>
+              <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Les prénoms viennent des noms des retours sur la table (« Retour Remy » → Rémy). L’instrument est deviné d’après ses voies. Pour nommer un retour : Aide-moi › Mode guidé, étape 3.</Text>
             </>
           )}
 
