@@ -99,7 +99,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <ScreenHeader theme={theme} title="Branchements" sub={view === 'scene' ? 'La scène vue de dessus : objets, câbles jack et XLR, retours · le matériel à emporter' : view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+        <ScreenHeader theme={theme} title="Branchements" sub={view === 'scene' ? undefined : view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
           {view !== 'bulles' && view !== 'scene' && (
             <Pressable onPress={() => { const m = !multi; setMulti(m); if (m && sel?.kind === 'plug') setSel({ kind: 'many', ns: [sel.n] }); if (!m && sel?.kind === 'many') setSel(null); }} accessibilityRole="switch" accessibilityState={{ checked: multi }}
               style={[styles.small, { height: 44, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : 'transparent' }]}>

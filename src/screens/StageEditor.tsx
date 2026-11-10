@@ -6,7 +6,7 @@
 //  - en bas la table (entrées, retours) ; « À emporter » en pastille dans le coin.
 // Lié à la table : les voies nommées arrivent toutes seules, câblées à leur prise.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Segmented } from '../ui/kit';
 import { Theme } from '../ui/theme';
@@ -66,19 +66,105 @@ export function KindIcon({ kind, x, y, c, s = 1 }: { kind: Kind; x: number; y: n
 type Sel = { obj: string } | { zone: string } | { end: End } | { gear: true } | null;
 type DragKind = 'obj' | 'zone' | 'resize' | 'wire' | 'marquee';
 type Drag = { kind: DragKind; from?: End; id?: string; x: number; y: number; x0: number; y0: number; moved: boolean; start?: { x: number; y: number; w?: number; h?: number } } | null;
-const PALETTE: { title: string; kinds: Kind[] }[] = [
-  { title: 'Voix', kinds: ['voix', 'choeur'] },
-  { title: 'Instruments', kinds: ['guitare', 'acoustique', 'basse', 'contrebasse', 'clavier', 'piano', 'synthe', 'violon', 'violoncelle', 'sax', 'trompette', 'trombone', 'flute', 'accordeon', 'harmonica', 'ukulele', 'mandoline', 'cajon', 'percu', 'ordi', 'autre'] },
-  { title: 'Batterie', kinds: DRUM_PIECES },
-  { title: 'Matériel', kinds: ['pedalboard', 'ampli', 'micro', 'di'] },
-  { title: 'Retours', kinds: ['retour', 'casque', 'enceinte'] },
-];
+type PalTab = 'instr' | 'drums' | 'matos' | 'configs';
+const PAL_TABS: [PalTab, string][] = [['instr', 'Instrum.'], ['drums', 'Batterie'], ['matos', 'Matos'], ['configs', 'Configs']];
+const PALETTE: Record<Exclude<PalTab, 'configs'>, Kind[]> = {
+  instr: ['voix', 'choeur', 'guitare', 'acoustique', 'basse', 'contrebasse', 'clavier', 'piano', 'synthe', 'violon', 'violoncelle', 'sax', 'trompette', 'trombone', 'flute', 'accordeon', 'harmonica', 'ukulele', 'mandoline', 'cajon', 'percu', 'ordi', 'autre'],
+  drums: DRUM_PIECES,
+  matos: ['pedalboard', 'ampli', 'micro', 'di', 'retour', 'casque', 'enceinte', 'musicien'],
+};
+
+// ---- morceaux du dessin, mémorisés : seul ce qui bouge est redessiné
+const CableG = React.memo(function CableG({ d, type, dim, dash }: { d: string; type: CableType; dim?: boolean; dash?: boolean }) {
+  return (
+    <G opacity={dim ? 0.22 : 1}>
+      {type === 'xlr' ? <>
+        <Path d={d} fill="none" stroke="#0B0D10" strokeWidth={8} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
+        <Path d={d} fill="none" stroke={XLR} strokeWidth={4} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
+      </> : <Path d={d} fill="none" stroke={JACK} strokeWidth={3.5} strokeLinecap="round" strokeDasharray={dash ? '12 10' : undefined} />}
+    </G>
+  );
+});
+
+const ObjG = React.memo(function ObjG({ kind, name, x, y, on, n, dim }: { kind: Kind; name: string; x: number; y: number; on: boolean; n: number; dim: boolean }) {
+  const c = FAM[family(kind)];
+  const t = name.slice(0, 14);
+  const lw = Math.min(118, 16 + t.length * 7);
+  return (
+    <G opacity={dim ? 0.5 : 1}>
+      {on && <Circle cx={x} cy={y} r={R + 7} fill="none" stroke="#FFFFFF" strokeWidth={3} />}
+      <Circle cx={x} cy={y} r={R} fill="#1E2227" stroke={c} strokeWidth={3} />
+      <KindIcon kind={kind} x={x} y={y} c={c} s={0.9} />
+      {n > 0 && <G><Circle cx={x + R - 3} cy={y - R + 3} r={8} fill={c} /><SvgText x={x + R - 3} y={y - R + 7} textAnchor="middle" fontSize={10} fontWeight="900" fill="#0B0D10">{String(n)}</SvgText></G>}
+      <Rect x={x - lw / 2} y={y + R + 3} width={lw} height={19} rx={9.5} fill="#0B0D10" opacity={0.85} />
+      <SvgText x={x} y={y + R + 17} textAnchor="middle" fontSize={12} fontWeight="800" fill="#E8EAED">{t}</SvgText>
+    </G>
+  );
+});
+
+const ZoneG = React.memo(function ZoneG({ x1, y1, x2, y2, color, label, on, n, bundled }: { x1: number; y1: number; x2: number; y2: number; color: string; label: string; on: boolean; n: number; bundled: boolean }) {
+  return (
+    <G>
+      <Rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} rx={16} fill={color} fillOpacity={on ? 0.1 : 0.05} stroke={color} strokeWidth={on ? 3 : 2} strokeDasharray={on ? undefined : '8 6'} />
+      <Rect x={x1} y={y1} width={Math.min(x2 - x1, 24 + label.length * 8)} height={26} rx={12} fill={color} fillOpacity={0.9} />
+      <SvgText x={x1 + 12} y={y1 + 18} fontSize={13} fontWeight="900" fill="#0B0D10">{label}</SvgText>
+      <Path d={`M${x2 - 16} ${y2 - 4} L${x2 - 4} ${y2 - 4} L${x2 - 4} ${y2 - 16}`} stroke={color} strokeWidth={3} fill="none" strokeLinecap="round" />
+      {n > 1 && (
+        <G>
+          <Rect x={(x1 + x2) / 2 - 76} y={y2 - 13} width={152} height={26} rx={13} fill={bundled ? color : '#0B0D10'} stroke={color} strokeWidth={2} />
+          <SvgText x={(x1 + x2) / 2} y={y2 + 5} textAnchor="middle" fontSize={12} fontWeight="900" fill={bundled ? '#0B0D10' : color}>{bundled ? `⇊ Faisceau · ${n}` : `⇈ Regrouper ${n} câbles`}</SvgText>
+        </G>
+      )}
+    </G>
+  );
+});
+
+/** Fond de scène + prises de la table : ne change que si les prises occupées changent. */
+const BackG = React.memo(function BackG({ H, STAGE_H, PORT_Y, usedKey, selKey }: { H: number; STAGE_H: number; PORT_Y: number; usedKey: string; selKey: string }) {
+  const used = new Set(usedKey.split(','));
+  return (
+    <G>
+      <Rect x={0} y={0} width={W} height={H} fill="#111317" />
+      <Rect x={4} y={4} width={W - 8} height={STAGE_H} rx={22} fill="#16191E" stroke="#2A3038" strokeWidth={2} />
+      {[...Array(9)].map((_, k) => <Line key={k} x1={4 + (k + 1) * 99} y1={6} x2={4 + (k + 1) * 99} y2={STAGE_H + 2} stroke="#1B1F25" strokeWidth={2} />)}
+      <SvgText x={20} y={24} fontSize={12} fill="#4B525C" fontWeight="700">FOND DE SCÈNE</SvgText>
+      <SvgText x={W - 22} y={STAGE_H - 8} textAnchor="end" fontSize={12} fill="#4B525C" fontWeight="700">▼ PUBLIC</SvgText>
+      <Rect x={14} y={STAGE_H + 12} width={W - 28} height={H - STAGE_H - 18} rx={14} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
+      {Array.from({ length: 18 }, (_, k) => k + 1).map((n) => {
+        const u = used.has('p' + n);
+        const on = selKey === 'p' + n;
+        return (
+          <G key={n}>
+            <Circle cx={plugX(n)} cy={PORT_Y} r={11} fill="#0B0D10" stroke={on ? '#FFFFFF' : u ? '#E8EAED' : '#3A414B'} strokeWidth={on ? 4 : 2} />
+            <Circle cx={plugX(n)} cy={PORT_Y} r={4} fill={u ? '#E8EAED' : '#2A3038'} />
+            <SvgText x={plugX(n)} y={PORT_Y + 27} textAnchor="middle" fontSize={11} fontWeight="800" fill={u ? '#E8EAED' : '#5B636D'}>{String(n)}</SvgText>
+          </G>
+        );
+      })}
+      <SvgText x={plugX(1) - 16} y={PORT_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">IN</SvgText>
+      {OUTS.map((id, k) => {
+        const u = used.has(id);
+        const on = selKey === id;
+        const c = k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0];
+        return (
+          <G key={id}>
+            <Circle cx={outX(id)} cy={PORT_Y} r={13} fill="#0B0D10" stroke={on ? '#FFFFFF' : c} strokeWidth={on ? 4 : 2.5} />
+            <Circle cx={outX(id)} cy={PORT_Y} r={5} fill={u ? c : '#2A3038'} />
+            <SvgText x={outX(id)} y={PORT_Y + 29} textAnchor="middle" fontSize={10} fontWeight="800" fill={c}>{k < 6 ? `AUX${k + 1}` : id === 'mainL' ? 'MAIN L' : 'MAIN R'}</SvgText>
+          </G>
+        );
+      })}
+    </G>
+  );
+});
 
 export function StageEditor({ client, theme }: { client: XAirClient; theme: Theme }) {
   const [st, setSt] = useState<Stage>(EMPTY);
-  const [palTab, setPalTab] = useState<'blocs' | 'configs'>('blocs');
+  const [palTab, setPalTab] = useState<PalTab>('instr');
+  const [palH, setPalH] = useState(0);
+  const { width: winW } = useWindowDimensions();
   const [loaded, setLoaded] = useState(false);
-  const [mode, setMode] = useState<'move' | 'wire'>('move');
+  const [mode, setMode] = useState<'move' | 'wire' | 'frame'>('move');
   const [ctype, setCtype] = useState<'auto' | CableType>('auto');
   const [sel, setSel] = useState<Sel>(null);
   const [drag, setDrag] = useState<Drag>(null);
@@ -175,7 +261,8 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   type Hit = { t: 'obj'; id: string } | { t: 'zone'; id: string } | { t: 'resize'; id: string } | { t: 'bundle'; id: string } | { t: 'pill'; id: string } | { t: 'end'; e: End } | null;
   const hit = (x: number, y: number): Hit => {
     for (const p of pills) if (Math.abs(x - p.x) < 24 && Math.abs(y - p.y) < 14) return { t: 'pill', id: p.id };
-    for (let k = st.objs.length - 1; k >= 0; k--) { const o = st.objs[k]; const p = objPos(o); if (Math.hypot(x - p.x, y - p.y) < R + 8) return { t: 'obj', id: o.id }; }
+    // un bloc se prend par son rond OU par son nom dessous (zone généreuse pour le doigt)
+    for (let k = st.objs.length - 1; k >= 0; k--) { const o = st.objs[k]; const p = objPos(o); if (Math.abs(x - p.x) < R + 14 && y > p.y - R - 12 && y < p.y + R + 28) return { t: 'obj', id: o.id }; }
     for (const z of zonesOf(st)) {
       const r = zoneRect(z);
       if (Math.hypot(x - r.x2, y - r.y2) < 22) return { t: 'resize', id: z.id };
@@ -216,7 +303,8 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
         const y = e.nativeEvent.locationY / s;
         const h = L.hit(x, y);
         const base = { x, y, x0: x, y0: y, moved: false };
-        if (!h) { putDrag(L.mode === 'move' ? { ...base, kind: 'marquee' } : null); return; }
+        // un cadre ne se dessine QUE dans le mode « ▢ Cadre », et jamais en partant d'un bloc
+        if (!h) { putDrag(L.mode === 'frame' ? { ...base, kind: 'marquee' } : null); return; }
         if (h.t === 'pill' || h.t === 'bundle') { putDrag({ ...base, kind: 'obj', id: h.t + ':' + h.id }); return; }
         if (h.t === 'zone') { const z = zonesOf(L.st).find((q) => q.id === h.id)!; putDrag({ ...base, kind: 'zone', id: h.id, start: { x: z.x, y: z.y } }); return; }
         if (h.t === 'resize') { const z = zonesOf(L.st).find((q) => q.id === h.id)!; putDrag({ ...base, kind: 'resize', id: h.id, start: { x: z.x, y: z.y, w: z.w, h: z.h } }); return; }
@@ -241,7 +329,8 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           if (d.kind === 'resize') setStThrottled((cur) => ({ ...cur, zones: zonesOf(cur).map((q) => (q.id === id ? { ...q, w: Math.max(0.08, Math.min(1 - q.x, (s0.w ?? 0.2) + dx)), h: Math.max(0.12, Math.min(1 - q.y, (s0.h ?? 0.3) + dy)) } : q)) }));
         }
         dref.current = { ...d, x: e.nativeEvent.locationX / s, y: e.nativeEvent.locationY / s, moved };
-        if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; setDrag(dref.current); });
+        // seuls le câble tiré et le cadre dessiné ont besoin de suivre le doigt à l'écran
+        if ((d.kind === 'wire' || d.kind === 'marquee') && !frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; setDrag(dref.current); });
       },
       onPanResponderRelease: (e) => {
         const L = latest.current;
@@ -266,8 +355,11 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           const y1 = L.fy(Math.min(d.y0, d.y)), y2 = L.fy(Math.max(d.y0, d.y));
           if (x2 - x1 > 0.06 && y2 - y1 > 0.1) {
             const r = { x: Math.max(0, x1), y: Math.max(0, y1), w: Math.min(1, x2) - Math.max(0, x1), h: Math.min(1, y2) - Math.max(0, y1) };
-            setSt((cur) => { const out = zoneFromRect(cur, r); setSel({ zone: out.id }); return out.st; });
-          }
+            const out = zoneFromRect(L.st, r);
+            setSt(out.st);
+            setSel({ zone: out.id });
+            setMode('move');
+          } else showTip('Cadre trop petit : glisse en diagonale pour entourer les blocs.');
           return;
         }
         if (d.kind === 'wire' && d.from) {
@@ -291,12 +383,6 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     const o: StageObj = { id: newId('o'), kind, name: kind === 'autre' ? 'Instrument' : kindLabel(kind), x: Math.min(1, x), y: Math.min(1, y), zone: z?.id };
     setSt({ ...st, objs: [...st.objs, o] });
     setSel({ obj: o.id });
-  };
-  const addZone = () => {
-    const k = zonesOf(st).length;
-    const z: Zone = { id: newId('z'), name: 'Musicien', color: ZONE_COLORS[k % ZONE_COLORS.length], x: 0.3, y: 0.15, w: 0.22, h: 0.5 };
-    setSt({ ...st, zones: [...zonesOf(st), z] });
-    setSel({ zone: z.id });
   };
   const redo = () => {
     const ch = tableChans();
@@ -333,14 +419,6 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     else setSt({ ...st, free: true });
   };
 
-  const Cable = ({ d, type, dim, dash }: { d: string; type: CableType; dim?: boolean; dash?: boolean }) => (
-    <G opacity={dim ? 0.22 : 1}>
-      {type === 'xlr' ? <>
-        <Path d={d} fill="none" stroke="#0B0D10" strokeWidth={8} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
-        <Path d={d} fill="none" stroke={XLR} strokeWidth={4} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
-      </> : <Path d={d} fill="none" stroke={JACK} strokeWidth={3.5} strokeLinecap="round" strokeDasharray={dash ? '12 10' : undefined} />}
-    </G>
-  );
   const anySel = !!sel && !('gear' in (sel as object));
   // la carte se met du côté opposé à ce qu'on a choisi, pour ne pas le cacher
   const selX = selObj ? selObj.x : selZone ? selZone.x + selZone.w / 2 : selEnd && !('o' in selEnd) ? posOf(selEnd).x / W : 0;
@@ -349,48 +427,66 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const xlrN = g.find((x) => x.key === 'xlr')?.n ?? 0;
   const jackN = g.find((x) => x.key === 'jack')?.n ?? 0;
   const hov = drag && drag.moved && drag.kind === 'wire' ? endOfHit(hit(drag.x, drag.y)) : null;
+  // comptes calculés une fois (et pas une fois par bloc à chaque image)
+  const perEnd = useMemo(() => {
+    const m = new Map<string, number>();
+    const k = (e: End) => ('o' in e ? 'o:' + e.o : 'plug' in e ? 'p' + e.plug : e.out);
+    for (const c of st.cables) { m.set(k(c.a), (m.get(k(c.a)) ?? 0) + 1); m.set(k(c.b), (m.get(k(c.b)) ?? 0) + 1); }
+    return m;
+  }, [st.cables]);
+  const usedKey = [...perEnd.keys()].filter((k) => !k.startsWith('o:')).sort().join(',');
+  const selKey = selEnd && !('o' in selEnd) ? ('plug' in selEnd ? 'p' + selEnd.plug : selEnd.out) : '';
+  const linked = new Set(selCables.flatMap((c) => [c.a, c.b]).filter((e) => 'o' in e).map((e) => (e as { o: string }).o));
+
+  // ---- palette : grille sans défilement, la taille des cases s'adapte à la hauteur
+  const narrowPal = winW < 700;
+  const cols = narrowPal ? 2 : 3;
+  const palW = narrowPal ? 112 : 168;
+  const inner = palW - 14; // bordures + marges
+  const cellW = Math.floor((inner - (cols - 1) * 4) / cols);
+  const items = palTab === 'configs' ? CONFIGS.length : PALETTE[palTab].length;
+  const cCols = palTab === 'configs' ? (narrowPal ? 1 : 2) : cols;
+  const rows = Math.ceil(items / cCols);
+  const tabsH = 2 * 30 + 4;
+  const cellH = palH ? Math.max(30, Math.min(64, Math.floor((palH - tabsH - 16 - (rows - 1) * 4) / rows))) : 52;
+  const showIcon = cellH >= 40;
 
   return (
     <View style={{ flex: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 8, paddingBottom: 8 }}>
       {/* palette */}
-      <View style={[styles.palette, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-        <ScrollView contentContainerStyle={{ gap: 4, paddingVertical: 6, alignItems: 'center' }} showsVerticalScrollIndicator={false}>
-          <Pressable onPress={() => setPalTab('blocs')} style={[styles.tab, palTab === 'blocs' ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: palTab === 'blocs' ? theme.onAccent : theme.text, fontSize: 11, fontWeight: '900' }}>Blocs</Text></Pressable>
-          <Pressable onPress={() => setPalTab('configs')} onLongPress={() => showTip('Configurations toutes prêtes : une batterie complète, guitare › pédalier › ampli, basse › DI… posées dans leur cadre, déjà câblées entre elles.')} style={[styles.tab, palTab === 'configs' ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: palTab === 'configs' ? theme.onAccent : theme.text, fontSize: 11, fontWeight: '900' }}>Configs</Text></Pressable>
-          {palTab === 'configs' && CONFIGS.map((c) => (
-            <Pressable key={c.key} onPress={() => { const r = addConfig(st, c.key); setSt(r.st); setSel(null); }} style={[styles.pal, { borderColor: c.drums ? FAM.drum : theme.line2, minHeight: 74 }]}>
-              <Svg width={30} height={30} viewBox="0 0 30 30"><KindIcon kind={c.drums ? 'batterie' : c.items[0].kind} x={15} y={15} c={FAM[family(c.drums ? 'batterie' : c.items[0].kind)]} s={0.62} /></Svg>
-              <Text numberOfLines={3} style={[styles.palT, { color: theme.text }]}>{c.label}</Text>
+      <View style={[styles.palette, { width: palW, backgroundColor: theme.panel, borderColor: theme.line }]} onLayout={(e) => setPalH(e.nativeEvent.layout.height)}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+          {PAL_TABS.map(([k, label]) => (
+            <Pressable key={k} onPress={() => setPalTab(k)} onLongPress={k === 'configs' ? () => showTip('Configurations toutes prêtes : batterie complète, guitare › pédalier › ampli, basse › DI… posées dans leur cadre, déjà câblées.') : undefined} style={[styles.tab, { width: Math.floor((inner - 4) / 2) }, palTab === k ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}>
+              <Text style={{ color: palTab === k ? theme.onAccent : theme.text, fontSize: 11, fontWeight: '900' }}>{label}</Text>
             </Pressable>
           ))}
-          {palTab === 'blocs' && <Pressable onPress={addZone} onLongPress={() => showTip('Un cadre par musicien : dessine-le en glissant sur un endroit vide de la scène, ou touche ici. Il se déplace d’un coup avec tout son contenu.')} style={[styles.pal, { borderColor: theme.accent, borderStyle: 'dashed' }]}>
-            <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>▢</Text>
-            <Text style={[styles.palT, { color: theme.accent }]}>Cadre</Text>
-          </Pressable>}
-          {palTab === 'blocs' && PALETTE.map((sec) => (
-            <React.Fragment key={sec.title}>
-              <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '900', marginTop: 6 }}>{sec.title.toUpperCase()}</Text>
-              {sec.kinds.map((k) => (
-                <Pressable key={k} onPress={() => addObj(k)} onLongPress={() => showTip(`Ajoute ${kindLabel(k).toLowerCase()}${selZone ? ` dans « ${selZone.name} »` : ''}, puis fais-le glisser à sa place.`)} style={[styles.pal, { borderColor: theme.line2 }]}>
-                  <Svg width={30} height={30} viewBox="0 0 30 30"><KindIcon kind={k} x={15} y={15} c={FAM[family(k)]} s={0.62} /></Svg>
-                  <Text numberOfLines={1} style={[styles.palT, { color: theme.text }]}>{kindLabel(k).replace('Guitare ', 'Guit. ')}</Text>
-                </Pressable>
-              ))}
-            </React.Fragment>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+          {palTab === 'configs' ? CONFIGS.map((c) => (
+            <Pressable key={c.key} onPress={() => { const r = addConfig(st, c.key); setSt(r.st); setSel(null); }} style={[styles.pal, { width: Math.floor((inner - (cCols - 1) * 4) / cCols), height: cellH, flexDirection: 'row', gap: 4, paddingHorizontal: 4, borderColor: c.drums ? FAM.drum : theme.line2 }]}>
+              {showIcon && <Svg width={24} height={24} viewBox="0 0 30 30"><KindIcon kind={c.drums ? 'batterie' : c.items[0].kind} x={15} y={15} c={FAM[family(c.drums ? 'batterie' : c.items[0].kind)]} s={0.62} /></Svg>}
+              <Text numberOfLines={3} style={[styles.palT, { color: theme.text, flex: 1, textAlign: 'left' }]}>{c.label}</Text>
+            </Pressable>
+          )) : PALETTE[palTab].map((k) => (
+            <Pressable key={k} onPress={() => addObj(k)} onLongPress={() => showTip(`Ajoute ${kindLabel(k).toLowerCase()}${selZone ? ` dans « ${selZone.name} »` : ''}, puis fais-le glisser à sa place.`)} style={[styles.pal, { width: cellW, height: cellH, borderColor: theme.line2 }]}>
+              {showIcon ? <Svg width={26} height={26} viewBox="0 0 30 30"><KindIcon kind={k} x={15} y={15} c={FAM[family(k)]} s={0.62} /></Svg> : null}
+              <Text numberOfLines={showIcon && cellH < 50 ? 1 : 2} style={[styles.palT, { color: theme.text, lineHeight: 11 }]}>{kindLabel(k).replace('Guitare ', 'Guit. ').replace('Contrebasse', 'Contreb.').replace('Violoncelle', 'Vlc.')}</Text>
+            </Pressable>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       <View style={{ flex: 1, gap: 6 }}>
         {/* barre d'outils, une ligne */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Segmented theme={theme} value={mode} onChange={setMode} options={[['move', '✋ Déplacer'], ['wire', '🔌 Câbler']] as const} />
+          <Segmented theme={theme} value={mode} onChange={setMode} options={[['move', '✋ Déplacer'], ['wire', '🔌 Câbler'], ['frame', '▢ Cadre']] as const} />
           {mode === 'wire' && <Segmented theme={theme} value={ctype} onChange={setCtype} options={[['auto', 'Auto'], ['jack', 'Jack'], ['xlr', 'XLR']] as const} />}
-          <Text style={{ flex: 1, color: theme.muted, fontSize: 12 }} numberOfLines={2}>
-            {mode === 'wire' ? 'Glisse d’un bloc à un autre, ou jusqu’à une prise.' : 'Glisse un bloc · le haut d’un cadre déplace tout · glisse sur un endroit vide pour dessiner un cadre.'}
+          <Text style={{ flex: 1, color: mode === 'frame' ? '#60A5FA' : theme.muted, fontSize: 12, fontWeight: mode === 'frame' ? '800' : '400' }} numberOfLines={2}>
+            {mode === 'wire' ? 'Glisse d’un bloc à un autre, ou jusqu’à une prise.' : mode === 'frame' ? 'Glisse en diagonale sur la scène pour entourer des blocs.' : 'Glisse un bloc · le haut d’un cadre déplace tout.'}
           </Text>
           <Pressable onPress={toggleFree} onLongPress={() => showTip('Lié à la table : les voies nommées arrivent toutes seules sur le plan, câblées à leur prise. Plan libre : tu dessines sans tenir compte de la table (autre salle, autre groupe).')} style={[styles.tool, st.free ? { borderColor: theme.line2 } : { borderColor: '#34D399', backgroundColor: '#13261E' }]}>
-            <Text style={{ color: st.free ? theme.text : '#6EE7B7', fontWeight: '800', fontSize: 12 }}>{st.free ? '○ Plan libre' : '● Lié à la table'}</Text>
+            <Text style={{ color: st.free ? theme.text : '#6EE7B7', fontWeight: '800', fontSize: 12 }}>{st.free ? '○ Libre' : '● Lié'}</Text>
           </Pressable>
           <Pressable onPress={() => setSel(sel && 'gear' in sel ? null : { gear: true })} style={[styles.tool, { borderColor: theme.accent }]}>
             <Text style={{ color: theme.text, fontWeight: '900', fontSize: 12 }}>🎒 {xlrN} XLR · {jackN} jack</Text>
@@ -404,59 +500,14 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           {sc > 0 && (
             <View style={{ width: W * sc, height: H * sc }}>
               <Svg ref={svgRef} width={W * sc} height={H * sc} viewBox={`0 0 ${W} ${H}`} pointerEvents="none">
-                <Rect x={0} y={0} width={W} height={H} fill="#111317" />
-                <Rect x={4} y={4} width={W - 8} height={STAGE_H} rx={22} fill="#16191E" stroke="#2A3038" strokeWidth={2} />
-                {[...Array(9)].map((_, k) => <Line key={k} x1={4 + (k + 1) * 99} y1={6} x2={4 + (k + 1) * 99} y2={STAGE_H + 2} stroke="#1B1F25" strokeWidth={2} />)}
-                <SvgText x={20} y={24} fontSize={12} fill="#4B525C" fontWeight="700">FOND DE SCÈNE</SvgText>
-                <SvgText x={W - 22} y={STAGE_H - 8} textAnchor="end" fontSize={12} fill="#4B525C" fontWeight="700">▼ PUBLIC</SvgText>
+                <BackG H={H} STAGE_H={STAGE_H} PORT_Y={PORT_Y} usedKey={usedKey} selKey={selKey} />
                 {/* cadres */}
                 {zonesOf(st).map((z) => {
                   const r = zoneRect(z);
-                  const on = selZone?.id === z.id;
-                  const n = zoneTableCables(st, z.id).length;
-                  return (
-                    <G key={z.id}>
-                      <Rect x={r.x1} y={r.y1} width={r.x2 - r.x1} height={r.y2 - r.y1} rx={16} fill={z.color} fillOpacity={on ? 0.1 : 0.05} stroke={z.color} strokeWidth={on ? 3 : 2} strokeDasharray={on ? undefined : '8 6'} />
-                      <Rect x={r.x1} y={r.y1} width={Math.min(r.x2 - r.x1, 24 + z.name.length * 8 + (z.drums ? 72 : 0))} height={26} rx={12} fill={z.color} fillOpacity={0.9} />
-                      <SvgText x={r.x1 + 12} y={r.y1 + 18} fontSize={13} fontWeight="900" fill="#0B0D10">{`${z.name}${z.drums ? ` · ${membersOf(st, z.id).length} él.` : ''}`}</SvgText>
-                      <Path d={`M${r.x2 - 16} ${r.y2 - 4} L${r.x2 - 4} ${r.y2 - 4} L${r.x2 - 4} ${r.y2 - 16}`} stroke={z.color} strokeWidth={3} fill="none" strokeLinecap="round" />
-                      {n > 1 && (
-                        <G>
-                          <Rect x={(r.x1 + r.x2) / 2 - 76} y={r.y2 - 13} width={152} height={26} rx={13} fill={z.bundled ? z.color : '#0B0D10'} stroke={z.color} strokeWidth={2} />
-                          <SvgText x={(r.x1 + r.x2) / 2} y={r.y2 + 5} textAnchor="middle" fontSize={12} fontWeight="900" fill={z.bundled ? '#0B0D10' : z.color}>{z.bundled ? `⇊ Faisceau · ${n}` : `⇈ Regrouper ${n} câbles`}</SvgText>
-                        </G>
-                      )}
-                    </G>
-                  );
-                })}
-                {/* la table */}
-                <Rect x={14} y={STAGE_H + 12} width={W - 28} height={H - STAGE_H - 18} rx={14} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
-                {Array.from({ length: 18 }, (_, k) => k + 1).map((n) => {
-                  const used = touching(st, { plug: n }).length > 0;
-                  const on = !!selEnd && 'plug' in selEnd && selEnd.plug === n;
-                  return (
-                    <G key={n}>
-                      <Circle cx={plugX(n)} cy={PORT_Y} r={11} fill="#0B0D10" stroke={on ? '#FFFFFF' : used ? '#E8EAED' : '#3A414B'} strokeWidth={on ? 4 : 2} />
-                      <Circle cx={plugX(n)} cy={PORT_Y} r={4} fill={used ? '#E8EAED' : '#2A3038'} />
-                      <SvgText x={plugX(n)} y={PORT_Y + 27} textAnchor="middle" fontSize={11} fontWeight="800" fill={used ? '#E8EAED' : '#5B636D'}>{String(n)}</SvgText>
-                    </G>
-                  );
-                })}
-                <SvgText x={plugX(1) - 16} y={PORT_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">IN</SvgText>
-                {OUTS.map((id, k) => {
-                  const used = touching(st, { out: id }).length > 0;
-                  const on = !!selEnd && 'out' in selEnd && selEnd.out === id;
-                  const c = k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0];
-                  return (
-                    <G key={id}>
-                      <Circle cx={outX(id)} cy={PORT_Y} r={13} fill="#0B0D10" stroke={on ? '#FFFFFF' : c} strokeWidth={on ? 4 : 2.5} />
-                      <Circle cx={outX(id)} cy={PORT_Y} r={5} fill={used ? c : '#2A3038'} />
-                      <SvgText x={outX(id)} y={PORT_Y + 29} textAnchor="middle" fontSize={10} fontWeight="800" fill={c}>{k < 6 ? `AUX${k + 1}` : id === 'mainL' ? 'MAIN L' : 'MAIN R'}</SvgText>
-                    </G>
-                  );
+                  return <ZoneG key={z.id} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} color={z.color} label={`${z.name}${z.drums ? ` · ${membersOf(st, z.id).length} él.` : ''}`} on={selZone?.id === z.id} n={zoneTableCables(st, z.id).length} bundled={!!z.bundled} />;
                 })}
                 {/* câbles */}
-                {st.cables.filter((c) => !hiddenCable.has(c.id)).map((c) => <Cable key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} />)}
+                {st.cables.filter((c) => !hiddenCable.has(c.id)).map((c) => <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} />)}
                 {/* faisceaux : un gros câble par cadre, jusqu'à ses prises */}
                 {bundles.map(({ z, cables }) => {
                   const r = zoneRect(z);
@@ -487,28 +538,15 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                   return (
                     <G>
                       {ok && <Circle cx={b.x} cy={b.y} r={'o' in hov! ? R + 12 : 20} fill="rgba(52,211,153,0.22)" stroke="#34D399" strokeWidth={4} />}
-                      <Cable d={`M${a.x} ${a.y} C ${a.x} ${(a.y + b.y) / 2}, ${b.x} ${(a.y + b.y) / 2}, ${b.x} ${b.y}`} type={ty} dash={!ok} />
+                      <CableG d={`M${a.x} ${a.y} C ${a.x} ${(a.y + b.y) / 2}, ${b.x} ${(a.y + b.y) / 2}, ${b.x} ${b.y}`} type={ty} dash={!ok} />
                     </G>
                   );
                 })()}
                 {/* blocs */}
                 {st.objs.map((o) => {
-                  const c = FAM[family(o.kind)];
                   const p = objPos(o);
                   const on = selObj?.id === o.id;
-                  const n = touching(st, { o: o.id }).length;
-                  const t = o.name.slice(0, 14);
-                  const lw = Math.min(118, 16 + t.length * 7);
-                  return (
-                    <G key={o.id} opacity={anySel && !on && !selCables.some((cb) => sameEnd(cb.a, { o: o.id }) || sameEnd(cb.b, { o: o.id })) && !(selZone && o.zone === selZone.id) ? 0.5 : 1}>
-                      {on && <Circle cx={p.x} cy={p.y} r={R + 7} fill="none" stroke="#FFFFFF" strokeWidth={3} />}
-                      <Circle cx={p.x} cy={p.y} r={R} fill="#1E2227" stroke={c} strokeWidth={3} />
-                      <KindIcon kind={o.kind} x={p.x} y={p.y} c={c} s={0.9} />
-                      {n > 0 && <G><Circle cx={p.x + R - 3} cy={p.y - R + 3} r={8} fill={c} /><SvgText x={p.x + R - 3} y={p.y - R + 7} textAnchor="middle" fontSize={10} fontWeight="900" fill="#0B0D10">{String(n)}</SvgText></G>}
-                      <Rect x={p.x - lw / 2} y={p.y + R + 3} width={lw} height={19} rx={9.5} fill="#0B0D10" opacity={0.85} />
-                      <SvgText x={p.x} y={p.y + R + 17} textAnchor="middle" fontSize={12} fontWeight="800" fill="#E8EAED">{t}</SvgText>
-                    </G>
-                  );
+                  return <ObjG key={o.id} kind={o.kind} name={o.name} x={p.x} y={p.y} on={on} n={perEnd.get('o:' + o.id) ?? 0} dim={anySel && !on && !linked.has(o.id) && !(selZone && o.zone === selZone.id)} />;
                 })}
                 {/* pastilles Jack / XLR à toucher */}
                 {pills.map((p) => (
@@ -523,80 +561,84 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
               </Svg>
               <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
 
-              {/* carte de la sélection */}
+              {/* carte de la sélection : compacte, tout tient sans défiler */}
               {sel && (
-                <View style={[styles.card, cardLeft ? { left: 10 } : { right: 10 }, { maxHeight: H * sc - 20, backgroundColor: theme.panel, borderColor: selZone ? selZone.color : selObj ? FAM[family(selObj.kind)] : theme.accent }]}>
-                  <ScrollView contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }} numberOfLines={1}>
-                        {'gear' in sel ? 'À emporter' : selZone ? 'Cadre' : selObj ? kindLabel(selObj.kind) : selEnd ? endLabel(st, selEnd, busName) : ''}
-                        {selEnd && 'plug' in selEnd && plugName(selEnd.plug) ? <Text style={{ color: theme.muted, fontSize: 12 }}> · {plugName(selEnd.plug)}</Text> : null}
-                      </Text>
-                      <Pressable onPress={() => setSel(null)} style={styles.x} accessibilityLabel="Fermer"><Text style={{ color: theme.muted, fontSize: 20 }}>✕</Text></Pressable>
+                <View style={[styles.card, cardLeft ? { left: 8 } : { right: 8 }, { maxHeight: H * sc - 16, backgroundColor: theme.panel, borderColor: selZone ? selZone.color : selObj ? FAM[family(selObj.kind)] : theme.accent }]}>
+                  <ScrollView contentContainerStyle={{ gap: 6 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {selObj ? (
+                        <TextInput value={selObj.name} maxLength={24} onChangeText={(v) => setSt({ ...st, objs: st.objs.map((o) => (o.id === selObj.id ? { ...o, name: v } : o)) })} style={[styles.input, { flex: 1, color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+                      ) : selZone ? (
+                        <TextInput value={selZone.name} maxLength={18} onChangeText={(v) => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, name: v } : z)) })} style={[styles.input, { flex: 1, color: theme.text, borderColor: selZone.color, backgroundColor: theme.deep }]} />
+                      ) : (
+                        <Text style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '900' }} numberOfLines={1}>
+                          {'gear' in sel ? 'À emporter' : selEnd ? endLabel(st, selEnd, busName) : ''}
+                          {selEnd && 'plug' in selEnd && plugName(selEnd.plug) ? <Text style={{ color: theme.muted, fontSize: 12 }}> · {plugName(selEnd.plug)}</Text> : null}
+                        </Text>
+                      )}
+                      <Pressable onPress={() => setSel(null)} style={styles.x} accessibilityLabel="Fermer"><Text style={{ color: theme.muted, fontSize: 18 }}>✕</Text></Pressable>
                     </View>
 
                     {'gear' in sel && (
                       <>
-                        {g.map((x) => {
-                          const ok = !!packed[x.key];
-                          return (
-                            <Pressable key={x.key} onPress={() => setPacked((p) => ({ ...p, [x.key]: !ok }))} style={[styles.row, { borderColor: ok ? '#34D399' : theme.line, backgroundColor: ok ? 'rgba(52,211,153,0.10)' : theme.deep }]}>
-                              <Text style={{ color: ok ? '#34D399' : theme.text, fontWeight: '900', fontSize: 18, width: 30 }}>{ok ? '✓' : x.n}</Text>
-                              <Text style={{ color: ok ? theme.muted : theme.text, fontWeight: '700', flex: 1, textDecorationLine: ok ? 'line-through' : 'none' }}>{x.label}</Text>
-                            </Pressable>
-                          );
-                        })}
-                        {!g.length && <Text style={{ color: theme.muted }}>Pose des blocs et tire des câbles : la liste se remplit toute seule.</Text>}
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                          {g.map((x) => {
+                            const ok = !!packed[x.key];
+                            return (
+                              <Pressable key={x.key} onPress={() => setPacked((p) => ({ ...p, [x.key]: !ok }))} style={[styles.row, styles.half, { borderColor: ok ? '#34D399' : theme.line, backgroundColor: ok ? 'rgba(52,211,153,0.10)' : theme.deep }]}>
+                                <Text style={{ color: ok ? '#34D399' : theme.text, fontWeight: '900', fontSize: 15, width: 24 }}>{ok ? '✓' : x.n}</Text>
+                                <Text numberOfLines={2} style={{ color: ok ? theme.muted : theme.text, fontWeight: '700', fontSize: 12, flex: 1, textDecorationLine: ok ? 'line-through' : 'none' }}>{x.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {!g.length && <Text style={{ color: theme.muted, fontSize: 12 }}>Pose des blocs et tire des câbles : la liste se remplit toute seule.</Text>}
                         <Pressable onPress={exportMenu} style={[styles.btn, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '900' }}>↗ Exporter la scène</Text></Pressable>
                       </>
                     )}
 
-                    {selObj && (
-                      <>
-                        <TextInput value={selObj.name} maxLength={24} onChangeText={(v) => setSt({ ...st, objs: st.objs.map((o) => (o.id === selObj.id ? { ...o, name: v } : o)) })} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
-                        <Text style={{ color: theme.muted, fontSize: 12 }}>{selObj.zone ? `Dans « ${zonesOf(st).find((z) => z.id === selObj.zone)?.name ?? ''} »` : 'Hors cadre'}{selObj.plug ? ` · prise ${selObj.plug} de la table` : ''}</Text>
-                      </>
-                    )}
+                    {selObj && <Text style={{ color: theme.muted, fontSize: 12 }}>{kindLabel(selObj.kind)} · {selObj.zone ? `dans « ${zonesOf(st).find((z) => z.id === selObj.zone)?.name ?? ''} »` : 'hors cadre'}{selObj.plug ? ` · prise ${selObj.plug}` : ''}</Text>}
 
                     {selZone && (
                       <>
-                        <TextInput value={selZone.name} maxLength={18} onChangeText={(v) => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, name: v } : z)) })} style={[styles.input, { color: theme.text, borderColor: selZone.color, backgroundColor: theme.deep }]} />
-                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                          {ZONE_COLORS.map((c) => <Pressable key={c} onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, color: c } : z)) })} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: 3, borderColor: selZone.color === c ? '#FFFFFF' : 'transparent' }} />)}
+                        <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
+                          {ZONE_COLORS.map((c) => <Pressable key={c} onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, color: c } : z)) })} style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c, borderWidth: 3, borderColor: selZone.color === c ? '#FFFFFF' : 'transparent' }} />)}
+                          <View style={{ flex: 1 }} />
+                          <Pressable onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, drums: !z.drums } : z)) })}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>{selZone.drums ? '☑' : '☐'} Batterie</Text></Pressable>
                         </View>
                         {zoneTableCables(st, selZone.id).length > 1 && (
-                          <Pressable onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, bundled: !z.bundled } : z)) })} style={[styles.btn, { borderWidth: 2, borderColor: selZone.color, backgroundColor: selZone.bundled ? selZone.color : 'transparent' }]}>
-                            <Text style={{ color: selZone.bundled ? '#0B0D10' : selZone.color, fontWeight: '900' }}>{selZone.bundled ? '⇊ En faisceau · déplier les câbles' : `⇈ Regrouper ses ${zoneTableCables(st, selZone.id).length} câbles en faisceau`}</Text>
+                          <Pressable onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, bundled: !z.bundled } : z)) })} style={[styles.btn, { minHeight: 34, borderWidth: 2, borderColor: selZone.color, backgroundColor: selZone.bundled ? selZone.color : 'transparent' }]}>
+                            <Text style={{ color: selZone.bundled ? '#0B0D10' : selZone.color, fontWeight: '900', fontSize: 12 }}>{selZone.bundled ? '⇊ En faisceau · déplier' : `⇈ Regrouper ${zoneTableCables(st, selZone.id).length} câbles en faisceau`}</Text>
                           </Pressable>
                         )}
-                        <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800' }}>{selZone.drums ? 'AJOUTER À LA BATTERIE' : 'AJOUTER DANS CE CADRE'} · ou touche la palette</Text>
-                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                        <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
                           {(selZone.drums ? DRUM_PIECES : (['voix', 'guitare', 'basse', 'pedalboard', 'ampli', 'micro', 'di', 'retour', 'casque'] as Kind[])).map((k) => (
-                            <Pressable key={k} onPress={() => addObj(k)} style={[styles.chip, { borderColor: FAM[family(k)] }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>+ {kindLabel(k)}</Text></Pressable>
+                            <Pressable key={k} onPress={() => addObj(k)} style={[styles.chip, { borderColor: FAM[family(k)] }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 11 }}>+ {kindLabel(k).replace('Guitare ', 'Guit. ')}</Text></Pressable>
                           ))}
                         </View>
-                        <Pressable onPress={() => setSt({ ...st, zones: zonesOf(st).map((z) => (z.id === selZone.id ? { ...z, drums: !z.drums } : z)) })}><Text style={{ color: theme.muted, fontSize: 12 }}>{selZone.drums ? '☑' : '☐'} C’est une batterie (propose ses éléments)</Text></Pressable>
                       </>
                     )}
 
                     {(selObj || selEnd || selZone) && !('gear' in sel) && (
                       <>
-                        <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800' }}>CÂBLES · {selCables.length}</Text>
-                        {selCables.map((c) => {
-                          const from = selEnd && (sameEnd(c.a, selEnd) || sameEnd(c.b, selEnd)) ? selEnd : null;
-                          const label = from ? `→ ${endLabel(st, sameEnd(c.a, from) ? c.b : c.a, busName)}` : `${endLabel(st, c.a, busName)} → ${endLabel(st, c.b, busName)}`;
-                          return (
-                            <View key={c.id} style={[styles.row, { borderColor: theme.line, backgroundColor: theme.deep }]}>
-                              <Text style={{ color: theme.text, fontWeight: '800', flex: 1, fontSize: 13 }} numberOfLines={1}>{label}</Text>
-                              <Pressable onPress={() => setSt(setCableType(st, c.id, c.type === 'xlr' ? 'jack' : 'xlr'))} style={[styles.type, { backgroundColor: c.type === 'xlr' ? XLR : JACK }]}><Text style={{ color: '#0B0D10', fontWeight: '900', fontSize: 12 }}>{c.type === 'xlr' ? 'XLR' : 'Jack'} ⇄</Text></Pressable>
-                              <Pressable onPress={() => setSt(removeCable(st, c.id))} style={styles.x} accessibilityLabel="Retirer ce câble"><Text style={{ color: theme.muted, fontSize: 18 }}>✕</Text></Pressable>
-                            </View>
-                          );
-                        })}
+                        <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '900' }}>CÂBLES · {selCables.length}{selCables.length ? ' · touche Jack/XLR pour changer' : ''}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                          {selCables.map((c) => {
+                            const from = selEnd && (sameEnd(c.a, selEnd) || sameEnd(c.b, selEnd)) ? selEnd : null;
+                            const label = from ? `→ ${endLabel(st, sameEnd(c.a, from) ? c.b : c.a, busName)}` : `${endLabel(st, c.a, busName)} → ${endLabel(st, c.b, busName)}`;
+                            return (
+                              <View key={c.id} style={[styles.row, selCables.length > 3 ? styles.half : { width: '100%' }, { borderColor: theme.line, backgroundColor: theme.deep }]}>
+                                <Pressable onPress={() => setSt(setCableType(st, c.id, c.type === 'xlr' ? 'jack' : 'xlr'))} style={[styles.type, { backgroundColor: c.type === 'xlr' ? XLR : JACK }]}><Text style={{ color: '#0B0D10', fontWeight: '900', fontSize: 10 }}>{c.type === 'xlr' ? 'XLR' : 'Jack'}</Text></Pressable>
+                                <Text style={{ color: theme.text, fontWeight: '700', flex: 1, fontSize: 11 }} numberOfLines={1}>{label}</Text>
+                                <Pressable onPress={() => setSt(removeCable(st, c.id))} style={styles.xs} accessibilityLabel="Retirer ce câble"><Text style={{ color: theme.muted, fontSize: 14 }}>✕</Text></Pressable>
+                              </View>
+                            );
+                          })}
+                        </View>
                         {!selCables.length && <Text style={{ color: theme.muted, fontSize: 12 }}>Aucun câble. Passe en « 🔌 Câbler » et glisse depuis ici.</Text>}
-                        {selObj && family(selObj.kind) === 'monitor' && !selCables.some((c) => 'out' in c.a || 'out' in c.b) && <Text style={{ color: '#FCD34D', fontSize: 12 }}>Ce retour n’est relié à aucune sortie AUX de la table.</Text>}
-                        {selObj && <Pressable onPress={() => { setSt(removeObj(st, selObj.id)); setSel(null); }} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontWeight: '800' }}>Retirer ce bloc</Text></Pressable>}
-                        {selZone && <Pressable onPress={() => { setSt({ ...st, zones: zonesOf(st).filter((z) => z.id !== selZone.id), objs: st.objs.map((o) => (o.zone === selZone.id ? { ...o, zone: undefined } : o)) }); setSel(null); }} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontWeight: '800' }}>Retirer le cadre (les blocs restent)</Text></Pressable>}
+                        {selObj && family(selObj.kind) === 'monitor' && !selCables.some((c) => 'out' in c.a || 'out' in c.b) && <Text style={{ color: '#FCD34D', fontSize: 12 }}>Ce retour n’est relié à aucune sortie AUX.</Text>}
+                        {selObj && <Pressable onPress={() => { setSt(removeObj(st, selObj.id)); setSel(null); }} style={[styles.btn, { minHeight: 34, borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12 }}>Retirer ce bloc</Text></Pressable>}
+                        {selZone && <Pressable onPress={() => { setSt({ ...st, zones: zonesOf(st).filter((z) => z.id !== selZone.id), objs: st.objs.map((o) => (o.zone === selZone.id ? { ...o, zone: undefined } : o)) }); setSel(null); }} style={[styles.btn, { minHeight: 34, borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12 }}>Retirer le cadre (les blocs restent)</Text></Pressable>}
                       </>
                     )}
                   </ScrollView>
@@ -611,16 +653,18 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
 }
 
 const styles = StyleSheet.create({
-  palette: { width: 78, borderWidth: 1, borderRadius: 14 },
-  pal: { width: 66, minHeight: 52, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 3 },
+  palette: { borderWidth: 1, borderRadius: 14, padding: 6 },
+  pal: { borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 },
   palT: { fontSize: 9, fontWeight: '800', textAlign: 'center' },
-  tab: { width: 66, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  tab: { height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tool: { height: 40, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1.5, justifyContent: 'center' },
-  card: { position: 'absolute', top: 10, width: 290, borderWidth: 2, borderRadius: 18, padding: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, minHeight: 46 },
-  type: { height: 32, paddingHorizontal: 10, borderRadius: 16, justifyContent: 'center' },
-  input: { height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 16, fontWeight: '800' },
-  btn: { minHeight: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  chip: { height: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1.5, justifyContent: 'center' },
-  x: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  card: { position: 'absolute', top: 8, width: 340, borderWidth: 2, borderRadius: 16, padding: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 10, paddingHorizontal: 6, minHeight: 34 },
+  half: { width: '49%' },
+  type: { height: 24, paddingHorizontal: 7, borderRadius: 12, justifyContent: 'center' },
+  input: { height: 38, borderWidth: 2, borderRadius: 10, paddingHorizontal: 8, fontSize: 15, fontWeight: '800' },
+  btn: { minHeight: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  chip: { height: 28, paddingHorizontal: 8, borderRadius: 14, borderWidth: 1.5, justifyContent: 'center' },
+  x: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  xs: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
 });
