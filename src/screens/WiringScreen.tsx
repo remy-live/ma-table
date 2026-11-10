@@ -375,8 +375,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
       {size.w > 0 && (
         <View style={{ width: size.w, height: h, alignSelf: 'center' }} {...pan.panHandlers}>
           <Svg width={size.w} height={h} viewBox={`0 0 ${PANEL_W} ${PANEL_H}`}>
-            <Rect x={8} y={8} width={984} height={284} rx={18} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
-            <Rect x={20} y={20} width={960} height={260} rx={10} fill="#1A1D22" stroke="#232830" />
+            <Rect x={8} y={8} width={984} height={314} rx={18} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
+            <Rect x={20} y={20} width={960} height={290} rx={10} fill="#1A1D22" stroke="#232830" />
             <Rect x={36} y={30} width={60} height={26} rx={3} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={66} y={68} textAnchor="middle" fontSize={7} fill="#9AA3AD">REMOTE · ETHERNET</SvgText>
             <Rect x={108} y={30} width={54} height={26} rx={3} fill="#0E1013" stroke="#3A414B" />
@@ -387,7 +387,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             <Rect x={392} y={46} width={16} height={12} rx={2} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={920} y={52} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
             <Rect x={930} y={24} width={6} height={60} rx={3} fill="#2A3038" />
-            <Line x1={36} y1={215} x2={640} y2={215} stroke="#2A3038" />
+            <Line x1={36} y1={234} x2={640} y2={234} stroke="#2A3038" />
             <SvgText x={728} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>
             {/* prises */}
             {P.map((p) => {
@@ -403,7 +403,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                   <G key={p.n}>
                     <Rect x={x - 52} y={y - 26} width={104} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
                     <SvgText x={x} y={y - 3} textAnchor="middle" fontSize={13} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
-                    <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill="#E8EAED">{g.plugs.length} prises</SvgText>
+                    <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill="#E8EAED">{`${g.plugs.length} prises`}</SvgText>
                     <Rect x={x - 52} y={y - 50} width={104} height={18} rx={9} fill="#15181C" stroke={gc} strokeWidth={1.5} />
                     <SvgText x={x} y={y - 37} textAnchor="middle" fontSize={9} fontWeight="800" fill={gc}>▸ déplier les prises</SvgText>
                   </G>
@@ -414,7 +414,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                   {g && g.anchor === p.n && (
                     <G onPress={() => setOpen((o) => o.filter((k) => k !== g.k))}>
                       <Rect x={x - 44} y={y - 60} width={88} height={18} rx={9} fill={GROUP_COLORS[g.k - 1]} />
-                      <SvgText x={x} y={y - 47} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">▾ replier {g.name.slice(0, 9)}</SvgText>
+                      <SvgText x={x} y={y - 47} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{`▾ replier ${g.name.slice(0, 9)}`}</SvgText>
                     </G>
                   )}
                   <Circle cx={x} cy={y} r={p.usb ? 15 : 21} fill="#1E2227" stroke={g ? GROUP_COLORS[g.k - 1] : '#3A414B'} strokeWidth={2} />

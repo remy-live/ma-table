@@ -81,6 +81,7 @@ export function Strip(p: StripProps) {
   const insrc = Number(useParam<number>(client, insrcPath(ch), ch - 1));
   const kind = sourceKind(insrc, p48);
 
+  const narrow = (p.width ?? 92) < 80;
   const bg = p.selected ? '#1F1C14' : p.inOpenGroup ? '#1C1A14' : theme.panel;
   const border = p.selected ? GROUP_COLOR : p.inOpenGroup ? '#4A3B12' : theme.line;
 
@@ -153,8 +154,9 @@ export function Strip(p: StripProps) {
         </Text>
       </Pressable>
 
-      <MuteButton muted={muted} onPress={toggleMute} theme={theme} />
+      <MuteButton muted={muted} onPress={toggleMute} theme={theme} narrow={narrow} />
       <AutoFader
+        narrow={narrow}
         value={level}
         onChange={setLevel}
         color={p.color}
@@ -165,9 +167,9 @@ export function Strip(p: StripProps) {
       />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
 
-      <View style={{ flexDirection: 'row', gap: 4, width: '100%' }}>
-        <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} />
-        <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[styles.small, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: 6 }]}>
+      <View style={{ flexDirection: narrow ? 'column' : 'row', gap: 4, width: '100%', alignItems: 'stretch' }}>
+        <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} narrow={narrow} />
+        <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[narrow ? styles.smallN : styles.small, narrow && { height: 40 }, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: narrow ? 3 : 6 }]}>
           {fxVals.map((v, k) => {
             const on = Number(v ?? 0) > 0;
             const d = faderToDb(Number(v ?? 0));
@@ -192,8 +194,10 @@ export function GroupStrip(props: {
   onToggleOpen: () => void;
   virtual: number;
   setVirtual: (v: number) => void;
+  width?: number;
 }) {
   const { client, group, target, theme } = props;
+  const narrow = (props.width ?? 92) < 80;
   const isMain = target.kind === 'main';
   const [dca, setDca] = useFader(client, dcaFaderPath(group.k));
   const [dcaMuted, toggleDca] = useMute(client, dcaOnPath(group.k));
@@ -220,25 +224,26 @@ export function GroupStrip(props: {
   };
 
   return (
-    <View style={[styles.strip, { height: props.height, backgroundColor: '#1C1A14', borderColor: '#6B4E14', borderWidth: 2 }]}>
+    <View style={[styles.strip, { height: props.height, width: props.width ?? 92, backgroundColor: '#1C1A14', borderColor: '#6B4E14', borderWidth: 2 }]}>
       <View style={[styles.head, { backgroundColor: GROUP_COLOR }]}>
         <Text style={{ color: '#1A1204', fontSize: 10, fontWeight: '800' }}>GROUPE</Text>
       </View>
       <Text style={{ color: '#FBBF24', fontSize: 14, fontWeight: '800', textAlign: 'center' }} numberOfLines={2}>
         {group.name}
       </Text>
-      <Text style={{ color: '#D6B46A', fontSize: 11 }}>{group.members.length} voies</Text>
+      <Text style={{ color: '#D6B46A', fontSize: 11 }}>{group.members.length} {group.members.length > 1 ? 'voies' : 'voie'}</Text>
       <Pressable
         onPress={props.onToggleOpen}
         accessibilityRole="button"
         accessibilityState={{ expanded: props.open }}
-        style={styles.fold}
+        style={[styles.fold, narrow && { width: '100%' }]}
       >
         <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{props.open ? '◂ Replier' : 'Déplier ▸'}</Text>
       </Pressable>
       <MiniMeters client={client} members={group.members} />
-      {isMain ? <MuteButton muted={dcaMuted} onPress={toggleDca} theme={theme} /> : <View style={{ height: 30 }} />}
+      {isMain ? <MuteButton muted={dcaMuted} onPress={toggleDca} theme={theme} narrow={narrow} /> : <View style={{ height: 30 }} />}
       <AutoFader
+        narrow={narrow}
         value={value}
         onChange={change}
         onStart={begin}
@@ -319,28 +324,28 @@ function MiniMeter({ client, ch }: { client: XAirClient; ch: number }) {
   return <View style={{ width: 7, height: Math.max(2, m.level * 24), borderRadius: 2, backgroundColor: m.clip ? '#EF4444' : '#22C55E' }} />;
 }
 
-function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: Theme; onPress: () => void; a11y: string }) {
+function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: Theme; onPress: () => void; a11y: string; narrow?: boolean }) {
   const { theme, on } = props;
   return (
     <Pressable
       onPress={props.onPress}
       accessibilityRole="button"
       accessibilityLabel={props.a11y}
-      style={[styles.small, { borderColor: on ? props.onColor : theme.line, backgroundColor: theme.deep }]}
+      style={[props.narrow ? styles.smallN : styles.small, { borderColor: on ? props.onColor : theme.line, backgroundColor: theme.deep }]}
     >
       <Text style={{ color: on ? props.onColor : theme.muted, fontSize: 14, fontWeight: '800' }}>{props.label}</Text>
     </Pressable>
   );
 }
 
-function MuteButton({ muted, onPress, theme }: { muted: boolean; onPress: () => void; theme: Theme }) {
+function MuteButton({ muted, onPress, theme, narrow }: { muted: boolean; onPress: () => void; theme: Theme; narrow?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: muted }}
       accessibilityLabel={muted ? 'Réactiver' : 'Couper'}
-      style={[styles.mute, muted ? { backgroundColor: theme.mute } : { borderColor: theme.line, borderWidth: 1 }]}
+      style={[styles.mute, narrow && { width: '100%' }, muted ? { backgroundColor: theme.mute } : { borderColor: theme.line, borderWidth: 1 }]}
     >
       <Text style={{ color: muted ? theme.onMute : theme.muted, fontWeight: '800', fontSize: 11 }}>MUTE</Text>
     </Pressable>
@@ -408,6 +413,7 @@ const styles = StyleSheet.create({
   name: { width: '100%', minHeight: 40, borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderBottomWidth: 3 },
   mute: { width: 68, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   db: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  smallN: { alignSelf: 'stretch', height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   small: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   fold: { width: 72, minHeight: 52, borderRadius: 10, borderWidth: 1, borderColor: '#6B4E14', backgroundColor: '#2A2115', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   nudge: { flex: 1, height: 40, borderRadius: 8, borderWidth: 1, borderColor: '#6B4E14', backgroundColor: '#0E1013', alignItems: 'center', justifyContent: 'center' },

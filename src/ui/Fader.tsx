@@ -19,6 +19,8 @@ interface Props {
   onEnd?: () => void;
   meter?: number; // vumètre 0..1, dessiné à droite du fader
   clip?: boolean;
+  /** tranche étroite : sans graduations, 54 de large */
+  narrow?: boolean;
 }
 
 const CAP_H = 30;
@@ -31,7 +33,7 @@ const MARKS: [number, string][] = [
   [0, '-∞'],
 ];
 
-export function Fader({ value, onChange, color, theme, height = 340, label, onStart, onEnd, meter, clip }: Props) {
+export function Fader({ value, onChange, color, theme, height = 340, label, onStart, onEnd, meter, clip, narrow }: Props) {
   const track = height - CAP_H;
   const v = Math.max(0, Math.min(1, value));
   const [fine, setFine] = useState(false);
@@ -97,7 +99,7 @@ export function Fader({ value, onChange, color, theme, height = 340, label, onSt
 
   return (
     <View
-      style={{ width: 72, height }}
+      style={{ width: narrow ? 54 : 72, height }}
       accessible
       accessibilityRole="adjustable"
       accessibilityLabel={label}
@@ -108,7 +110,8 @@ export function Fader({ value, onChange, color, theme, height = 340, label, onSt
       onTouchEnd={onTouchEnd}
       {...pan.panHandlers}
     >
-      {MARKS.map(([p, t]) => (
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, width: 72, left: narrow ? -18 : 0 }}>
+      {!narrow && MARKS.map(([p, t]) => (
         <View key={t} style={[styles.mark, { bottom: CAP_H / 2 + p * track - 6 }]}>
           <Text style={[styles.markText, { color: theme.muted }]}>{t}</Text>
           <View style={[styles.tick, { backgroundColor: theme.line2 }]} />
@@ -118,6 +121,7 @@ export function Fader({ value, onChange, color, theme, height = 340, label, onSt
       <View style={[styles.track, { top: CAP_H / 2, bottom: CAP_H / 2, backgroundColor: theme.track }]} />
       <View style={[styles.track, { bottom: CAP_H / 2, height: capBottom, backgroundColor: color }]} />
       <Cap bottom={capBottom} fine={fine} color={color} theme={theme} />
+      </View>
     </View>
   );
 }

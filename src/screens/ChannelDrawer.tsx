@@ -100,21 +100,20 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={{ gap: 6 }}>
-          <View style={styles.wrap}>
+          <View style={[styles.knobs, !wide && { flexWrap: 'wrap', justifyContent: 'flex-start' }]}>
             {[MAIN, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)].map((t) => {
               const c = t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(t as { n: number }).n] ?? '#9AA3AD';
               const label = t.kind === 'main' ? 'Le public' : String(client.get(busNamePath((t as { n: number }).n)) ?? '') || `Retour ${(t as { n: number }).n}`;
-              return <Dest key={targetId(t)} client={client} theme={theme} path={chLevelPath(ch, t)} label={label} color={c} wide={wide} startDb={-10} none="pas relié" />;
+              return <DestKnob key={targetId(t)} client={client} theme={theme} path={chLevelPath(ch, t)} label={label} color={c} wide={wide} startDb={-10} />;
             })}
+            {wide && <View style={[styles.sep, { backgroundColor: theme.line2 }]} />}
+            {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => (
+              <DestKnob key={'fx' + k} client={client} theme={theme} path={chLevelPath(ch, { kind: 'fx', n: k })} label={fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr} kicker={`FX${k}`} color={SLOT_COLORS[k - 1]} wide={wide} startDb={-14} />
+            ))}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ flex: 1 }}><Kicker theme={theme}>EFFETS · combien cette entrée envoie dans chaque effet</Kicker></View>
+            <Text style={{ flex: 1, color: theme.muted, fontSize: 12 }}>Touche un nom pour relier ou délier · tourne le bouton au doigt pour doser</Text>
             <Btn theme={theme} small kind="ghost" label="+ Vers tous les retours nommés" onPress={() => toAllReturns(client, { n: insrcPlug(insrc), chans: [ch], name, usb: false })} />
-          </View>
-          <View style={styles.wrap}>
-            {Array.from({ length: FX_COUNT }, (_, k) => k + 1).map((k) => (
-              <Dest key={k} client={client} theme={theme} path={chLevelPath(ch, { kind: 'fx', n: k })} label={`FX${k} · ${fxType(Number(client.get(fxTypePath(k)) ?? 0)).fr}`} color={SLOT_COLORS[k - 1]} wide={wide} startDb={-14} none="sans" />
-            ))}
           </View>
         </ScrollView>
       )}
@@ -196,21 +195,32 @@ function Groups({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: n
   );
 }
 
-/** Une destination (sortie ou effet) : un appui relie ou retire, le curseur dose. */
-function Dest({ client, theme, path, label, color, wide, startDb, none }: { client: XAirClient; theme: Theme; path: string; label: string; color: string; wide: boolean; startDb: number; none: string }) {
+/** Une destination en bouton rond : appui sur le nom = relier / délier, tourner = doser. */
+function DestKnob({ client, theme, path, label, kicker, color, wide, startDb }: { client: XAirClient; theme: Theme; path: string; label: string; kicker?: string; color: string; wide: boolean; startDb: number }) {
   const v = Number(client.get(path) ?? 0);
+  return <LevelKnob theme={theme} value={v} label={label} kicker={kicker} color={color} wide={wide} onToggle={() => client.set(path, f(v > 0 ? 0 : dbToFader(startDb)))} onSet={(x) => client.set(path, f(x))} />;
+}
+
+/** Bouton rond de niveau avec son nom au-dessus (relier / délier) et sa valeur dessous. */
+export function LevelKnob({ theme, value: v, label, kicker, color, wide, onToggle, onSet, off = 'pas relié', size }: { size?: number; theme: Theme; value: number; label: string; kicker?: string; color: string; wide: boolean; onToggle: () => void; onSet: (v: number) => void; off?: string }) {
   const on = v > 0;
   return (
-    <View style={[styles.dest, { width: wide ? '24.4%' : '100%', borderColor: on ? color : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
-      <Pressable onPress={() => client.set(path, f(on ? 0 : dbToFader(startDb)))} accessibilityState={{ checked: on }} style={[styles.pill, { backgroundColor: on ? color : theme.panel, borderColor: color }]}>
-        <Text numberOfLines={1} style={{ color: on ? SEM.ink : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{label}</Text>
+    <View style={[styles.dk, { width: wide ? undefined : 92, flex: wide ? 1 : undefined }]}>
+      <Pressable onPress={onToggle} accessibilityRole="switch" accessibilityState={{ checked: on }} accessibilityLabel={`${kicker ? kicker + ' ' : ''}${label}`} style={[styles.dkPill, { backgroundColor: on ? color : theme.deep, borderColor: color, borderStyle: on ? 'solid' : 'dashed' }]}>
+        {kicker && <Text style={{ color: on ? SEM.ink : color, fontSize: 9, fontWeight: '900' }}>{kicker}</Text>}
+        <Text numberOfLines={1} style={{ color: on ? SEM.ink : theme.text, fontWeight: '800', fontSize: 11 }}>{on ? '' : '+ '}{label}</Text>
       </Pressable>
-      {on ? <View style={{ flex: 1 }}><HSlider value={v} onChange={(x) => client.set(path, f(x))} label="" valueText={dbLabel(v)} color={color} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>{none}</Text>}
+      <Knob value={v} size={size ?? (wide ? 58 : 52)} theme={theme} color={color} dim={!on} label={`Niveau ${label}`} onPress={onToggle} onChange={onSet} />
+      <Text style={{ color: on ? theme.text : theme.muted, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{on ? dbLabel(v) : off}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  knobs: { flexDirection: 'row', gap: 6, alignItems: 'stretch' },
+  sep: { width: 2, borderRadius: 1, marginHorizontal: 2 },
+  dk: { alignItems: 'center', gap: 4, minWidth: 74 },
+  dkPill: { alignSelf: 'stretch', minHeight: 34, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   tag: { minWidth: 42, height: 42, borderRadius: RAD.md, borderWidth: 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
@@ -218,7 +228,4 @@ const styles = StyleSheet.create({
   line: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: RAD.sm + 2, paddingHorizontal: 10 },
   chip: { height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 2, justifyContent: 'center', maxWidth: 130 },
   act: { flexGrow: 1 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: RAD.sm + 2, padding: 4, minHeight: 48 },
-  pill: { height: 34, paddingHorizontal: 8, borderRadius: 17, borderWidth: 1, justifyContent: 'center', minWidth: 96, maxWidth: 140 },
 });

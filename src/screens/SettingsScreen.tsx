@@ -1,10 +1,10 @@
 // Réglages : le design (10 au choix, avec aperçu vivant), le confort
 // (vibration, largeur des voies), puis la connexion, le réseau et le débogage.
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { Fader } from '../ui/Fader';
 import { Knob } from '../ui/Knob';
-import { canImmersive } from '../ui/immersive';
+import { canImmersive, NavRoom } from '../ui/immersive';
 import { ScreenHeader, Segmented } from '../ui/kit';
 import { Theme, THEME_ORDER, THEMES } from '../ui/theme';
 import { XAirClient } from '../xair/XAirClient';
@@ -15,6 +15,7 @@ export const STRIP_WIDTHS: Record<StripWidth, number> = { compact: 80, normal: 9
 
 export interface Prefs {
   immersive: boolean;
+  navRoom?: NavRoom;
   theme: string;
   haptics: boolean;
   width: StripWidth;
@@ -79,6 +80,22 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
                   <Text style={{ color: theme.muted, fontSize: 12 }}>Plein écran : les boutons Android reviennent d’un glissement depuis le bord.</Text>
                 </View>
                 <Switch value={prefs.immersive !== false} onValueChange={(v) => props.onPrefs({ ...prefs, immersive: v })} />
+              </View>
+            )}
+            {Platform.OS === 'android' && (
+              <View style={[styles.row, { borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 10 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Place pour les boutons Android</Text>
+                  <Text style={{ color: theme.muted, fontSize: 12 }}>Si les boutons ▢ ◯ ◁ passent sur l’appli, laisse « Garder la place ».</Text>
+                </View>
+                {([['garde', 'Garder la place'], ['auto', 'Auto'], ['aucune', 'Aucune']] as [NavRoom, string][]).map(([w, l]) => {
+                  const on = (prefs.navRoom ?? 'garde') === w;
+                  return (
+                    <Pressable key={w} onPress={() => props.onPrefs({ ...prefs, navRoom: w })} accessibilityState={{ selected: on }} style={[styles.chip, on ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+                      <Text style={{ color: on ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{l}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             )}
             <View style={[styles.row, { borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 10 }]}>

@@ -120,6 +120,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   }, [client, target]);
 
   const [bodyH, setBodyH] = useState(0);
+  const [listW, setListW] = useState(0);
   const faderH = Math.max(260, bodyH - 12); // la tranche tient entièrement dans la zone : rien de coupé, tout reste cliquable // hauteur totale d'une tranche ; le fader prend le reste
   const [view, setView] = useState<StripView>('full');
   useEffect(() => { load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []);
@@ -167,9 +168,14 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     if (openGroups.includes(g.k)) order.filter((c) => g.members.includes(c)).forEach((c) => items.push({ kind: 'ch', ch: c, inOpenGroup: true }));
   }
 
+  // Vue compacte : toutes les tranches tiennent dans la largeur (elles s'affinent au besoin).
+  const fitW = view === 'compact' && listW > 0 ? Math.max(60, Math.min(stripW, Math.floor((listW - 20 - (items.length - 1) * 6) / Math.max(1, items.length)))) : 0;
+  const chW = fitW || stripW;
+  const grpW = fitW || 92;
+
   // Glisser « Copier » sur une autre tranche : quelle tranche est sous le doigt ?
   const itemAt = (ch: number, dx: number): Item | null => {
-    const widths = items.map((it) => (it.kind === 'group' ? 92 : stripW));
+    const widths = items.map((it) => (it.kind === 'group' ? grpW : chW));
     const idx = items.findIndex((it) => it.kind === 'ch' && it.ch === ch);
     if (idx < 0) return null;
     let x = 0;
@@ -296,7 +302,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         )}
         {bodyH > 0 && view !== 'gains' && view !== 'table' && (
           <>
-            <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={styles.strips}>
+            <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={styles.strips} onLayout={(e) => setListW(e.nativeEvent.layout.width)}>
               {items.map((it) =>
                 it.kind === 'group' ? (
                   <View key={'g' + it.g.k}>
@@ -305,6 +311,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                     group={it.g}
                     target={target}
                     theme={theme}
+                    width={grpW}
                     height={faderH}
                     open={openGroups.includes(it.g.k)}
                     onToggleOpen={() => setOpenGroups((a) => (a.includes(it.g.k) ? a.filter((k) => k !== it.g.k) : [...a, it.g.k]))}
@@ -316,7 +323,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                 ) : (
                   <View key={it.ch} style={drag && drag.ch === it.ch ? { transform: [{ translateX: drag.dx }], zIndex: 10, opacity: 0.9 } : undefined}>
                   <Strip
-                    width={stripW}
+                    width={chW}
                     view={view}
                     client={client}
                     ch={it.ch}
@@ -347,7 +354,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                       onRename={() => setRenameCh(it.ch)}
                       onCancel={() => { setSel(null); setMode(null); }}
                       onDrag={(dx) => setDrag({ ch: it.ch, dx })}
-                      onDrop={(dx) => { setDrag(null); moveBy(it.ch, Math.round(dx / (stripW + 6))); }}
+                      onDrop={(dx) => { setDrag(null); moveBy(it.ch, Math.round(dx / (chW + 6))); }}
                       onCopyDrag={(dx) => setCopyDrag(dx === null ? null : { ch: it.ch, dx })}
                       onCopyDrop={(dx) => dropCopy(it.ch, dx)}
                     />

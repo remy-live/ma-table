@@ -30,7 +30,7 @@ export default function App() {
   const [prefs, setPrefsState] = useState<Prefs>({ theme: 'nuit', haptics: true, width: 'normal', immersive: true });
   const themeKey = prefs.theme;
   const [tab, setTab] = useState<Section>('table');
-  const bottomInset = useBottomInset(prefs.immersive !== false);
+  const bottomInset = useBottomInset(prefs.immersive !== false, prefs.navRoom);
   const [fxCh, setFxCh] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
   const { width } = useWindowDimensions();

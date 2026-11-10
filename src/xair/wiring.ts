@@ -121,15 +121,15 @@ export function wiringPaths(): string[] {
 
 // ---------- Géométrie de la face arrière (viewBox 1000 × 300) ----------
 export const PANEL_W = 1000;
-export const PANEL_H = 300;
+export const PANEL_H = 330;
 export function plugXY(n: number): { x: number; y: number } {
   if (n <= 16) return { x: 95 + ((n - 1) % 8) * 72, y: n <= 8 ? 110 : 185 };
   return { x: n === 17 ? 708 : 748, y: 180 };
 }
 export function outletXY(id: string): { x: number; y: number } {
-  if (id === 'main') return { x: 95 + 6.5 * 72, y: 252 };
+  if (id === 'main') return { x: 95 + 6.5 * 72, y: 278 };
   const b = Number(id.replace('bus', ''));
-  return { x: 95 + (b - 1) * 72, y: 252 };
+  return { x: 95 + (b - 1) * 72, y: 278 };
 }
 export function wireD(plug: number, out: string): string {
   const a = plugXY(plug);

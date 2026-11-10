@@ -36,7 +36,11 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
   useEffect(() => { if (focusCh) { setView('ch'); setSelCh(focusCh); } }, [focusCh]);
   const setNamesSave = (n: FxNames) => { setNames(n); saveFxNames(n); };
 
+  // Tableau : les lignes s'aplatissent pour que toutes les voies tiennent sans défiler.
+  const [gridH, setGridH] = useState(0);
+  const rowGap = 4;
   const named = useMemo(() => Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? '') || users(client, 1).includes(c) || users(client, 2).includes(c) || users(client, 3).includes(c) || users(client, 4).includes(c)), [client, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rowH = gridH > 0 ? Math.max(26, Math.min(52, Math.floor((gridH - 4 - 98 - rowGap - 34) / Math.max(1, named.length)) - rowGap)) : 52;
   const bump = (c: number, k: number, d: number) => {
     const v = Number(client.get(sendPath(c, k)) ?? 0);
     const db = faderToDb(v);
@@ -163,33 +167,33 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
       )}
 
       {view === 'grid' && (
-        <ScrollView contentContainerStyle={{ padding: 14, paddingTop: 4 }}>
+        <ScrollView contentContainerStyle={{ padding: 14, paddingTop: 4 }} onLayout={(e) => setGridH(e.nativeEvent.layout.height)}>
           <ScrollView horizontal>
-            <View style={{ gap: 6 }}>
+            <View style={{ gap: rowGap }}>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 <View style={{ width: 160 }} />
                 {SLOTS.map((k) => (
                   <Pressable key={k} onPress={() => setOpen(k)} style={[styles.gridHead, { borderColor: SLOT_COLORS[k - 1], backgroundColor: theme.panel }]}>
                     {vis(k, 168, 28)}
                     <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{fxLabel(client, names, k)}</Text>
-                    <Text style={{ color: theme.muted, fontSize: 10 }}>FX{k} · {users(client, k).length || 'libre'}{users(client, k).length ? ' voies' : ''}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 10 }}>{`FX${k} · ${users(client, k).length === 0 ? 'libre' : users(client, k).length === 1 ? '1 voie' : users(client, k).length + ' voies'}`}</Text>
                   </Pressable>
                 ))}
               </View>
               {named.map((ch) => (
                 <View key={ch} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                  <View style={[styles.rowHead, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-                    <Text numberOfLines={1} style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{chName(client, ch)}</Text>
-                    <Text style={{ color: theme.muted, fontSize: 10 }}>voie {ch}</Text>
+                  <View style={[styles.rowHead, { height: rowH, backgroundColor: theme.panel, borderColor: theme.line }]}>
+                    <Text numberOfLines={1} style={{ color: theme.text, fontSize: rowH < 34 ? 12 : 13, fontWeight: '800' }}>{chName(client, ch)}</Text>
+                    {rowH >= 40 && <Text style={{ color: theme.muted, fontSize: 10 }}>voie {ch}</Text>}
                   </View>
                   {SLOTS.map((k) => {
                     const v = Number(client.get(sendPath(ch, k)) ?? 0);
                     const on = v > 0;
-                    const size = on ? Math.round(12 + (pct(v) / 100) * 30) : 0;
+                    const size = on ? Math.round(Math.min(rowH - 6, 12 + (pct(v) / 100) * 30)) : 0;
                     return (
-                      <Pressable key={k} onPress={() => { const d = faderToDb(v); client.set(sendPath(ch, k), f(!on ? dbToFader(-16) : d >= -4 ? 0 : dbToFader(Math.min(0, d + 4)))); }} accessibilityLabel={`${chName(client, ch)} dans ${fxLabel(client, names, k)} : ${dbText(v)}`} style={[styles.cell, { backgroundColor: on ? theme.panel : theme.deep }]}>
+                      <Pressable key={k} onPress={() => { const d = faderToDb(v); client.set(sendPath(ch, k), f(!on ? dbToFader(-16) : d >= -4 ? 0 : dbToFader(Math.min(0, d + 4)))); }} accessibilityLabel={`${chName(client, ch)} dans ${fxLabel(client, names, k)} : ${dbText(v)}`} style={[styles.cell, { height: rowH, backgroundColor: on ? theme.panel : theme.deep }]}>
                         {on && <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: SLOT_COLORS[k - 1] }} />}
-                        <Text style={{ position: 'absolute', right: 8, bottom: 4, color: theme.muted, fontSize: 10, fontWeight: '800' }}>{on ? dbText(v) : ''}</Text>
+                        <Text style={{ position: 'absolute', right: 8, bottom: rowH < 34 ? 1 : 4, color: theme.muted, fontSize: 10, fontWeight: '800' }}>{on ? dbText(v) : ''}</Text>
                       </Pressable>
                     );
                   })}

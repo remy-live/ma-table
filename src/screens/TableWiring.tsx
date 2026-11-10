@@ -2,12 +2,10 @@
 // Touche une prise : tu règles l'entrée (gain, nom, couleur, 48 V) ou tu la
 // relies aux sorties (un curseur par sortie). Touche une sortie : ce qu'elle
 // entend. Tout tient sur l'écran, sans défiler.
-import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { f } from '../osc/osc';
-import { dbLabel } from '../ui/format';
-import { HSlider } from '../ui/HSlider';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
@@ -16,7 +14,7 @@ import { dbToFader } from '../xair/levels';
 import { colorOf } from '../xair/smartName';
 import { Outlet, outlets, Plug, plugs, wires, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
-import { ChannelDrawer, DrawerActions } from './ChannelDrawer';
+import { ChannelDrawer, DrawerActions, LevelKnob } from './ChannelDrawer';
 import { MIX_COLORS } from './MixPicker';
 
 type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | null;
@@ -48,15 +46,71 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const pw = W * effScale;
   const ph = H * effScale;
 
+  // Glisser d'une prise vers une sortie (ou l'inverse) = relier, comme dans Branchements.
+  type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string };
+  const hit = (x: number, y: number): End | null => {
+    for (const p of P) if (Math.hypot(x - xIn(p.n), y - yIn(p.n)) < 36) return { kind: 'plug', n: p.n };
+    for (let k = 0; k < O.length; k++) if (x > xOut(k) - 30 && x < xOut(k) + 80 && Math.abs(y - Y_OUT) < 30) return { kind: 'out', id: O[k].id };
+    return null;
+  };
+  const [drag, setDrag] = useState<{ from: End; x: number; y: number; moved: boolean } | null>(null);
+  const latest = useRef({ effScale, P, O, toggle: (_p: Plug, _o: Outlet) => {}, linked });
+  latest.current = { effScale, P, O, toggle: (p: Plug, o: Outlet) => setLevel(p, o, dbToFader(-10)), linked };
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        const sc = latest.current.effScale || 1;
+        const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+        setDrag(t ? { from: t, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, moved: false } : null);
+      },
+      onPanResponderMove: (e, g) => {
+        const moved = Math.abs(g.dx) + Math.abs(g.dy) > 8;
+        setDrag((d) => (d ? { ...d, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, moved: d.moved || moved } : d));
+      },
+      onPanResponderRelease: (e) => {
+        const sc = latest.current.effScale || 1;
+        const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+        setDrag((d) => {
+          if (!d) return null;
+          const L = latest.current;
+          if (!d.moved || !t) {
+            setSel(d.from.kind === 'plug' ? { k: 'in', n: d.from.n } : { k: 'out', id: d.from.id });
+            return null;
+          }
+          const pair = d.from.kind === 'plug' && t.kind === 'out' ? { n: d.from.n, id: t.id } : d.from.kind === 'out' && t.kind === 'plug' ? { n: t.n, id: d.from.id } : null;
+          if (pair) {
+            const p = L.P[pair.n - 1];
+            const o = L.O.find((x) => x.id === pair.id);
+            if (p && o) {
+              if (!p.chans.length) Alert.alert('Prise libre', `Rien n’écoute la prise ${p.n}. Donne-lui une voie depuis la Table (Changer l’entrée).`);
+              else if (!L.linked(p.n, o.id)) L.toggle(p, o);
+              setSel({ k: 'in', n: p.n });
+            }
+          } else setSel(t.kind === 'plug' ? { k: 'in', n: t.n } : { k: 'out', id: t.id });
+          return null;
+        });
+      },
+      onPanResponderTerminate: () => setDrag(null),
+    }),
+  ).current;
+  const sc0 = effScale || 1;
+  const hov = drag && drag.moved ? hit(drag.x / sc0, drag.y / sc0) : null;
+  const xyOf = (e: End) => (e.kind === 'plug' ? { x: xIn(e.n), y: yIn(e.n) } : { x: xOut(O.findIndex((o) => o.id === e.id)), y: Y_OUT });
+  const hovOk = !!hov && !!drag && hov.kind !== drag.from.kind;
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 10, gap: 8 }}>
       {/* la table */}
       <View onLayout={(e) => setSize({ w: e.nativeEvent.layout.width })} style={{ alignItems: 'center' }}>
         {size.w > 0 && (
-          <Svg width={pw} height={ph} viewBox={`0 0 ${W} ${H}`}>
+          <View style={{ width: pw, height: ph }}>
+          <Svg width={pw} height={ph} viewBox={`0 0 ${W} ${H}`} pointerEvents="none">
             <Rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
             <SvgText x={W - 30} y={36} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
-            <SvgText x={W / 2} y={22} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">ENTRÉES · touche une prise</SvgText>
+            <SvgText x={W / 2} y={22} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">ENTRÉES · touche une prise, glisse-la vers une sortie pour la relier</SvgText>
             <SvgText x={W / 2} y={Y_OUT - 36} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">SORTIES · touche qui écoute</SvgText>
             {/* fils */}
             {props.W.map((w) => {
@@ -74,13 +128,12 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               const hit = out ? linked(p.n, out.id) : false;
               const c = props.plugColor(p);
               return (
-                <G key={p.n} onPress={() => { setSel({ k: 'in', n: p.n }); }}>
+                <G key={p.n}>
                   <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 16 : 24} fill="#1E2227" stroke={on ? '#FFFFFF' : hit ? '#FFFFFF' : p.chans.length ? c : '#3A414B'} strokeWidth={on || hit ? 5 : 3} />
                   <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 6 : 12} fill={hit ? c : '#0B0D10'} />
                   <SvgText x={xIn(p.n)} y={yIn(p.n) - 30} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
                   <Rect x={xIn(p.n) - 34} y={yIn(p.n) + 28} width={68} height={16} rx={5} fill={p.name ? c : 'transparent'} />
                   <SvgText x={xIn(p.n)} y={yIn(p.n) + 40} textAnchor="middle" fontSize={10} fontWeight="800" fill={p.name ? '#0B0D10' : '#5B636D'}>{(p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')).slice(0, 11)}</SvgText>
-                  <Rect x={xIn(p.n) - 40} y={yIn(p.n) - 46} width={80} height={94} fill="transparent" />
                 </G>
               );
             })}
@@ -90,16 +143,32 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               const hit = plug ? linked(plug.n, o.id) : false;
               const c = props.outColor(o);
               return (
-                <G key={o.id} onPress={() => setSel({ k: 'out', id: o.id })}>
+                <G key={o.id}>
                   <Circle cx={xOut(k)} cy={Y_OUT} r={20} fill="#1E2227" stroke={on || hit ? '#FFFFFF' : c} strokeWidth={on || hit ? 5 : 3} />
                   <Circle cx={xOut(k)} cy={Y_OUT} r={9} fill={hit ? c : '#0B0D10'} />
                   <SvgText x={xOut(k) + 28} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.label.replace('MAIN L/R', 'MAIN')}</SvgText>
                   <SvgText x={xOut(k) + 28} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
-                  <Rect x={xOut(k) - 26} y={Y_OUT - 28} width={100} height={56} fill="transparent" />
                 </G>
               );
             })}
+            {/* câble tiré au doigt */}
+            {drag && drag.moved && (() => {
+              const a = xyOf(drag.from);
+              const fx = drag.x / sc0;
+              const fy = drag.y / sc0;
+              const c = drag.from.kind === 'plug' ? props.plugColor(P[drag.from.n - 1]) : props.outColor(O.find((o) => o.id === (drag.from as { id: string }).id)!);
+              const h = hov ? xyOf(hov) : null;
+              return (
+                <G>
+                  {h && <Circle cx={h.x} cy={h.y} r={32} fill={hovOk ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.10)'} stroke={hovOk ? '#34D399' : '#9AA3AD'} strokeWidth={4} />}
+                  <Path d={`M${a.x} ${a.y} Q ${(a.x + fx) / 2} ${Math.max(a.y, fy) + 30}, ${fx} ${fy}`} fill="none" stroke={c} strokeWidth={6} strokeLinecap="round" strokeDasharray={hovOk ? undefined : '10 8'} />
+                  <Circle cx={fx} cy={fy} r={10} fill={c} />
+                </G>
+              );
+            })()}
           </Svg>
+          <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
+          </View>
         )}
       </View>
 
@@ -115,19 +184,12 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', flex: 1 }}>{out.name} <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '600' }}>· ce qu’il entend</Text></Text>
               {out.t.kind === 'main' && <MonoSwitch client={client} theme={theme} />}
             </View>
-            <ScrollView contentContainerStyle={styles.wrap}>
-              {P.filter((p) => p.chans.length).map((p) => {
-                const on = linked(p.n, out.id);
-                const c = props.plugColor(p);
-                return (
-                  <View key={p.n} style={[styles.dest, { width: wide ? '32.5%' : '100%', borderColor: on ? c : theme.line, borderStyle: on ? 'solid' : 'dashed', backgroundColor: theme.deep }]}>
-                    <Pressable onPress={() => toggle(p, out)} style={[styles.pill, { backgroundColor: on ? c : theme.panel, borderColor: c }]}>
-                      <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{on ? '✓ ' : '+ '}{p.n} · {p.name || `voie ${p.chans[0]}`}</Text>
-                    </Pressable>
-                    {on ? <View style={{ flex: 1 }}><HSlider value={level(p, out)} onChange={(v) => setLevel(p, out, v)} label="" valueText={dbLabel(level(p, out))} color={c} theme={theme} /></View> : <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>n’entend pas</Text>}
-                  </View>
-                );
-              })}
+            <ScrollView contentContainerStyle={[styles.wrap, wide && { justifyContent: 'space-between' }]}>
+              {P.filter((p) => p.chans.length).map((p) => (
+                <View key={p.n} style={{ width: wide ? '12%' : 92 }}>
+                  <LevelKnob size={46} theme={theme} value={level(p, out)} label={p.name || `voie ${p.chans[0]}`} kicker={`PRISE ${p.n}`} color={props.plugColor(p)} wide={wide} off="n’entend pas" onToggle={() => toggle(p, out)} onSet={(v) => setLevel(p, out, v)} />
+                </View>
+              ))}
             </ScrollView>
           </>
         )}
@@ -143,9 +205,7 @@ const styles = StyleSheet.create({
   tag: { minWidth: 40, height: 40, borderRadius: 12, borderWidth: 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3 },
   segBtn: { height: 40, paddingHorizontal: 12, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 12, padding: 4, minHeight: 48 },
-  pill: { height: 34, paddingHorizontal: 8, borderRadius: 17, borderWidth: 1, justifyContent: 'center', minWidth: 96, maxWidth: 140 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, rowGap: 10 },
   input: { height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 16, fontWeight: '800' },
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   tg: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },

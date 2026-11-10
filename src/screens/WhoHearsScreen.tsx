@@ -1,8 +1,8 @@
 // « Qui entend quoi » en bulles : une ligne par source, une colonne par
 // personne. Grosse bulle = fort, pas de bulle = rien. Touche une bulle pour
 // la régler. Les groupes se déplient. Touche un nom pour isoler.
-import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { f } from '../osc/osc';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
@@ -26,9 +26,12 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
   const [isoS, setIsoS] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [pick, setPick] = useState<{ s: string; d: string } | null>(null);
+  const [areaW, setAreaW] = useState(0);
   useEffect(() => { if (props.visible) client.loadPaths(whoHearsPaths()); }, [client, props.visible]);
 
   const dests = destinations(client).filter((d) => !isoD || d.id === isoD);
+  // les colonnes s'élargissent pour remplir l'écran
+  const cw = areaW > 0 ? Math.max(CELL, Math.min(130, Math.floor((areaW - 24 - LABEL_W - dests.length * 4) / Math.max(1, dests.length)))) : CELL;
   const allSrc = sources(client);
   const colorOf = (s: Src) => (s.kind === 'fx' ? '#C084FC' : s.kind === 'group' ? '#F59E0B' : PALETTE[allSrc.indexOf(s) % PALETTE.length]);
   const destColor = (d: Dest) => (d.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(d.t as { n: number }).n] ?? '#9AA3AD');
@@ -47,7 +50,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 
   const body = (
     <>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 8 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 8 }} onLayout={(e) => setAreaW(e.nativeEvent.layout.width)}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View>
             {/* en-tête : les personnes */}
@@ -59,7 +62,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
                 const c = destColor(d);
                 const on = isoD === d.id;
                 return (
-                  <Pressable key={d.id} onPress={() => setIsoD(on ? null : d.id)} accessibilityState={{ selected: on }} style={[styles.person, { borderColor: on ? c : theme.line, backgroundColor: on ? theme.deep : theme.panel }]}>
+                  <Pressable key={d.id} onPress={() => setIsoD(on ? null : d.id)} accessibilityState={{ selected: on }} style={[styles.person, { width: cw, borderColor: on ? c : theme.line, backgroundColor: on ? theme.deep : theme.panel }]}>
                     <View style={[styles.avatar, { backgroundColor: c }]}><Text style={{ color: '#0B0D10', fontSize: 10, fontWeight: '800' }}>{initials(d.name)}</Text></View>
                     <Text numberOfLines={1} style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{d.name}</Text>
                     <Text style={{ color: theme.muted, fontSize: 9 }}>{d.sub.split(' · ').pop()}</Text>
@@ -83,19 +86,9 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
                       </View>
                     </Pressable>
                   </View>
-                  {dests.map((d) => {
-                    const paths = levelPaths(s, d.t);
-                    const db = levelDb(client, paths);
-                    const has = isFinite(db) && db > -40;
-                    const size = has ? Math.round(10 + ((db + 40) / 40) * 40) : 0;
-                    const picked = pick?.s === s.id && pick?.d === d.id;
-                    return (
-                      <Pressable key={d.id} onPress={() => setPick({ s: s.id, d: d.id })} accessibilityLabel={`${d.name} entend ${s.label} : ${dbText(db)}`} accessibilityState={{ selected: picked }} style={[styles.cell, { backgroundColor: picked ? theme.line : theme.deep }]}>
-                        {has && <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: 0.55 + ((db + 40) / 40) * 0.45, borderWidth: picked ? 3 : 0, borderColor: '#FFFFFF' }} />}
-                        <Text style={{ position: 'absolute', bottom: 3, right: 6, color: picked ? theme.text : theme.muted, fontSize: 9, fontWeight: '800' }}>{has ? (db > 0 ? '+' : '') + Math.round(db) : ''}</Text>
-                      </Pressable>
-                    );
-                  })}
+                  {dests.map((d) => (
+                    <Bubble key={d.id} w={cw} client={client} theme={theme} paths={levelPaths(s, d.t)} color={color} picked={pick?.s === s.id && pick?.d === d.id} a11y={`${d.name} entend ${s.label}`} onPick={() => setPick({ s: s.id, d: d.id })} />
+                  ))}
                 </View>
               );
             })}
@@ -119,7 +112,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
             <Pressable onPress={() => setPick(null)} accessibilityLabel="Fermer" style={{ width: 36, alignItems: 'center' }}><Text style={{ color: theme.muted, fontSize: 20 }}>×</Text></Pressable>
           </View>
         ) : (
-          <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Touche une bulle pour la régler · touche une personne ou un nom pour isoler · un groupe se déplie</Text>
+          <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Attrape une bulle et tire vers l’extérieur pour la grossir, vers le centre pour la réduire · touche une personne ou un nom pour isoler · un groupe se déplie</Text>
         )}
       </View>
     </>
@@ -141,6 +134,51 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
         {body}
       </View>
     </Modal>
+  );
+}
+
+/** Une bulle : un appui la choisit ; tirer vers l'extérieur la grossit (plus fort), vers le centre la réduit. */
+const sizeOf = (db: number) => (isFinite(db) && db > -40 ? Math.round(10 + ((db + 40) / 40) * 40) : 0);
+function Bubble({ w, client, theme, paths, color, picked, a11y, onPick }: { w: number; client: XAirClient; theme: Theme; paths: string[]; color: string; picked: boolean; a11y: string; onPick: () => void }) {
+  const db = levelDb(client, paths);
+  const latest = useRef({ paths, db, onPick, w });
+  latest.current = { paths, db, onPick, w };
+  const g0 = useRef({ x: 0, y: 0, d: 0, db: -40 });
+  const [live, setLive] = useState<number | null>(null);
+  const cy = (CELL - 4) / 2;
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        const { locationX: x, locationY: y } = e.nativeEvent;
+        const cx = latest.current.w / 2;
+        const d0 = latest.current.db;
+        g0.current = { x, y, d: Math.hypot(x - cx, y - cy), db: isFinite(d0) && d0 > -40 ? d0 : -40 };
+        latest.current.onPick();
+      },
+      onPanResponderMove: (_e, g) => {
+        if (Math.abs(g.dx) + Math.abs(g.dy) < 4) return;
+        const o = g0.current;
+        const dist = Math.hypot(o.x + g.dx - latest.current.w / 2, o.y + g.dy - cy);
+        const ndb = Math.max(-41, Math.min(10, o.db + (dist - o.d) * 0.6));
+        setLive(ndb);
+        latest.current.paths.forEach((p) => client.set(p, f(ndb <= -40 ? 0 : dbToFader(ndb))));
+      },
+      onPanResponderRelease: () => setLive(null),
+      onPanResponderTerminate: () => setLive(null),
+    }),
+  ).current;
+  const shown = live ?? db;
+  const size = sizeOf(shown);
+  const on = size > 0;
+  return (
+    <View {...pan.panHandlers} accessible accessibilityRole="adjustable" accessibilityLabel={`${a11y} : ${dbText(db)}`} accessibilityState={{ selected: picked }} style={[styles.cell, { width: w, backgroundColor: picked ? theme.line : theme.deep, overflow: 'visible', zIndex: live !== null ? 5 : 0 }]}>
+      {on && <View pointerEvents="none" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: 0.55 + Math.max(0, Math.min(1, (shown + 40) / 40)) * 0.45, borderWidth: picked ? 3 : 0, borderColor: '#FFFFFF' }} />}
+      {!on && live !== null && <View pointerEvents="none" style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderStyle: 'dashed', borderColor: color }} />}
+      <Text pointerEvents="none" style={{ position: 'absolute', bottom: 3, right: 6, color: picked || live !== null ? theme.text : theme.muted, fontSize: live !== null ? 12 : 9, fontWeight: '800' }}>{on ? (shown > 0 ? '+' : '') + Math.round(shown) : live !== null ? 'rien' : ''}</Text>
+    </View>
   );
 }
 
