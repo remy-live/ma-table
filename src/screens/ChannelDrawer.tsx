@@ -21,7 +21,8 @@ import { SLOT_COLORS } from '../xair/fxSlots';
 import { dbToFader } from '../xair/levels';
 import { chColorOf, colorOf, TABLE_COLORS } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
-import { toAllReturns } from '../xair/wiring';
+import { linkSide, onSide, toAllReturns, unlinkSide } from '../xair/wiring';
+import { useMono } from '../ui/useMono';
 import { XAirClient } from '../xair/XAirClient';
 import { GROUP_COLORS } from './GroupsSheet';
 import { InputSourceSheet } from './InputSourceSheet';
@@ -48,6 +49,7 @@ export function drawerPaths(ch: number): string[] {
 export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: number; actions?: DrawerActions; onClose?: () => void }) {
   const { client, theme, ch } = props;
   useAnyTick(client, 100);
+  const mono = useMono(client);
   const wide = useWindowDimensions().width >= 900;
   const [mode, setMode] = useState<Mode>('in');
   const [rename, setRename] = useState(false);
@@ -101,7 +103,15 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
       ) : (
         <ScrollView contentContainerStyle={{ gap: 6 }}>
           <View style={[styles.knobs, !wide && { flexWrap: 'wrap', justifyContent: 'flex-start' }]}>
-            {[MAIN, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)].map((t) => {
+            {!mono && (['L', 'R'] as const).map((sd) => {
+              // 2 enceintes : la façade a deux sorties, la voie part à gauche, à droite ou des deux côtés
+              const path = chLevelPath(ch, MAIN);
+              const on = onSide(client, [ch], sd);
+              const v = on ? Number(client.get(path) ?? 0) : 0;
+              return <LevelKnob key={'main' + sd} theme={theme} value={v} label={`Façade ${sd}`} kicker={sd === 'L' ? 'MAIN L' : 'MAIN R'} color={MIX_COLORS[0]} wide={wide}
+                onToggle={() => (on ? unlinkSide(client, [ch], sd) : linkSide(client, [ch], sd, -10))} onSet={(x) => { if (!on) linkSide(client, [ch], sd, -10); client.set(path, f(x)); }} />;
+            })}
+            {[...(mono ? [MAIN] : []), ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)].map((t) => {
               const c = t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(t as { n: number }).n] ?? '#9AA3AD';
               const label = t.kind === 'main' ? 'Le public' : String(client.get(busNamePath((t as { n: number }).n)) ?? '') || `Retour ${(t as { n: number }).n}`;
               return <DestKnob key={targetId(t)} client={client} theme={theme} path={chLevelPath(ch, t)} label={label} color={c} wide={wide} startDb={-10} />;

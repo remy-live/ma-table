@@ -1,4 +1,4 @@
-// Réglages : le design (10 au choix, avec aperçu vivant), le confort
+// Réglages : le design (20 au choix, avec aperçu vivant), le confort
 // (vibration, largeur des voies), puis la connexion, le réseau et le débogage.
 import React, { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
@@ -17,6 +17,8 @@ export interface Prefs {
   immersive: boolean;
   navRoom?: NavRoom;
   theme: string;
+  /** design d'avant la Nuit rouge, pour y revenir */
+  dayTheme?: string;
   haptics: boolean;
   width: StripWidth;
 }
@@ -27,6 +29,69 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const cols = wide ? 4 : width > 600 ? 3 : 2;
+  const set = (p: Partial<Prefs>) => props.onPrefs({ ...prefs, ...p });
+  const chips = <T extends string>(val: T, opts: [T, string][], onPick: (v: T) => void) => (
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      {opts.map(([w, l]) => {
+        const on = val === w;
+        return (
+          <Pressable key={w} onPress={() => onPick(w)} accessibilityState={{ selected: on }} style={[styles.chipS, on ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+            <Text style={{ color: on ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 11 }}>{l}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+  // tablette : tout sur un seul écran, sans défiler — design | confort | connexion
+  if (wide) return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScreenHeader theme={theme} title="Réglages" sub="Le design, le confort et la liaison avec la table, d’un coup d’œil" />
+      <View style={{ flex: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 14, paddingBottom: 10 }}>
+        <View style={{ flex: 1.75, gap: 6 }}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>DESIGN · {THEME_ORDER.length} au choix · touche pour essayer</Text>
+          <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignContent: 'flex-start' }}>
+            {THEME_ORDER.map((id) => <ThemeCard key={id} t={THEMES[id]} on={prefs.theme === id} accent={theme.accent} onPress={() => set({ theme: id })} />)}
+          </View>
+        </View>
+        <View style={{ flex: 1, gap: 8 }}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>CONFORT</Text>
+          <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <View style={styles.row}>
+              <Text style={{ flex: 1, color: theme.text, fontWeight: '800', fontSize: 13 }}>Vibration au 0 dB</Text>
+              <Switch value={prefs.haptics} onValueChange={(v) => set({ haptics: v })} />
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>Comme le cran d’un vrai potentiomètre.</Text>
+          </View>
+          {canImmersive && (
+            <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+              <View style={styles.row}>
+                <Text style={{ flex: 1, color: theme.text, fontWeight: '800', fontSize: 13 }}>Cacher les boutons de la tablette</Text>
+                <Switch value={prefs.immersive !== false} onValueChange={(v) => set({ immersive: v })} />
+              </View>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>Ils reviennent d’un glissement depuis le bord.</Text>
+            </View>
+          )}
+          {Platform.OS === 'android' && (
+            <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Place pour les boutons Android</Text>
+              {chips<NavRoom>(prefs.navRoom ?? 'garde', [['garde', 'Garder'], ['auto', 'Auto'], ['aucune', 'Aucune']], (w) => set({ navRoom: w }))}
+            </View>
+          )}
+          <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Largeur des voies</Text>
+            {chips<StripWidth>(prefs.width, [['compact', 'Compact'], ['normal', 'Normal'], ['large', 'Large']], (w) => set({ width: w }))}
+          </View>
+          <Text style={[styles.kicker, { color: theme.muted, marginTop: 4 }]}>APERÇU · {theme.name}</Text>
+          <StylePreview theme={theme} />
+        </View>
+        <View style={{ flex: 1.05, gap: 8 }}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>CONNEXION</Text>
+          <ConnectionScreen client={props.client} theme={theme} onDisconnect={props.onDisconnect} compact />
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScreenHeader theme={theme} title="Réglages" sub={part === 'look' ? 'L’allure de l’appli et le confort' : 'La liaison avec la table et les sauvegardes'}>
@@ -122,6 +187,58 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
   );
 }
 
+/** Un design en vignette : bouton, fader, couleurs — dans ses propres couleurs. */
+function ThemeCard({ t, on, accent, onPress }: { t: Theme; on: boolean; accent: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityState={{ selected: on }} accessibilityLabel={`Design ${t.name}`} style={[styles.tcard, { backgroundColor: t.bg, borderColor: on ? accent : t.line }]}>
+      <View style={[styles.tmini, { backgroundColor: t.panel, borderColor: t.line }]}>
+        <Knob value={0.62} size={30} theme={t} color={t.accent} />
+        <View style={{ width: 22, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ position: 'absolute', width: 3, top: 3, bottom: 3, borderRadius: 2, backgroundColor: t.track }} />
+          <View style={{ position: 'absolute', width: 3, bottom: 3, height: 18, borderRadius: 2, backgroundColor: t.accent }} />
+          <View style={{ position: 'absolute', bottom: 16, width: 18, height: t.look === 'minimal' ? 4 : 9, borderRadius: 2, backgroundColor: t.look === 'neon' ? t.bg : t.cap, borderWidth: t.look === 'neon' ? 1.5 : 0, borderColor: t.accent }} />
+        </View>
+        <View style={{ gap: 3 }}>
+          <View style={{ width: 20, height: 8, borderRadius: 2, backgroundColor: t.mute }} />
+          <View style={{ width: 20, height: 8, borderRadius: 2, borderWidth: 1, borderColor: t.accent }} />
+          <View style={{ width: 20, height: 8, borderRadius: 2, backgroundColor: t.ok }} />
+        </View>
+      </View>
+      <Text numberOfLines={1} style={{ color: t.text, fontSize: 12, fontWeight: '800' }}>{on ? '✓ ' : ''}{t.name}</Text>
+    </Pressable>
+  );
+}
+
+/** Un potentiomètre (tourne-le), une prise de la table, une voie : le design choisi, en vrai. */
+function StylePreview({ theme }: { theme: Theme }) {
+  const [g, setG] = useState(0.6);
+  const [v, setV] = useState(0.72);
+  const jack = (n: number, name: string, c: string, on: boolean) => (
+    <View style={{ alignItems: 'center', gap: 3 }}>
+      <View style={{ width: 46, height: 46, borderRadius: 23, borderWidth: 3, borderColor: c, backgroundColor: theme.deep, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#0B0D10', borderWidth: 2, borderColor: on ? c : theme.line2, alignItems: 'center', justifyContent: 'center' }}>
+          {on && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />}
+        </View>
+      </View>
+      <View style={{ backgroundColor: c, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ color: '#0B0D10', fontSize: 9, fontWeight: '900' }}>{n} · {name}</Text></View>
+    </View>
+  );
+  return (
+    <View style={[styles.boxS, { paddingVertical: 14, backgroundColor: theme.bg, borderColor: theme.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }]}>
+      <View style={{ alignItems: 'center', gap: 4 }}>
+        <Knob value={g} size={60} theme={theme} color={theme.accent} onChange={setG} label="Gain (aperçu)" />
+        <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{`${Math.round(g * 72 - 12) > 0 ? '+' : ''}${Math.round(g * 72 - 12)} dB`}</Text>
+        <Text style={{ color: theme.muted, fontSize: 9 }}>tourne-le</Text>
+      </View>
+      <View style={{ gap: 10 }}>
+        {jack(1, 'Voix', '#F59E0B', true)}
+        {jack(2, 'Guit.', '#34D399', false)}
+      </View>
+      <Fader value={v} onChange={(x) => setV(Math.max(0, Math.min(1, x)))} color={theme.accent} theme={theme} height={150} label="Fader (aperçu)" meter={0.5} />
+    </View>
+  );
+}
+
 function LivePreview({ theme, small }: { theme: Theme; small?: boolean }) {
   const [g, setG] = useState(0.55);
   const [v, setV] = useState(0.75);
@@ -154,5 +271,9 @@ const styles = StyleSheet.create({
   mini: { borderWidth: 1, borderRadius: 12, padding: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   box: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tcard: { width: '23.8%', borderWidth: 2, borderRadius: 12, padding: 6, gap: 4 },
+  tmini: { borderWidth: 1, borderRadius: 9, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  boxS: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
+  chipS: { height: 32, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, justifyContent: 'center' },
   chip: { height: 38, paddingHorizontal: 12, borderRadius: 19, borderWidth: 1, justifyContent: 'center' },
 });

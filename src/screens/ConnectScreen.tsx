@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { QrScanner } from '../ui/QrScanner';
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { WLAN, WLAN_PATHS } from '../xair/addresses';
@@ -96,6 +97,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     if (invite) connect(invite.host, invite.host === 'demo', invite);
   }, [invite]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [qrOpen, setQrOpen] = useState(false);
   const join = () => {
     const full = parseInvite(code);
     const short = full ? null : parseShortCode(code);
@@ -142,7 +144,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40 }]} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40, flexGrow: 1, justifyContent: 'center' }]} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={[styles.logo, { backgroundColor: theme.accent }]}>
           {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 6, height: 34 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
@@ -204,9 +206,20 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche adresse par adresse…' : 'Chercher sur mon partage de connexion'}</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
           </Pressable>
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+            <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput value={ip} onChangeText={setIp} placeholder="192.168.1.1" placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+              <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
+                <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
+              </Pressable>
+            </View>
+          </View>
+
         </View>
 
         <View style={{ flex: 1, gap: 12 }}>
+          {wide && <Text style={[styles.kicker, { color: theme.muted }]}>PAS ENCORE RELIÉ ?</Text>}
           {/* WI-FI */}
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 10 }]}>
             <View style={styles.row}>
@@ -275,16 +288,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>Ouvrir le Wi-Fi du téléphone</Text>
             </Pressable>
           </View>
+        </View>
 
-          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
-            <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput value={ip} onChangeText={setIp} placeholder="192.168.1.1" placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
-              <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
-                <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
-              </Pressable>
-            </View>
-          </View>
+        <View style={{ flex: 1, gap: 12 }}>
 
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
@@ -294,7 +300,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
                 <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 16 }}>Rejoindre</Text>
               </Pressable>
             </View>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Le plus simple : scanne le QR code du sondier avec l’appareil photo.</Text>
+            <Pressable onPress={() => setQrOpen(true)} style={[styles.go, { borderWidth: 2, borderColor: '#34D399', alignItems: 'center', height: 46 }]}>
+              <Text style={{ color: '#6EE7B7', fontWeight: '800', fontSize: 15 }}>📷 Scanner le QR code du sondier</Text>
+            </Pressable>
+            <QrScanner theme={theme} visible={qrOpen} onClose={() => setQrOpen(false)} onCode={(t) => {
+              setQrOpen(false);
+              const full = parseInvite(t);
+              const short = full ? null : parseShortCode(t);
+              const cfg: MonConfig | null = full ?? (short ? { host: short.host, bus: short.bus, name: `Retour ${short.bus}`, me: [], rights: DEFAULT_RIGHTS } : null);
+              if (cfg) connect(cfg.host, false, cfg); else setError('Ce QR code n’est pas une invitation « Ma table ».');
+            }} />
           </View>
 
           <Pressable onPress={() => connect('demo', true, undefined, false, true)} style={[styles.card, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
@@ -383,6 +398,6 @@ const styles = StyleSheet.create({
   section: { fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
   small: { height: 40, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
   card: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 4 },
-  input: { flex: 1, height: 52, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 17 },
-  go: { height: 52, paddingHorizontal: 18, borderRadius: 12, justifyContent: 'center' },
+  input: { flex: 1, minWidth: 0, height: 52, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: 16 },
+  go: { height: 52, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center', flexShrink: 0 },
 });

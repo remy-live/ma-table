@@ -2,7 +2,8 @@
 // MAIN). Sur la X Air, un fil = le niveau d'envoi de la voie qui écoute cette
 // prise vers ce bus (ou son fader façade). Enlever un fil = niveau à zéro.
 import { f } from '../osc/osc';
-import { BUS_COUNT, busNamePath, CH_COUNT, chLevelPath, chNamePath, insrcPath, insrcPlug, MAIN, Target, targetId } from './addresses';
+import { BUS_COUNT, busNamePath, CH_COUNT, chLevelPath, chNamePath, insrcPath, insrcPlug, MAIN, panPath, Target, targetId } from './addresses';
+import { isMono } from './mono';
 import { dbToFader, faderToDb } from './levels';
 import { chColor } from './smartName';
 import { XAirClient } from './XAirClient';
@@ -19,6 +20,38 @@ export interface Outlet {
   id: string;
   label: string; // « AUX 1 », « MAIN L/R »
   name: string; // qui écoute : « Rémy », « Le public »
+  /** en « 2 enceintes », la façade a deux sorties : L et R (le même bus, le panoramique choisit le côté) */
+  side?: 'L' | 'R';
+}
+
+// ---------- la façade en stéréo : gauche, droite ou les deux ----------
+const panOf = (client: XAirClient, chans: number[]) => (chans.length ? Number(client.get(panPath(chans[0])) ?? 0.5) : 0.5);
+const mainOn = (client: XAirClient, chans: number[]) => chans.some((c) => { const d = faderToDb(Number(client.get(chLevelPath(c, MAIN)) ?? 0)); return isFinite(d) && d > -60; });
+/** La voie part-elle de ce côté de la façade ? (au centre = des deux côtés) */
+export function onSide(client: XAirClient, chans: number[], side: 'L' | 'R'): boolean {
+  if (!mainOn(client, chans)) return false;
+  const p = panOf(client, chans);
+  return side === 'L' ? p <= 0.6 : p >= 0.4;
+}
+/** Relier à un côté : seule = tout à ce côté ; déjà de l'autre côté = les deux (au centre). */
+export function linkSide(client: XAirClient, chans: number[], side: 'L' | 'R', db = -6) {
+  if (onSide(client, chans, side)) return;
+  const pan = mainOn(client, chans) ? 0.5 : side === 'L' ? 0 : 1;
+  if (!mainOn(client, chans)) for (const c of chans) client.set(chLevelPath(c, MAIN), f(dbToFader(db)));
+  for (const c of chans) client.set(panPath(c), f(pan));
+}
+/** Délier un côté : des deux côtés = il reste l'autre ; d'un seul côté = plus dans la façade. */
+export function unlinkSide(client: XAirClient, chans: number[], side: 'L' | 'R') {
+  if (!onSide(client, chans, side)) return;
+  if (onSide(client, chans, side === 'L' ? 'R' : 'L')) { for (const c of chans) client.set(panPath(c), f(side === 'L' ? 1 : 0)); return; }
+  for (const c of chans) client.set(chLevelPath(c, MAIN), f(0));
+}
+/** Relier / délier une prise à une sortie (gère MAIN L et MAIN R). */
+export function link(client: XAirClient, plug: Plug, o: Outlet, db = -6) {
+  if (o.side) linkSide(client, plug.chans, o.side, db); else connect(client, plug, o.t, db);
+}
+export function unlink(client: XAirClient, plug: Plug, o: Outlet) {
+  if (o.side) unlinkSide(client, plug.chans, o.side); else disconnect(client, plug, o.t);
 }
 
 export interface Wire {
@@ -44,7 +77,8 @@ export function outlets(client: XAirClient): Outlet[] {
     const t: Target = { kind: 'bus', n: b };
     o.push({ t, id: targetId(t), label: `AUX ${b}`, name: String(client.get(busNamePath(b)) ?? '') || `Retour ${b}` });
   }
-  o.push({ t: MAIN, id: 'main', label: 'MAIN L/R', name: 'Le public' });
+  if (isMono(client)) o.push({ t: MAIN, id: 'main', label: 'MAIN L/R', name: 'Le public' });
+  else o.push({ t: MAIN, id: 'mainL', label: 'MAIN L', name: 'Façade L', side: 'L' }, { t: MAIN, id: 'mainR', label: 'MAIN R', name: 'Façade R', side: 'R' });
   return o;
 }
 
@@ -62,6 +96,7 @@ export function wires(client: XAirClient): Wire[] {
     for (const o of O) {
       const paths = wirePaths(p, o.t);
       const db = Math.max(...paths.map((x) => faderToDb(Number(client.get(x) ?? 0))));
+      if (o.side && !onSide(client, p.chans, o.side)) continue;
       if (isFinite(db) && db > -60) out.push({ plug: p.n, out: o.id, db, paths });
     }
   }
@@ -111,7 +146,7 @@ export function likeMain(client: XAirClient, t: Target, minus = 2) {
 export function wiringPaths(): string[] {
   const p: string[] = [];
   for (let c = 1; c <= CH_COUNT; c++) {
-    p.push(insrcPath(c), chNamePath(c), chLevelPath(c, MAIN));
+    p.push(insrcPath(c), chNamePath(c), chLevelPath(c, MAIN), `/ch/${String(c).padStart(2, '0')}/mix/pan`);
     for (let b = 1; b <= BUS_COUNT; b++) p.push(chLevelPath(c, { kind: 'bus', n: b }));
     for (let k = 1; k <= 4; k++) p.push(chLevelPath(c, { kind: 'fx', n: k }));
   }
@@ -129,6 +164,8 @@ export function plugXY(n: number): { x: number; y: number } {
 }
 export function outletXY(id: string): { x: number; y: number } {
   if (id === 'main') return { x: 95 + 6.5 * 72, y: 278 };
+  if (id === 'mainL') return { x: 95 + 6.5 * 72 - 23, y: 278 };
+  if (id === 'mainR') return { x: 95 + 6.5 * 72 + 23, y: 278 };
   const b = Number(id.replace('bus', ''));
   return { x: 95 + (b - 1) * 72, y: 278 };
 }

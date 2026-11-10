@@ -40,6 +40,14 @@
           "resizeMode": "contain",
           "backgroundColor": "#0E1014"
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "L’appareil photo sert à scanner le QR code d’invitation du sondier.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ]
   }

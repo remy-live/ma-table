@@ -482,6 +482,8 @@ export function groupsToStage(st: Stage, groups: TableGroup[]): Stage {
       // un cadre là où sont déjà ses voies, sinon au bord de scène
       const m = objs(g.plugs);
       if (!m.length) continue;
+      // un groupe qui réunit plusieurs musiciens (« Guitares ») ne casse pas leurs cadres
+      if (new Set(m.map((o) => o.zone).filter(Boolean)).size > 1) continue;
       z = { id: newId('z'), name: g.name, color: /batt|drum/i.test(g.name) ? '#F59E0B' : ZONE_COLORS[zonesOf(out).length % ZONE_COLORS.length], x: 0, y: 0, w: 0.2, h: 0.3, dca: g.k, drums: /batt|drum/i.test(g.name) || undefined };
       out = { ...out, zones: [...zonesOf(out), z] };
     } else if (z.dca !== g.k || z.name !== g.name) {

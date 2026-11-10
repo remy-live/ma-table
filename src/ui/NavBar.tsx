@@ -18,10 +18,11 @@ const ITEMS: [Section, string][] = [
   ['reglages', 'Réglages'],
 ];
 
-function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter'; color: string; size?: number }) {
+function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mixages'; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
+      {id === 'mixages' && (<><Rect x={4} y={4} width={16} height={16} rx={3} {...p} /><Line x1={8} y1={9} x2={16} y2={9} {...p} /><Line x1={8} y1={13} x2={16} y2={13} {...p} /><Line x1={8} y1={17} x2={12} y2={17} {...p} /></>)}
       {id === 'table' && (<><Line x1={6} y1={4} x2={6} y2={20} {...p} /><Line x1={12} y1={4} x2={12} y2={20} {...p} /><Line x1={18} y1={4} x2={18} y2={20} {...p} /><Rect x={3.5} y={12} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={9.5} y={7} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={15.5} y={14} width={5} height={3} rx={1} {...p} fill={color} /></>)}
       {id === 'effets' && (<><Path d="M3 17h2l2-6 3 10 3-14 3 8 2-3h3" {...p} /></>)}
       {id === 'branchements' && (<><Circle cx={6} cy={6} r={2.5} {...p} /><Circle cx={18} cy={18} r={2.5} {...p} /><Path d="M6 8.5c0 6 12 3 12 7" {...p} /></>)}
@@ -33,7 +34,7 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter'; colo
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void }) {
   const { theme, vertical } = props;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
@@ -60,6 +61,12 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
           </Pressable>
         );
       })}
+      {props.onMixes && vertical && (
+        <Pressable onPress={props.onMixes} onLongPress={() => showTip('Mes mixages : nouveau mixage avec son nom, modèles (artiste solo, groupe…), reprendre un ancien.')} accessibilityLabel="Mes mixages" style={styles.item}>
+          <Icon id="mixages" color={theme.muted} size={26} />
+          <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>Mixages</Text>
+        </Pressable>
+      )}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (

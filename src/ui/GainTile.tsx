@@ -10,11 +10,12 @@ import { useParam, useParamOpt } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { tick } from './haptics';
 import { Knob } from './Knob';
+import { GROUP_COLORS } from '../screens/GroupsSheet';
 import { Theme } from './theme';
 
 export interface TileOrganize { onMove: (k: number) => void; onCopy: () => void; onRename: () => void }
 
-export function GainTile({ client, ch, theme, size, onOpen, organize }: { client: XAirClient; ch: number; theme: Theme; size: number; onOpen: (ch: number) => void; organize?: TileOrganize }) {
+export function GainTile({ client, ch, theme, size, onOpen, organize, picked, onPick, group }: { client: XAirClient; ch: number; theme: Theme; size: number; onOpen: (ch: number) => void; organize?: TileOrganize; picked?: boolean; onPick?: (ch: number) => void; group?: { k: number; name: string } }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
   const col = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
   const gain = useParamOpt(client, headampGainPath(ch));
@@ -25,9 +26,12 @@ export function GainTile({ client, ch, theme, size, onOpen, organize }: { client
   const zone = m.clip ? '#EF4444' : m.db > -6 ? '#EAB308' : m.db > -24 ? '#22C55E' : theme.muted;
   return (
     <View style={[styles.tile, { width: size + 28, backgroundColor: theme.panel, borderColor: m.clip ? '#EF4444' : theme.line }]}>
-      <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800' }}>PRISE {insrcPlug(insrc)}{p48 ? ' · 48V' : ''}</Text>
-      <Pressable onPress={() => onOpen(ch)} style={[styles.name, { borderBottomColor: col, backgroundColor: theme.deep }]}>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: size < 70 ? 12 : 14, fontWeight: '800' }}>{name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800' }}>PRISE {insrcPlug(insrc)}{p48 ? ' · 48V' : ''}</Text>
+        {group && <View style={{ borderRadius: 5, paddingHorizontal: 4, backgroundColor: GROUP_COLORS[group.k - 1] ?? theme.accent }}><Text numberOfLines={1} style={{ color: '#0B0D10', fontSize: 9, fontWeight: '900' }}>{group.name}</Text></View>}
+      </View>
+      <Pressable onPress={() => (picked !== undefined && onPick ? onPick(ch) : onOpen(ch))} onLongPress={onPick ? () => onPick(ch) : undefined} accessibilityRole={picked !== undefined ? 'checkbox' : 'button'} accessibilityState={picked !== undefined ? { checked: picked } : undefined} style={[styles.name, { borderBottomColor: col, backgroundColor: picked ? col : theme.deep }, picked === false && { borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.line2 }]}>
+        <Text numberOfLines={1} style={{ color: picked ? '#0B0D10' : theme.text, fontSize: size < 70 ? 12 : 14, fontWeight: '800' }}>{picked ? '✓ ' : picked === false ? '○ ' : ''}{name}</Text>
       </Pressable>
       <Knob
         value={gain === undefined ? 0.5 : Number(gain)}

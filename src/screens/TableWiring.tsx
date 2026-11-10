@@ -3,6 +3,9 @@
 // relies aux sorties (un curseur par sortie). Touche une sortie : ce qu'elle
 // entend. Tout tient sur l'écran, sans défiler.
 import { useMono } from '../ui/useMono';
+import { GroupBar } from '../ui/GroupBar';
+import { showTip } from '../ui/tip';
+import { linkSide, onSide, unlinkSide } from '../xair/wiring';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
@@ -30,18 +33,21 @@ const W = 1000;
 const H = 300;
 const xIn = (n: number) => (n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
 const yIn = (n: number) => (n <= 8 ? 66 : 158);
-const xOut = (k: number) => (k < 6 ? 60 + k * 100 : 880);
+const xOut = (k: number) => (k < 6 ? 60 + k * 100 : k === 6 ? 860 : 920); // 2 enceintes : MAIN L puis MAIN R
 const Y_OUT = 262;
 // bouton « Plusieurs », dans le coin libre à droite de la 2e rangée (repère du dessin)
 const MULTI = { x: 812, y: 126, w: 170, h: 46 };
 
-export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions }) {
+export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions; multiCtl?: { on: boolean; set: (v: boolean) => void } }) {
   const { client, theme, P, O } = props;
   const mono = useMono(client);
   const { width, height } = useWindowDimensions();
   const wide = width >= 900;
   const [sel, setSel] = useState<Sel>({ k: 'in', n: 1 });
-  const [multi, setMulti] = useState(false);
+  const [multiL, setMultiL] = useState(false);
+  // « ☑ Sélectionner » peut venir de la barre du haut de la Table (même bouton dans toutes les vues)
+  const multi = props.multiCtl ? props.multiCtl.on : multiL;
+  const setMulti = (v: boolean) => (props.multiCtl ? props.multiCtl.set(v) : setMultiL(v));
   const [open, setOpen] = useState<number[]>([]);
   const [size, setSize] = useState({ w: 0 });
   const scale = size.w ? size.w / W : 0;
@@ -49,10 +55,15 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const plug = sel?.k === 'in' ? P[sel.n - 1] : null;
   const out = sel?.k === 'out' ? O.find((o) => o.id === sel.id) ?? null : null;
   const many = sel?.k === 'many' ? sel : null;
-  const level = (p: Plug, o: Outlet) => (p.chans.length ? Number(client.get(chLevelPath(p.chans[0], o.t)) ?? 0) : 0);
-  const setLevel = (p: Plug, o: Outlet, v: number) => p.chans.forEach((c) => client.set(chLevelPath(c, o.t), f(v)));
+  // MAIN L / MAIN R : la voie n'est « reliée » à ce côté que si son panoramique l'y envoie
+  const level = (p: Plug, o: Outlet) => (!p.chans.length || (o.side && !onSide(client, p.chans, o.side)) ? 0 : Number(client.get(chLevelPath(p.chans[0], o.t)) ?? 0));
+  const setLevel = (p: Plug, o: Outlet, v: number) => {
+    if (o.side && v > 0 && !onSide(client, p.chans, o.side)) linkSide(client, p.chans, o.side, -10);
+    p.chans.forEach((c) => client.set(chLevelPath(c, o.t), f(v)));
+  };
   const toggle = (p: Plug, o: Outlet) => {
     if (!p.chans.length) { Alert.alert('Prise libre', `Rien n’écoute la prise ${p.n}. Donne-lui une voie depuis la Table (Changer l’entrée).`); return; }
+    if (o.side) { if (linked(p.n, o.id)) unlinkSide(client, p.chans, o.side); else linkSide(client, p.chans, o.side, -10); return; }
     setLevel(p, o, linked(p.n, o.id) ? 0 : dbToFader(-10));
   };
   const panelH = Math.min(H * (scale || 1), height * (wide ? 0.42 : 0.3));
@@ -91,7 +102,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
       const g = folded(p.n);
       return g ? { kind: 'group', k: g.k } : { kind: 'plug', n: p.n };
     }
-    for (let k = 0; k < O.length; k++) if (x > xOut(k) - 30 && x < xOut(k) + 80 && Math.abs(y - Y_OUT) < 30) return { kind: 'out', id: O[k].id };
+    for (let k = 0; k < O.length; k++) if (x > xOut(k) - (O[k].side ? 28 : 30) && x < xOut(k) + (O[k].side ? 28 : 80) && Math.abs(y - Y_OUT) < 30) return { kind: 'out', id: O[k].id };
     return null;
   };
   const [drag, setDrag] = useState<{ from: End; x: number; y: number; moved: boolean } | null>(null);
@@ -101,12 +112,17 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
     if (e.kind === 'plug') return many && many.ns.includes(e.n) ? many.ns : [e.n];
     return [];
   };
+  useEffect(() => {
+    if (!props.multiCtl) return;
+    if (multi && sel?.k === 'in') setSel({ k: 'many', ns: [sel.n] });
+    if (!multi && sel?.k === 'many' && sel.g === undefined) setSel(null);
+  }, [multi]); // eslint-disable-line react-hooks/exhaustive-deps
   const latest = useRef({ effScale, P, O, linked, hit, carried, sel, multi, gInfo });
   latest.current = { effScale, P, O, linked, hit, carried, sel, multi, gInfo };
   const linkAll = (ns: number[], o: Outlet) => {
     const L = latest.current;
     const free = ns.filter((n) => !L.P[n - 1]?.chans.length);
-    ns.forEach((n) => { const p = L.P[n - 1]; if (p?.chans.length && !L.linked(n, o.id)) setLevel(p, o, dbToFader(-10)); });
+    ns.forEach((n) => { const p = L.P[n - 1]; if (p?.chans.length && !L.linked(n, o.id)) { if (o.side) linkSide(client, p.chans, o.side, -10); else setLevel(p, o, dbToFader(-10)); } });
     if (free.length === ns.length) Alert.alert('Prise libre', `Rien n’écoute la prise ${free[0]}. Donne-lui une voie depuis la Table (Changer l’entrée).`);
   };
   const tapEnd = (e: End) => {
@@ -248,15 +264,29 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               const c = props.outColor(o);
               return (
                 <G key={o.id}>
-                  {(o.id === 'main' ? [-20, 20] : [0]).map((dx) => (
+                  {(o.id === 'main' ? [-20, 20] : [0]).map((dx) => o.side ? (
+                    <G key={dx}>
+                      <Circle cx={xOut(k)} cy={Y_OUT} r={20} fill="#1E2227" stroke={on || hitIn ? '#FFFFFF' : c} strokeWidth={on || hitIn ? 5 : 3} strokeDasharray={part ? '6 4' : undefined} />
+                      <SvgText x={xOut(k)} y={Y_OUT + 5} textAnchor="middle" fontSize={14} fontWeight="900" fill={hitIn || part ? c : '#E8EAED'}>{o.side}</SvgText>
+                    </G>
+                  ) : (
                     <G key={dx}>
                       <Circle cx={xOut(k) + dx} cy={Y_OUT} r={o.id === 'main' ? 17 : 20} fill="#1E2227" stroke={on || hitIn ? '#FFFFFF' : c} strokeWidth={on || hitIn ? 5 : 3} strokeDasharray={part ? '6 4' : undefined} />
                       <Circle cx={xOut(k) + dx} cy={Y_OUT} r={o.id === 'main' ? 7 : 9} fill={hitIn || part ? c : '#0B0D10'} />
                       {o.id === 'main' && <SvgText x={xOut(k) + dx} y={Y_OUT - 21} textAnchor="middle" fontSize={10} fontWeight="900" fill={c}>{dx < 0 ? 'L' : 'R'}</SvgText>}
                     </G>
                   ))}
-                  <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.id === 'main' ? (mono ? 'MAIN mono' : 'MAIN L·R') : o.label}</SvgText>
-                  <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
+                  {o.side ? (o.side === 'R' && (
+                    <>
+                      <SvgText x={xOut(k) + 26} y={Y_OUT - 2} fontSize={11} fontWeight="800" fill={c}>MAIN</SvgText>
+                      <SvgText x={xOut(k) + 26} y={Y_OUT + 12} fontSize={10} fill="#E8EAED">Le public</SvgText>
+                    </>
+                  )) : (
+                    <>
+                      <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.id === 'main' ? (mono ? 'MAIN mono' : 'MAIN L·R') : o.label}</SvgText>
+                      <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
+                    </>
+                  )}
                 </G>
               );
             })}
@@ -279,7 +309,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             })()}
           </Svg>
           <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
-          <Pressable
+          {!props.multiCtl && <Pressable
             onPress={() => {
               if (multi) { setMulti(false); if (many && many.g === undefined) setSel(many.ns.length ? { k: 'in', n: many.ns[0] } : null); }
               else { setMulti(true); if (plug) setSel({ k: 'many', ns: [plug.n] }); }
@@ -288,8 +318,8 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             accessibilityState={{ checked: multi }}
             style={{ position: 'absolute', left: MULTI.x * sc0, top: MULTI.y * sc0, width: MULTI.w * sc0, height: Math.max(36, MULTI.h * sc0), borderRadius: 12, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : theme.deep, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Plusieurs${many && many.g === undefined ? ` (${many.ns.length})` : ''}` : '☐ Plusieurs'}</Text>
-          </Pressable>
+            <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Terminé${many && many.g === undefined ? ` · ${many.ns.length}` : ''}` : '☑ Sélectionner'}</Text>
+          </Pressable>}
           </View>
         )}
       </View>
@@ -313,6 +343,9 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               ? <Btn theme={theme} small kind="outline" label="▸ Déplier les prises" onPress={() => setOpen((o) => [...o, manyGroup.k])} />
               : <Btn theme={theme} small kind="ghost" label="Vider" onPress={() => setSel(null)} />}
           />
+        )}
+        {many && !manyGroup && (
+          <GroupBar client={client} theme={theme} chans={manyPlugs.flatMap((p) => p.chans)} onDone={(m) => { showTip(m); setSel(null); setMulti(false); }} onCancel={() => { setSel(null); setMulti(false); }} />
         )}
         {out && (
           <>
@@ -405,13 +438,14 @@ const styles = StyleSheet.create({
 });
 
 /** Même vue, autonome : utilisée comme 4e vue de l'écran Table. */
-export function TableWiringStandalone({ client, theme, actions }: { client: XAirClient; theme: Theme; actions?: DrawerActions }) {
+export function TableWiringStandalone({ client, theme, actions, multiCtl }: { client: XAirClient; theme: Theme; actions?: DrawerActions; multiCtl?: { on: boolean; set: (v: boolean) => void } }) {
   useAnyTick(client);
+  useMono(client); // 1 ou 2 enceintes : les sorties de façade changent
   useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);
   const P = plugs(client);
   const O = outlets(client);
   const W = wires(client);
   const plugColor = (p: Plug) => plugColorOf(client, p, colorOf);
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
-  return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} actions={actions} />;
+  return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} actions={actions} multiCtl={multiCtl} />;
 }

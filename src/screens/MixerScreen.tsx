@@ -3,7 +3,6 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import {
   allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId,
 } from '../xair/addresses';
-import { swapChannels } from '../xair/clipboard';
 import { Group } from '../xair/groups';
 import { CopyMixSheet } from './CopyMixSheet';
 import { LarsenSheet } from './LarsenSheet';
@@ -26,6 +25,7 @@ import { InputSourceSheet } from './InputSourceSheet';
 import { insrcPath, insrcPlug, soloPath } from '../xair/addresses';
 import { i as oscI } from '../osc/osc';
 import { useAnyTick } from '../ui/useTick';
+import { GroupBar } from '../ui/GroupBar';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
 import { HELP, showTip } from '../ui/tip';
 
@@ -106,6 +106,12 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [openGroups, setOpenGroups] = useState<number[]>([]);
   const [order, setOrder] = useState<number[]>(CHANNELS);
   const [sel, setSel] = useState<number | null>(null);
+  // « ☑ Sélectionner » : cocher des voies pour en faire un groupe
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<number[]>([]);
+  const togglePick = (c: number) => setPicked((a) => (a.includes(c) ? a.filter((x) => x !== c) : [...a, c]));
+  const startPick = (c?: number) => { setPicking(true); setOrganize(false); setPicked(c ? [c] : []); };
+  const endPick = () => { setPicking(false); setPicked([]); };
   const [mode, setMode] = useState<null | 'swap'>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [larsen, setLarsen] = useState(false);
@@ -178,16 +184,18 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   // Liste à l'écran : chaque groupe prend la place de son premier membre ; ses voies n'apparaissent que déplié.
   const items: Item[] = [];
   const shown = new Set<number>();
+  const shownCh = new Set<number>(); // une voie n'apparaît qu'une fois, même si elle est dans deux groupes
   for (const ch of order) {
     const g = groups.find((x) => x.members.includes(ch));
     if (!g) {
-      items.push({ kind: 'ch', ch, inOpenGroup: false });
+      if (!shownCh.has(ch)) { shownCh.add(ch); items.push({ kind: 'ch', ch, inOpenGroup: false }); }
       continue;
     }
     if (shown.has(g.k)) continue;
     shown.add(g.k);
     items.push({ kind: 'group', g });
-    if (openGroups.includes(g.k)) order.filter((c) => g.members.includes(c)).forEach((c) => items.push({ kind: 'ch', ch: c, inOpenGroup: true }));
+    if (openGroups.includes(g.k)) order.filter((c) => g.members.includes(c) && !shownCh.has(c)).forEach((c) => { shownCh.add(c); items.push({ kind: 'ch', ch: c, inOpenGroup: true }); });
+    else g.members.forEach((c) => shownCh.add(c));
   }
 
   // Vue compacte : toutes les tranches tiennent dans la largeur (elles s'affinent au besoin).
@@ -225,34 +233,64 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       const a = sel;
       setMode(null);
       setSel(null);
-      swapChannels(client, a, ch).then(() => say(`Réglages échangés entre CH ${a} et CH ${ch}`));
+      doSwapFrom(a, ch);
       return;
     }
     setMode(null);
     setSel((s) => (s === ch ? null : ch));
   };
 
-  const doSwap = async (ch: number) => {
+  const doSwapFrom = (a: number, ch: number) => doSwapCore(a, ch);
+  const doSwap = (ch: number) => { if (sel !== null) doSwapCore(sel, ch); };
+  const doSwapCore = (a0: number, ch: number) => {
+    const sel = a0;
     if (sel === null || ch === sel) return;
     const a = sel;
     setMode(null);
     setSel(null);
-    await swapChannels(client, a, ch);
-    // la place à l'écran suit aussi
+    // Échanger = les deux tranches changent de place à l'écran (les branchements ne bougent pas)
     const o = order.slice();
     const ia = o.indexOf(a);
     const ib = o.indexOf(ch);
     [o[ia], o[ib]] = [o[ib], o[ia]];
     setAndSaveOrder(o);
-    say(`Voies ${a} et ${ch} échangées (réglages et place)`);
+    say(`${name(a)} et ${name(ch)} ont échangé leur place`);
   };
-  const moveBy = (ch: number, k: number) => {
+  /** Déplace une voie de k places à l'écran : un groupe replié compte pour une seule place. */
+  const shiftOrder = (o0: number[], ch: number, k: number, its: Item[]): number[] => {
+    let o = o0.slice();
+    const dir = k > 0 ? 1 : -1;
+    for (let step = 0; step < Math.abs(k); step++) {
+      const i = its.findIndex((it) => it.kind === 'ch' && it.ch === ch);
+      const nb = its[i + dir];
+      if (i < 0 || !nb) break;
+      o = o.filter((c) => c !== ch);
+      const ref = nb.kind === 'ch' ? [nb.ch] : order.filter((c) => nb.g.members.includes(c));
+      const at = dir > 0 ? o.indexOf(ref[ref.length - 1]) + 1 : o.indexOf(ref[0]);
+      o.splice(Math.max(0, at), 0, ch);
+      // la liste à l'écran suit, pour le pas suivant
+      const j = its.findIndex((it) => it === nb);
+      its = its.slice();
+      [its[i], its[j]] = [its[j], its[i]];
+    }
+    return o;
+  };
+  const moveBy = (ch: number, k: number, quiet = false) => {
     if (!k) return;
-    const o = order.filter((c) => c !== ch);
-    const i = order.indexOf(ch);
-    const j = Math.max(0, Math.min(o.length, i + k));
-    o.splice(j, 0, ch);
-    setAndSaveOrder(o);
+    setAndSaveOrder(shiftOrder(order, ch, k, items));
+    if (!quiet) say(`${name(ch)} déplacée (l’ordre à l’écran, pas les branchements)`);
+  };
+  // glisser : la voie suit le doigt et les autres s'écartent au fur et à mesure
+  const dragDone = useRef(0);
+  const onDragLive = (ch: number, dx: number) => {
+    const w = chW + 6;
+    const steps = Math.trunc((dx - dragDone.current) / w);
+    if (steps) { moveBy(ch, steps, true); dragDone.current += steps * w; }
+    setDrag({ ch, dx: dx - dragDone.current });
+  };
+  const onDropLive = (ch: number) => {
+    dragDone.current = 0;
+    setDrag(null);
     say(`${name(ch)} déplacée (l’ordre à l’écran, pas les branchements)`);
   };
 
@@ -288,6 +326,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} onLongPress={() => showTip(HELP.undo)} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
         </Pressable>
+        {(
+          <Pressable onPress={() => (picking ? endPick() : startPick())} onLongPress={() => showTip('Sélectionner : coche des voies (touche leur nom) pour en faire un groupe ou les ajouter à un groupe. Raccourci : un appui long sur un nom.')} accessibilityState={{ selected: picking }} style={[styles.hbtn, picking ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+            <Text style={{ color: picking ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{picking ? (view === 'table' ? '✓ Terminé' : `✓ Terminé · ${picked.length}`) : '☑ Sélectionner'}</Text>
+          </Pressable>
+        )}
         <Pressable disabled={view === 'table'} onLongPress={() => showTip(HELP.organize)} onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, view === 'table' && { opacity: 0.35 }]}>
           <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
         </Pressable>
@@ -320,12 +363,17 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}
       <SoloBar client={client} theme={theme} />
       <ClipBanner client={client} onOpen={setInputCh} />
+      {picking && view !== 'table' && (
+        <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 50 }}>
+          <GroupBar client={client} theme={theme} chans={picked} onDone={(m) => { say(m); endPick(); }} onCancel={endPick} />
+        </View>
+      )}
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
-        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} actions={drawerActions} />}
+        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} actions={drawerActions} multiCtl={{ on: picking, set: (v) => (v ? startPick() : endPick()) }} />}
         {bodyH > 0 && view === 'gains' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12, justifyContent: 'center' }}>
-            {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} organize={organize ? { onMove: (k) => moveBy(ch, k), onCopy: () => setCopySet(ch), onRename: () => setRenameCh(ch) } : undefined} />)}
+            {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} picked={picking ? picked.includes(ch) : undefined} onPick={(c) => (picking ? togglePick(c) : startPick(c))} group={groups.find((g) => g.members.includes(ch))} organize={organize ? { onMove: (k) => moveBy(ch, k), onCopy: () => setCopySet(ch), onRename: () => setRenameCh(ch) } : undefined} />)}
           </ScrollView>
         )}
         {bodyH > 0 && view !== 'gains' && view !== 'table' && (
@@ -366,7 +414,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                     onPasteToggle={doSwap}
                     dim={false}
                     onSelect={onSelect}
-                    onRename={setRenameCh}
+                    onRename={picking ? togglePick : setRenameCh}
+                    picked={picking ? picked.includes(it.ch) : undefined}
+                    onNameLong={(c) => (picking ? togglePick(c) : startPick(c))}
                     onOpenInput={setInputCh}
                     onOpenDetail={setDetailCh}
                     onOpenFx={(c) => (props.onOpenEffects ? props.onOpenEffects(c) : setDetailCh(c))}
@@ -381,8 +431,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                       onInput={() => setSrcCh(it.ch)}
                       onRename={() => setRenameCh(it.ch)}
                       onCancel={() => { setSel(null); setMode(null); }}
-                      onDrag={(dx) => setDrag({ ch: it.ch, dx })}
-                      onDrop={(dx) => { setDrag(null); moveBy(it.ch, Math.round(dx / (chW + 6))); }}
+                      onDrag={(dx) => onDragLive(it.ch, dx)}
+                      onDrop={() => onDropLive(it.ch)}
                       onCopyDrag={(dx) => setCopyDrag(dx === null ? null : { ch: it.ch, dx })}
                       onCopyDrop={(dx) => dropCopy(it.ch, dx)}
                     />
@@ -410,7 +460,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{name(sel)}</Text>
               <Text style={{ color: theme.muted, fontSize: 11 }}>
-                Prise {insrcPlug(Number(client.get(insrcPath(sel)) ?? sel - 1))} · {mode === 'swap' ? 'touche la voie avec laquelle échanger (réglages et place)' : 'que faire ?'}
+                Prise {insrcPlug(Number(client.get(insrcPath(sel)) ?? sel - 1))} · {mode === 'swap' ? 'touche la voie avec laquelle échanger sa place à l’écran (les branchements ne bougent pas)' : 'que faire ?'}
               </Text>
             </View>
             <Pressable onPress={() => { setSel(null); setMode(null); }} accessibilityLabel="Fermer" style={styles.close}>

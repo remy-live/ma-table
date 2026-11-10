@@ -3,13 +3,14 @@
 // (sauvegardes automatiques, copie dans la table).
 import React, { useEffect, useState } from 'react';
 import { shareBackup, pickAndRestore } from '../store/backup';
-import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import {
   Auto, clearAutos, Current, current, deleteAuto, deleteSession, exportSession, freeTableSlot, importText, listAutos, listSessions, loadFromTable, renameCurrent,
   renameSession, safetyBackup, saveCurrentSession, saveToTable, Session, StartFrom, startNewSession, tableSnapPaths,
 } from '../store/sessions';
 import { load } from '../store/persist';
+import { applyMyTemplate, applyTemplate, deleteMyTemplate, listMyTemplates, MyTemplate, saveAsTemplate, TEMPLATES } from '../store/templates';
 import { Theme } from '../ui/theme';
 import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { Shell } from '../ui/Shell';
@@ -26,18 +27,23 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   const [autos, setAutos] = useState<Auto[]>([]);
   const [saved, setSaved] = useState(false);
   const [asking, setAsking] = useState(false);
-  const [from, setFrom] = useState<StartFrom>('same');
+  const [from, setFrom] = useState<StartFrom | string>('same');
+  const [newName, setNewName] = useState('');
+  const [mine, setMine] = useState<MyTemplate[]>([]);
+  const [tplName, setTplName] = useState<string | null>(null);
   const [rename, setRename] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importTxt, setImportTxt] = useState('');
   const [changes, setChanges] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   const [tick, setTick] = useState(0);
+  const wideS = useWindowDimensions().width >= 900;
 
   const refresh = async () => {
     setCur(await current());
     setList(await listSessions());
     setAutos(await listAutos());
+    setMine(await listMyTemplates());
     setTick((x) => x + 1);
   };
   useEffect(() => {
@@ -56,10 +62,17 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   };
   const doNew = async () => {
     const old = cur?.name ?? '';
-    const n = await startNewSession(client, from);
+    const tpl = TEMPLATES.find((t) => t.key === from);
+    const my = mine.find((t) => t.key === from);
+    let n = await startNewSession(client, tpl || my ? 'same' : (from as StartFrom));
+    if (tpl) await applyTemplate(client, tpl);
+    if (my) await applyMyTemplate(client, my);
+    const nm = newName.trim() || (tpl ? tpl.name : my ? my.name : '');
+    if (nm) n = await renameCurrent(nm);
+    setNewName('');
     setAsking(false);
     setSaved(false);
-    say(`« ${old} » enregistrée · nouvelle soirée démarrée`);
+    say(`« ${old} » enregistré · « ${n.name} » démarré`);
     setCur(n);
     refresh();
   };
@@ -101,10 +114,11 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
-        <ScreenHeader theme={theme} title="Soirées et sauvegardes" sub="Une soirée = tout le réglage de la table, gardé dans l’appli" style={{ paddingHorizontal: 0 }}>
+        <ScreenHeader theme={theme} title="Mes mixages" sub="Un mixage = tout le réglage de la table et le plan de scène, avec son nom" style={{ paddingHorizontal: 0 }}>
           {!props.embedded && <Btn theme={theme} kind="primary" label="Fermer" onPress={props.onClose} />}
         </ScreenHeader>
-        <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
+        <ScrollView contentContainerStyle={wideS ? { flexDirection: 'row', gap: 12, paddingBottom: 20, alignItems: 'flex-start' } : { gap: 12, paddingBottom: 40 }}>
+          <View style={{ flex: wideS ? 1.1 : undefined, gap: 12 }}>
           {/* EN COURS */}
           {cur && (
             <View style={[styles.card, { backgroundColor: '#13261E', borderColor: '#34D399' }]}>
@@ -115,27 +129,53 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable onPress={doSave} style={[styles.btn, { backgroundColor: '#34D399' }]}><Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 14 }}>{saved ? '✓ Enregistrée' : 'Enregistrer maintenant'}</Text></Pressable>
-                <Pressable onPress={() => setAsking((x) => !x)} style={[styles.btn, { borderColor: '#34D399', borderWidth: 1 }]}><Text style={{ color: '#A7F3D0', fontWeight: '800', fontSize: 14 }}>Nouvelle soirée</Text></Pressable>
+                <Pressable onPress={() => setAsking((x) => !x)} style={[styles.btn, { borderColor: '#34D399', borderWidth: 1 }]}><Text style={{ color: '#A7F3D0', fontWeight: '800', fontSize: 14 }}>＋ Nouveau mixage</Text></Pressable>
+                <Pressable onPress={() => setTplName(cur?.name ?? '')} style={[styles.btn, { borderColor: '#34D399', borderWidth: 1 }]}><Text style={{ color: '#A7F3D0', fontWeight: '800', fontSize: 14 }}>★ Comme modèle</Text></Pressable>
               </View>
             </View>
           )}
           {asking && (
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.accent }]}>
-              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>Nouvelle soirée</Text>
-              <Text style={{ color: theme.muted, fontSize: 13 }}>« {cur?.name} » est d’abord enregistrée telle quelle. Ensuite, on repart de :</Text>
-              {([['same', 'Le même réglage', 'pour enchaîner un autre set avec le même groupe'], ['balance', 'Le dernier enregistrement', 'on annule tout ce qui a bougé depuis'], ['blank', 'Une table vide', 'noms, groupes, envois effacés (les gains restent) : nouveau groupe, nouvelle salle']] as [StartFrom, string, string][]).map(([id, l, sub]) => (
-                <Pressable key={id} onPress={() => setFrom(id)} accessibilityState={{ selected: from === id }} style={[styles.opt, { borderColor: from === id ? theme.accent : theme.line, backgroundColor: from === id ? '#1F1C14' : theme.deep }]}>
-                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{l}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
-                </Pressable>
-              ))}
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>＋ Nouveau mixage</Text>
+              <TextInput value={newName} onChangeText={setNewName} placeholder="Son nom : Concert Bar du Port, Répète jeudi…" placeholderTextColor={theme.muted} maxLength={40} style={[styles.input, { color: theme.text, borderColor: theme.accent, backgroundColor: theme.deep, fontSize: 16, fontWeight: '800' }]} />
+              <Text style={{ color: theme.muted, fontSize: 12 }}>« {cur?.name} » est d’abord enregistré tel quel. On part de :</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {([['same', 'Le mixage actuel', 'pour enchaîner un autre set'], ['balance', 'Le dernier enregistrement', 'on annule ce qui a bougé'], ['blank', 'Une table vide', 'noms, groupes, envois effacés']] as [StartFrom, string, string][]).map(([id, l, sub]) => (
+                  <Pressable key={id} onPress={() => setFrom(id)} accessibilityState={{ selected: from === id }} style={[styles.opt, styles.optS, { borderColor: from === id ? theme.accent : theme.line, backgroundColor: from === id ? '#1F1C14' : theme.deep }]}>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{l}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={[styles.kicker, { color: theme.muted }]}>OU UN MODÈLE · noms, groupes, retours, coupe-bas, mix de base et plan de scène (jamais les gains ni le 48 V)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {[...TEMPLATES.map((t) => ({ key: t.key, name: t.name, desc: t.desc, mine: false })), ...mine.map((t) => ({ key: t.key, name: t.name, desc: t.desc, mine: true }))].map((t) => (
+                  <Pressable key={t.key} onPress={() => setFrom(t.key)} onLongPress={t.mine ? () => Alert.alert(`Supprimer le modèle « ${t.name} » ?`, '', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: async () => setMine(await deleteMyTemplate(t.key)) }]) : undefined} accessibilityState={{ selected: from === t.key }} style={[styles.opt, styles.optS, { borderColor: from === t.key ? theme.accent : t.mine ? '#34D399' : theme.line, backgroundColor: from === t.key ? '#1F1C14' : theme.deep }]}>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{t.mine ? '★ ' : ''}{t.name}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 11 }} numberOfLines={2}>{t.desc}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Pressable onPress={() => setAsking(false)} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700' }}>Annuler</Text></Pressable>
-                <Pressable onPress={doNew} style={[styles.btn, { backgroundColor: theme.accent, flex: 2 }]}><Text style={{ color: theme.onAccent, fontWeight: '800' }}>Enregistrer et démarrer</Text></Pressable>
+                <Pressable onPress={doNew} style={[styles.btn, { backgroundColor: theme.accent, flex: 2 }]}><Text style={{ color: theme.onAccent, fontWeight: '800' }}>Démarrer « {newName.trim() || TEMPLATES.find((t) => t.key === from)?.name || mine.find((t) => t.key === from)?.name || 'nouveau mixage'} »</Text></Pressable>
+              </View>
+            </View>
+          )}
+          {tplName !== null && (
+            <View style={[styles.card, { backgroundColor: theme.panel, borderColor: '#34D399' }]}>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>★ Enregistrer comme modèle</Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>Tout le réglage de la table et le plan de scène deviennent un point de départ pour un prochain « Nouveau mixage ».</Text>
+              <TextInput value={tplName} onChangeText={setTplName} placeholder="Mon groupe du samedi" placeholderTextColor={theme.muted} maxLength={30} style={[styles.input, { color: theme.text, borderColor: '#34D399', backgroundColor: theme.deep }]} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable onPress={() => setTplName(null)} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700' }}>Annuler</Text></Pressable>
+                <Pressable onPress={async () => { setMine(await saveAsTemplate(client, tplName || cur?.name || 'Mon modèle')); setTplName(null); Alert.alert('Modèle enregistré', 'Il est proposé dans « ＋ Nouveau mixage ».'); }} style={[styles.btn, { backgroundColor: '#34D399', flex: 2 }]}><Text style={{ color: '#052E1F', fontWeight: '800' }}>Enregistrer le modèle</Text></Pressable>
               </View>
             </View>
           )}
 
+          </View>
+          <View style={{ flex: wideS ? 1 : undefined, gap: 12 }}>
           {/* TOUT SAUVEGARDER : un fichier, vers Google Drive ou ailleurs */}
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: '#60A5FA' }]}>
             <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>☁ Tout sauvegarder (Google Drive, mail…)</Text>
@@ -155,7 +195,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
 
           {/* ENREGISTRÉES */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={[styles.kicker, { color: theme.muted, flex: 1 }]}>SOIRÉES ENREGISTRÉES</Text>
+            <Text style={[styles.kicker, { color: theme.muted, flex: 1 }]}>MIXAGES ENREGISTRÉS</Text>
             <Pressable onPress={() => setImportOpen((x) => !x)} style={{ padding: 4 }}><Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Recevoir une soirée</Text></Pressable>
           </View>
           {importOpen && (
@@ -216,6 +256,7 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
               </Pressable>
             ))}
           </View>
+          </View>
         </ScrollView>
 
         <Modal visible={rename !== null} transparent animationType="fade" onRequestClose={() => setRename(null)}>
@@ -250,6 +291,7 @@ const styles = StyleSheet.create({
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   card: { borderWidth: 2, borderRadius: 18, padding: 14, gap: 10 },
   btn: { flex: 1, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  optS: { width: '32%', minWidth: 140, flexGrow: 1 },
   opt: { borderWidth: 2, borderRadius: 14, padding: 10, gap: 2 },
   row: { borderWidth: 1, borderRadius: 16, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   date: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

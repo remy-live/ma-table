@@ -87,6 +87,11 @@ export class TableModel {
     for (let b = 1; b <= 6; b++) out[25 + b] = lr > -90 ? lr - 8 - b : -90;
     out[36] = Math.min(6, lr);
     out[37] = Math.min(6, lr - 1);
+    // Démo : un retour (ou la façade) poussé à fond se met à « siffler » :
+    // un niveau fort et presque constant, comme un vrai larsen.
+    const hiss = (path: string) => Number(this.get(path)?.v ?? 0.75) >= 0.87 && Number(this.get(path.replace('fader', 'on'))?.v ?? 1) === 1;
+    for (let b = 1; b <= 6; b++) if (hiss(`/bus/${b}/mix/fader`)) out[25 + b] = -3 + Math.sin(tick) * 0.4;
+    if (hiss('/lr/mix/fader')) { out[36] = -2 + Math.sin(tick) * 0.4; out[37] = out[36]; }
     return out;
   }
 

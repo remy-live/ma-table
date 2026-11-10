@@ -58,6 +58,9 @@ interface StripProps {
   view?: StripView;
   onSelect: (ch: number) => void;
   onRename: (ch: number) => void;
+  /** mode « Sélectionner » : la voie est cochée (undefined = pas en sélection) */
+  picked?: boolean;
+  onNameLong?: (ch: number) => void;
   onOpenInput: (ch: number) => void;
   onOpenDetail: (ch: number) => void;
   onOpenFx?: (ch: number) => void;
@@ -147,13 +150,14 @@ export function Strip(p: StripProps) {
 
       <Pressable
         onPress={() => p.onRename(ch)}
-        onLongPress={() => showTip(HELP.name)}
-        accessibilityRole="button"
-        accessibilityLabel={`Renommer ${name}`}
-        style={[styles.name, { backgroundColor: theme.deep, borderBottomColor: scribble }]}
+        onLongPress={() => (p.onNameLong ? p.onNameLong(ch) : showTip(HELP.name))}
+        accessibilityRole={p.picked !== undefined ? 'checkbox' : 'button'}
+        accessibilityState={p.picked !== undefined ? { checked: p.picked } : undefined}
+        accessibilityLabel={p.picked !== undefined ? `Choisir ${name}` : `Renommer ${name}`}
+        style={[styles.name, { backgroundColor: p.picked ? scribble : theme.deep, borderBottomColor: scribble }, p.picked === false && { borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.line2 }]}
       >
-        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600', textAlign: 'center' }} numberOfLines={2}>
-          {name}
+        <Text style={{ color: p.picked ? '#0B0D10' : theme.text, fontSize: 12, fontWeight: p.picked ? '900' : '600', textAlign: 'center' }} numberOfLines={2}>
+          {p.picked ? '✓ ' : p.picked === false ? '○ ' : ''}{name}
         </Text>
       </Pressable>
 

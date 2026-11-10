@@ -37,6 +37,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 
   const dests = destinations(client).filter((d) => !isoD || d.id === isoD);
   // les colonnes s'élargissent pour remplir l'écran
+  const [areaH, setAreaH] = useState(0);
   const cw = areaW > 0 ? Math.max(CELL, Math.min(130, Math.floor((areaW - 24 - LABEL_W - dests.length * 4) / Math.max(1, dests.length)))) : CELL;
   const allSrc = sources(client);
   // la même couleur que partout ailleurs : la couleur de la voie, de l'effet, du groupe
@@ -48,6 +49,8 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
     rows.push({ s, indent: false, color: colorOf(s) });
     if (s.kind === 'group' && open[s.id]) for (const m of s.members!) if (!isoS || isoS === m.id || isoS === s.id) rows.push({ s: m, indent: true, color: colorOf(m) });
   }
+  // toutes les lignes tiennent dans la hauteur : elles se resserrent s'il y en a beaucoup
+  const rowH = areaH > 0 ? Math.max(34, Math.min(CELL - 4, Math.floor((areaH - 92) / Math.max(1, rows.length)) - 4)) : CELL - 4;
   const pickSrc = pick ? [...allSrc, ...allSrc.flatMap((s) => s.members ?? [])].find((s) => s.id === pick.s) : null;
   const pickDest = pick ? destinations(client).find((d) => d.id === pick.d) : null;
   const pickPaths = pickSrc && pickDest ? levelPaths(pickSrc, pickDest.t) : [];
@@ -57,7 +60,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 
   const body = (
     <>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 8 }} onLayout={(e) => setAreaW(e.nativeEvent.layout.width)}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 8 }} onLayout={(e) => { setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View>
             {/* en-tête : les personnes */}
@@ -85,8 +88,8 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
               return (
                 <View key={s.id} style={{ flexDirection: 'row', gap: 4, alignItems: 'center', marginBottom: 4 }}>
                   <View style={{ width: LABEL_W, flexDirection: 'row', gap: 4 }}>
-                    <Pressable onPress={() => (isG ? setOpen((o) => ({ ...o, [s.id]: !u })) : setIsoS(on ? null : s.id))} onLongPress={() => setIsoS(on ? null : s.id)} accessibilityState={{ selected: on, expanded: isG ? u : undefined }} style={[styles.srcBtn, { height: CELL - 4, borderColor: on ? color : theme.line, backgroundColor: on ? theme.deep : theme.panel, paddingLeft: indent ? 16 : 8 }]}>
-                      <View style={{ width: 6, height: 28, borderRadius: 3, backgroundColor: color }} />
+                    <Pressable onPress={() => (isG ? setOpen((o) => ({ ...o, [s.id]: !u })) : setIsoS(on ? null : s.id))} onLongPress={() => setIsoS(on ? null : s.id)} accessibilityState={{ selected: on, expanded: isG ? u : undefined }} style={[styles.srcBtn, { height: rowH, borderColor: on ? color : theme.line, backgroundColor: on ? theme.deep : theme.panel, paddingLeft: indent ? 16 : 8 }]}>
+                      <View style={{ width: 6, height: Math.min(28, rowH - 10), borderRadius: 3, backgroundColor: color }} />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text numberOfLines={1} style={{ color: theme.text, fontSize: indent ? 12 : 13, fontWeight: '800' }}>{s.label}</Text>
                         <Text style={{ color: theme.muted, fontSize: 9 }}>{isG ? `${s.channels.length} voies · ${u ? 'replier' : 'déplier'}` : s.kind === 'ch' ? `prise ${s.channels[0]}` : 'effet'}</Text>
@@ -94,7 +97,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
                     </Pressable>
                   </View>
                   {dests.map((d) => (
-                    <Bubble key={d.id} pulse={Math.max(0, ...s.channels.map((c) => lv[c] ?? 0))} w={cw} client={client} theme={theme} paths={levelPaths(s, d.t)} color={color} picked={pick?.s === s.id && pick?.d === d.id} a11y={`${d.name} entend ${s.label}`} onPick={() => setPick({ s: s.id, d: d.id })} />
+                    <Bubble key={d.id} h={rowH} pulse={Math.max(0, ...s.channels.map((c) => lv[c] ?? 0))} w={cw} client={client} theme={theme} paths={levelPaths(s, d.t)} color={color} picked={pick?.s === s.id && pick?.d === d.id} a11y={`${d.name} entend ${s.label}`} onPick={() => setPick({ s: s.id, d: d.id })} />
                   ))}
                 </View>
               );
@@ -145,9 +148,9 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 }
 
 /** Une bulle : appui = la choisir ; glisser à droite = plus fort, à gauche = moins fort. */
-function Bubble({ w, client, theme, paths, color, picked, a11y, onPick, pulse }: { pulse?: number; w: number; client: XAirClient; theme: Theme; paths: string[]; color: string; picked: boolean; a11y: string; onPick: () => void }) {
+function Bubble({ h, w, client, theme, paths, color, picked, a11y, onPick, pulse }: { h: number; pulse?: number; w: number; client: XAirClient; theme: Theme; paths: string[]; color: string; picked: boolean; a11y: string; onPick: () => void }) {
   return (
-    <DragBubble pulse={pulse} theme={theme} w={w} h={CELL - 4} db={levelDb(client, paths)} color={color} picked={picked} a11y={a11y} onStart={onPick} onTap={onPick}
+    <DragBubble pulse={pulse} theme={theme} w={w} h={h} db={levelDb(client, paths)} color={color} picked={picked} a11y={a11y} onStart={onPick} onTap={onPick}
       onSet={(db) => paths.forEach((p) => client.set(p, f(db === null ? 0 : dbToFader(db))))} />
   );
 }
@@ -161,7 +164,7 @@ const styles = StyleSheet.create({
   avatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   srcBtn: { flex: 1, borderRadius: 12, borderWidth: 2, flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 6 },
   cell: { width: CELL, height: CELL - 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  bottom: { margin: 10, borderWidth: 2, borderRadius: 16, padding: 10, minHeight: 60, justifyContent: 'center' },
+  bottom: { margin: 10, marginTop: 4, borderWidth: 2, borderRadius: 16, padding: 8, minHeight: 44, justifyContent: 'center' },
   small: { height: 38, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   pm: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });

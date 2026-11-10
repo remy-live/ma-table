@@ -55,6 +55,17 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
   const busName = String(useParam<string>(client, `/bus/${bus}/config/name`, '')) || `Retour ${bus}`;
   const master = Number(useParam<number>(client, busFaderPath(bus), 0.75));
   const lim = limiterOn(client, bus);
+  const [listH, setListH] = useState(0);
+  const [nItems, setNItems] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const fit = (() => {
+    if (!listH || !nItems) return { h: 56, two: false, scroll: false };
+    const one = Math.floor(listH / nItems);
+    if (one >= 40) return { h: Math.min(56, one), two: false, scroll: false };
+    const two = Math.floor(listH / Math.ceil(nItems / 2));
+    if (two >= 38) return { h: Math.min(60, two), two: true, scroll: false };
+    return { h: 40, two: true, scroll: true };
+  })();
   const meter = useMeter(client, [busMeter(bus)], eco ? 400 : 150);
 
   useEffect(() => {
@@ -173,35 +184,42 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
         <Text style={[styles.kicker, { color: theme.muted }]}>CE QUE J’ENTENDS</Text>
         {groups.length > 0 && <Text style={{ color: theme.muted, fontSize: 11 }}>touche un groupe pour le déplier</Text>}
       </View>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 8 }}>
-        {mine.map((s) => (
-          <SourceRow key={s.id} client={client} s={s} theme={theme} color="#60A5FA" me />
-        ))}
-        {groups.map((g) => {
+      {(() => {
+        // tout tient sur l'écran : les lignes se resserrent, puis passent sur deux colonnes
+        const items: React.ReactNode[] = [];
+        mine.forEach((s) => items.push(<SourceRow key={s.id} client={client} s={s} theme={theme} color="#60A5FA" me h={fit.h} two={fit.two} />));
+        groups.forEach((g) => {
           const isOpen = !!open[g.k];
           const all = pathsOf(g.sources);
           const db = Math.max(...g.sources.map((s) => sourceDb(client, s)));
-          return (
-            <View key={g.k}>
-              <Row
-                theme={theme}
-                name={g.name}
-                color={GROUP}
-                bold
-                db={db}
-                chev={`${isOpen ? '▴' : '▾'} ${g.sources.length} voie${g.sources.length > 1 ? 's' : ''}`}
-                onTap={() => setOpen((o) => ({ ...o, [g.k]: !isOpen }))}
-                onDown={() => shift(client, all, -2)}
-                onUp={() => shift(client, all, 2, true)}
-              />
-              {isOpen && g.sources.map((s) => <SourceRow key={s.id} client={client} s={s} theme={theme} color="#FCD34D" indent />)}
-            </View>
+          items.push(
+            <Row key={'g' + g.k} theme={theme} name={g.name} color={GROUP} bold db={db} h={fit.h} two={fit.two}
+              chev={isOpen ? '▴' : `▾ ${g.sources.length}`}
+              onTap={() => setOpen((o) => ({ ...o, [g.k]: !isOpen }))}
+              onDown={() => shift(client, all, -2)}
+              onUp={() => shift(client, all, 2, true)} />,
           );
-        })}
-        {loose.map((s) => (
-          <SourceRow key={s.id} client={client} s={s} theme={theme} color={s.id.startsWith('fx') ? '#C084FC' : theme.muted} />
-        ))}
-      </ScrollView>
+          if (isOpen) g.sources.forEach((s) => items.push(<SourceRow key={'gs' + s.id} client={client} s={s} theme={theme} color="#FCD34D" indent h={fit.h} two={fit.two} />));
+        });
+        // les voies sans nom que tu n'entends pas sont rangées derrière un bouton
+        const quiet = (s: MonSource) => /^(Voie|Entrée) /.test(s.label) && !(sourceDb(client, s) > -40);
+        const hidden = loose.filter(quiet);
+        loose.filter((s) => showAll || !quiet(s)).forEach((s) => items.push(<SourceRow key={s.id} client={client} s={s} theme={theme} color={s.id.startsWith('fx') ? '#C084FC' : theme.muted} h={fit.h} two={fit.two} />));
+        if (hidden.length) items.push(
+          <Pressable key="more" onPress={() => setShowAll((x) => !x)} style={{ height: fit.h, width: fit.two ? '48.5%' : '100%', justifyContent: 'center', paddingHorizontal: 4 }}>
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '800' }}>{showAll ? '▴ Ranger les voies muettes' : `▾ ${hidden.length} autre${hidden.length > 1 ? 's' : ''} voie${hidden.length > 1 ? 's' : ''} (coupée${hidden.length > 1 ? 's' : ''})`}</Text>
+          </Pressable>,
+        );
+        if (items.length !== nItems) setTimeout(() => setNItems(items.length), 0);
+        const wrap = { flexDirection: 'row' as const, flexWrap: 'wrap' as const, columnGap: 8, paddingHorizontal: 14 };
+        return (
+          <View style={{ flex: 1 }} onLayout={(e) => setListH(e.nativeEvent.layout.height)}>
+            {fit.scroll
+              ? <ScrollView contentContainerStyle={[wrap, { paddingBottom: 8 }]}>{items}</ScrollView>
+              : <View style={wrap}>{items}</View>}
+          </View>
+        );
+      })()}
 
       <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 6 }}>
         <Pressable onPress={toggleLim} accessibilityRole="switch" accessibilityState={{ checked: lim }} style={[styles.foot, { borderColor: lim ? ME : '#EF4444', backgroundColor: lim ? '#13261E' : '#2A1416' }]}>
@@ -233,7 +251,7 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
   );
 }
 
-function SourceRow(props: { client: XAirClient; s: MonSource; theme: Theme; color: string; me?: boolean; indent?: boolean }) {
+function SourceRow(props: { client: XAirClient; s: MonSource; theme: Theme; color: string; me?: boolean; indent?: boolean; h?: number; two?: boolean }) {
   const { client, s } = props;
   const db = sourceDb(client, s);
   return (
@@ -245,39 +263,47 @@ function SourceRow(props: { client: XAirClient; s: MonSource; theme: Theme; colo
       me={props.me}
       bold={props.me}
       indent={props.indent}
+      h={props.h}
+      two={props.two}
       onDown={() => shift(client, s.paths, -2)}
       onUp={() => shift(client, s.paths, 2, true)}
     />
   );
 }
 
-function Row(props: { theme: Theme; name: string; color: string; db: number; chev?: string; me?: boolean; bold?: boolean; indent?: boolean; onTap?: () => void; onDown: () => void; onUp: () => void }) {
+function Row(props: { theme: Theme; name: string; color: string; db: number; chev?: string; me?: boolean; bold?: boolean; indent?: boolean; onTap?: () => void; onDown: () => void; onUp: () => void; h?: number; two?: boolean }) {
   const { theme, db } = props;
+  const h = props.h ?? 56;
+  const bs = props.two ? Math.max(30, Math.min(38, h - 6)) : Math.max(34, Math.min(48, h - 6)); // taille des boutons − / +
+  const dbT = !isFinite(db) || db < -40 ? 'coupé' : dbText(db);
   const pct = !isFinite(db) || db < -40 ? 0 : Math.max(3, Math.round(((db + 30) / 40) * 100));
   return (
-    <View style={[styles.row, props.indent && { paddingLeft: 18 }]}>
-      <Pressable onPress={props.onTap} disabled={!props.onTap} accessibilityState={props.onTap ? { expanded: props.chev?.startsWith('▴') } : undefined} style={{ flex: 1, minHeight: 48, justifyContent: 'center', gap: 5 }}>
+    <View style={[styles.row, { minHeight: h, height: h, gap: props.two ? 4 : 8, width: props.two ? '48.5%' : '100%' }, props.indent && { paddingLeft: props.two ? 6 : 18 }]}>
+      <Pressable onPress={props.onTap} disabled={!props.onTap} accessibilityState={props.onTap ? { expanded: props.chev?.startsWith('▴') } : undefined} style={{ flex: 1, minWidth: 0, justifyContent: 'center', gap: h < 48 ? 3 : 5 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: props.color }} />
-          <Text numberOfLines={1} style={{ color: theme.text, fontSize: props.indent ? 13 : 15, fontWeight: props.bold ? '800' : props.indent ? '600' : '700', flexShrink: 1 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: props.two ? 12 : props.indent ? 13 : 15, fontWeight: props.bold ? '800' : props.indent ? '600' : '700', flexShrink: 1 }}>
             {props.name}
           </Text>
           {!!props.chev && <Text style={{ color: theme.muted, fontSize: 11 }}>{props.chev}</Text>}
-          {props.me && (
+          {props.me && !props.two && (
             <View style={{ backgroundColor: ME, borderRadius: 6, paddingHorizontal: 6 }}>
               <Text style={{ color: '#052E1F', fontSize: 10, fontWeight: '800' }}>MOI</Text>
             </View>
           )}
         </View>
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
-          <View style={{ height: 8, width: `${pct}%`, backgroundColor: props.color, borderRadius: 4 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flex: 1, height: props.two ? 6 : 8, borderRadius: 4, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
+            <View style={{ height: props.two ? 6 : 8, width: `${pct}%`, backgroundColor: props.color, borderRadius: 4 }} />
+          </View>
+          {props.two && <Text style={{ color: theme.muted, fontSize: 9.5, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{dbT}</Text>}
         </View>
       </Pressable>
-      <Pressable onPress={props.onDown} accessibilityLabel={`Moins de ${props.name}`} style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+      <Pressable onPress={props.onDown} accessibilityLabel={`Moins de ${props.name}`} style={[styles.pm, { width: bs, height: bs, borderColor: theme.line2, backgroundColor: theme.deep }]}>
         <Text style={[styles.pmText, { color: theme.text }]}>−</Text>
       </Pressable>
-      <Text style={{ width: 54, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{!isFinite(db) || db < -40 ? 'coupé' : dbText(db)}</Text>
-      <Pressable onPress={props.onUp} accessibilityLabel={`Plus de ${props.name}`} style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+      {!props.two && <Text style={{ width: 54, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{dbT}</Text>}
+      <Pressable onPress={props.onUp} accessibilityLabel={`Plus de ${props.name}`} style={[styles.pm, { width: bs, height: bs, borderColor: theme.line2, backgroundColor: theme.deep }]}>
         <Text style={[styles.pmText, { color: theme.text }]}>+</Text>
       </Pressable>
     </View>
@@ -292,16 +318,16 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700' },
   lockChip: { height: 40, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
   card: { marginHorizontal: 14, borderWidth: 1, borderRadius: 18, padding: 12, gap: 10 },
-  big: { flex: 1, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  big: { flex: 1, height: 62, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   bigText: { color: '#052E1F', fontSize: 17, fontWeight: '800' },
   bigSub: { color: '#052E1F', fontSize: 11, fontWeight: '700' },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 18, marginTop: 14, marginBottom: 4 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 18, marginTop: 10, marginBottom: 2 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56 },
   pm: { width: 48, height: 48, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   pmText: { fontSize: 22, fontWeight: '800' },
-  foot: { flex: 1, height: 54, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  foot: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   footText: { fontSize: 13, fontWeight: '800' },
-  save: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  save: { height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', left: 24, right: 24, top: 100, backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1, borderRadius: 12, padding: 10 },
 });

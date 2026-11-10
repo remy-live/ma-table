@@ -3,16 +3,19 @@
 //  2. Deux colonnes (prises à gauche, personnes à droite — pour le téléphone)
 //  3. Bulles (le tableau « Qui entend quoi »)
 import { useMono } from '../ui/useMono';
+import { GroupBar } from '../ui/GroupBar';
+import { showTip } from '../ui/tip';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { s as oscS } from '../osc/osc';
+import { f as oscF, s as oscS } from '../osc/osc';
+import { isMono } from '../xair/mono';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Theme } from '../ui/theme';
 import { Shell } from '../ui/Shell';
-import { busNamePath, chNamePath, meterIndex, MODEL } from '../xair/addresses';
+import { busNamePath, chNamePath, meterIndex, MODEL, panPath } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { colorOf } from '../xair/smartName';
-import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
+import { connect, disconnect, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
@@ -52,9 +55,10 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   useEffect(() => setRen(null), [sel]);
   useEffect(() => { if (props.visible) client.loadPaths(wiringPaths()); }, [client, props.visible]);
 
+  const monoW = useMono(client);
   const P = useMemo(() => plugs(client), [client, tick]);
-  const O = useMemo(() => outlets(client), [client, tick]);
-  const W = useMemo(() => wires(client), [client, tick]);
+  const O = useMemo(() => outlets(client), [client, tick, monoW]);
+  const W = useMemo(() => wires(client), [client, tick, monoW]);
   const say = (t: string) => { void t; setToast(''); }; // plus de bandeau vert
 
   const plugColor = (p: Plug) => plugColorOf(client, p, colorOf);
@@ -82,16 +86,17 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
     // une prise de la sélection emmène toutes les autres
     if (sel?.kind === 'many' && sel.ns.includes(plugN)) {
       const o = O.find((x) => x.id === outId)!;
-      sel.ns.forEach((n) => { const q = P[n - 1]; if (q?.chans.length && !W.some((w) => w.plug === n && w.out === o.id)) connect(client, q, o.t); });
+      sel.ns.forEach((n) => { const q = P[n - 1]; if (q?.chans.length && !W.some((w) => w.plug === n && w.out === o.id)) link(client, q, o); });
       return;
     }
     const p = P[plugN - 1];
     const o = O.find((x) => x.id === outId)!;
     if (!p.chans.length) { say(`Rien n’écoute la prise ${p.n} : donne-lui une voie (Changer l’entrée)`); return; }
-    if (W.some((w) => w.plug === p.n && w.out === o.id)) { setSel({ kind: 'plug', n: p.n }); say('Déjà relié : règle le niveau en bas'); return; }
-    connect(client, p, o.t);
+    const where = o.side ? (o.side === 'L' ? ' · côté gauche' : ' · côté droit') : '';
+    if (W.some((w) => w.plug === p.n && w.out === o.id)) { setSel({ kind: 'plug', n: p.n }); say(where ? `Prise ${p.n} → façade${where}` : 'Déjà relié : règle le niveau en bas'); return; }
+    link(client, p, o);
     setSel({ kind: 'plug', n: p.n });
-    say(`Prise ${p.n} → ${o.label} (${o.name}) · −6 dB`);
+    say(`Prise ${p.n} → ${o.label} (${o.name}) · −6 dB${where}`);
   };
   const selPlug = sel?.kind === 'plug' ? P[sel.n - 1] : null;
   const selOut = sel?.kind === 'out' ? O.find((x) => x.id === sel.id) ?? null : null;
@@ -104,7 +109,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           {view !== 'bulles' && view !== 'scene' && (
             <Pressable onPress={() => { const m = !multi; setMulti(m); if (m && sel?.kind === 'plug') setSel({ kind: 'many', ns: [sel.n] }); if (!m && sel?.kind === 'many') setSel(null); }} accessibilityRole="switch" accessibilityState={{ checked: multi }}
               style={[styles.small, { height: 44, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : 'transparent' }]}>
-              <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Plusieurs${sel?.kind === 'many' ? ` (${sel.ns.length})` : ''}` : '☐ Plusieurs'}</Text>
+              <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Terminé${sel?.kind === 'many' ? ` · ${sel.ns.length}` : ''}` : '☑ Sélectionner'}</Text>
             </Pressable>
           )}
           <Segmented theme={theme} value={view} onChange={(v) => { setView(v); setSel(null); save('vueBranchements', v); }} options={VIEWS} />
@@ -131,7 +136,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     return;
                   }
                   setSel(sel?.kind === 'group' && sel.k === k ? null : { kind: 'group', k });
-                }} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
+                }} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { unlink(client, P[pl - 1], o); say(`Prise ${pl} retirée de ${o.label}`); } }} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}
@@ -166,6 +171,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                   <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
                 </View>
               ))}
+              {sel?.kind === 'many' && (
+                <GroupBar client={client} theme={theme} chans={sel.ns.flatMap((n) => P[n - 1]?.chans ?? [])} onDone={(m) => { showTip(m); setSel(null); setMulti(false); }} onCancel={() => { setSel(null); setMulti(false); }} />
+              )}
               {(selGroup || sel?.kind === 'many') && (
                 <View style={{ height: 232 }}>
                   <ManyDrawer
@@ -202,8 +210,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
                   </View>
                   {!fold && <>
-                  <AddRow theme={theme} label="Ajouter" items={P.filter((p) => p.chans.length && !selWires.some((w) => w.plug === p.n)).map((p) => ({ key: String(p.n), text: `${p.n} · ${p.name || 'voie ' + p.chans[0]}`, color: plugColor(p), add: () => { connect(client, p, selOut.t); say(`Prise ${p.n} → ${selOut.label} · −6 dB`); } }))} />
-                  <WireList theme={theme} items={selWires.map((w) => { const p = P[w.plug - 1]; return { key: String(w.plug), short: String(w.plug), name: p.name || `Voie ${p.chans[0]}`, plug: `prise ${w.plug}`, color: plugColor(p), db: w.db, paths: w.paths, cut: () => disconnect(client, p, selOut.t) }; })} client={client} empty="N’entend rien pour l’instant. Glisse une prise jusqu’à cette sortie." />
+                  <AddRow theme={theme} label="Ajouter" items={P.filter((p) => p.chans.length && !selWires.some((w) => w.plug === p.n)).map((p) => ({ key: String(p.n), text: `${p.n} · ${p.name || 'voie ' + p.chans[0]}`, color: plugColor(p), add: () => { link(client, p, selOut); say(`Prise ${p.n} → ${selOut.label} · −6 dB`); } }))} />
+                  <WireList theme={theme} items={selWires.map((w) => { const p = P[w.plug - 1]; return { key: String(w.plug), short: String(w.plug), name: p.name || `Voie ${p.chans[0]}`, plug: `prise ${w.plug}`, color: plugColor(p), db: w.db, paths: w.paths, cut: () => unlink(client, p, selOut) }; })} client={client} empty="N’entend rien pour l’instant. Glisse une prise jusqu’à cette sortie." />
                   </>}
                 </>
               )}
@@ -316,7 +324,11 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
         return { kind: 'plug', n: g && g.folded ? g.anchor : p.n };
       }
     }
-    for (const o of latest.current.O) { const c = outletXY(o.id); if (Math.hypot(c.x - vx, c.y - vy) < 30) return { kind: 'out', id: o.id }; }
+    for (const o of latest.current.O) {
+      const c = outletXY(o.id);
+      // la façade a deux prises (L et R) : sa zone est plus large
+      if (o.id === 'main' ? Math.abs(c.x - vx) < 50 && Math.abs(c.y - vy) < 30 : Math.hypot(c.x - vx, c.y - vy) < (o.side ? 22 : 30)) return { kind: 'out', id: o.id };
+    }
     return null;
   };
   const moved = useRef(false);
@@ -351,7 +363,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             return null;
           }
           const members = (n: number) => { const g = groupsRef.current.find((x) => x.folded && x.anchor === n); return g ? g.plugs : [n]; };
-          if (d.from.kind === 'plug' && t.kind === 'out') members(d.from.n).forEach((n) => latest.current.onLink(n, (t as { id: string }).id));
+          const sideOf = (id: string) => id;
+          if (d.from.kind === 'plug' && t.kind === 'out') members(d.from.n).forEach((n) => latest.current.onLink(n, sideOf((t as { id: string }).id)));
           else if (d.from.kind === 'out' && t.kind === 'plug') members(t.n).forEach((n) => latest.current.onLink(n, (d.from as { id: string }).id));
           else if (d.from.kind === 'plug' && t.kind === 'plug' && t.n === d.from.n) latest.current.onPlug(latest.current.P[t.n - 1]);
           else if (d.from.kind === 'out' && t.kind === 'out' && t.id === d.from.id) { const o = latest.current.O.find((x) => x.id === t.id); if (o) latest.current.onOut(o); }
@@ -473,6 +486,16 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                       ))}
                       <Rect x={x - 40} y={y + 22} width={80} height={14} rx={5} fill={props.outColor(o)} />
                       <SvgText x={x} y={y + 32} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{o.name.slice(0, 12)}</SvgText>
+                    </>
+                  ) : o.side ? (
+                    <>
+                      {/* 2 enceintes : MAIN L et MAIN R, deux vraies sorties */}
+                      {o.side === 'L' && <SvgText x={x + 23} y={y - 26} textAnchor="middle" fontSize={10} fontWeight="800" fill="#E8EAED">MAIN L · R</SvgText>}
+                      <Circle cx={x} cy={y} r={17} fill="#1E2227" stroke="#3A414B" strokeWidth={2} />
+                      <Circle cx={x} cy={y} r={10} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
+                      <SvgText x={x} y={y + 4} textAnchor="middle" fontSize={9} fontWeight="900" fill="#9AA3AD">{o.side}</SvgText>
+                      {o.side === 'L' && <Rect x={x + 23 - 40} y={y + 22} width={80} height={14} rx={5} fill={props.outColor(o)} />}
+                      {o.side === 'L' && <SvgText x={x + 23} y={y + 32} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">Le public</SvgText>}
                     </>
                   ) : (
                     <>

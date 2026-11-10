@@ -13,6 +13,8 @@ import { recordClips } from './src/xair/clip';
 import { loadPrepared, markSent, savePrepared, sendPrepared } from './src/store/prepare';
 import { WhoAmIScreen } from './src/screens/WhoAmIScreen';
 import { Tutorial } from './src/screens/Tutorial';
+import { FirstRun } from './src/screens/FirstRun';
+import { LarsenWatch } from './src/screens/LarsenWatch';
 import { blankTable, safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -23,6 +25,7 @@ import { WiringScreen } from './src/screens/WiringScreen';
 import { EffectsHub } from './src/screens/EffectsHub';
 import { HelpSheet } from './src/screens/HelpSheet';
 import { NavBar, Section } from './src/ui/NavBar';
+import { SessionsScreen } from './src/screens/SessionsScreen';
 import { load } from './src/store/persist';
 import { setHaptics } from './src/ui/haptics';
 import { useWindowDimensions } from 'react-native';
@@ -39,6 +42,7 @@ export default function App() {
   const bottomInset = useBottomInset(prefs.immersive !== false, prefs.navRoom);
   const [fxCh, setFxCh] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
+  const [mixes, setMixes] = useState(false);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const setPrefs = (p: Prefs) => {
@@ -52,6 +56,7 @@ export default function App() {
   const [invite, setInvite] = useState<MonConfig | null>(null);
   const [prep, setPrep] = useState(false);
   const [tuto, setTuto] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
   // le musicien dit qui il est (choisit ou nomme son retour)
   const [who, setWho] = useState<{ host: string; current: MonConfig | null } | null>(null);
   const theme = THEMES[themeKey] ?? THEMES.nuit;
@@ -102,7 +107,8 @@ export default function App() {
   }, []);
   // Invitation reçue alors qu'on pilote déjà la table : on demande.
   // les gestes en 30 s : une fois, au premier lancement
-  useEffect(() => { if (client) load<boolean>('tutoVu', false).then((v) => { if (!v) setTuto(true); }); }, [client]);
+  // premier lancement : le démarrage guidé en 3 étapes (les gestes restent dans Aide-moi)
+  useEffect(() => { if (client && !prep) load<boolean>('demarrageVu', false).then((v) => { if (!v) setFirstRun(true); }); }, [client, prep]);
   // historique des saturations de la soirée, tenu tant qu'on est connecté
   useEffect(() => {
     if (!client) return;
@@ -129,7 +135,7 @@ export default function App() {
   useEffect(() => { if (prefs.immersive !== false) setImmersive(true); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const go = (t: Section) => {
     if (locked && t !== 'scene') {
-      Alert.alert('Verrouillé', 'Déverrouille d’abord depuis l’écran Concert.');
+      Alert.alert('🔒 Verrouillé pour le concert', 'Pour ouvrir : dans Concert, reste appuyé sur « Verrouillé » une seconde.');
       return;
     }
     setTab(t);
@@ -210,6 +216,11 @@ export default function App() {
     );
   }
 
+  // Nuit rouge : on retient le design d'avant pour y revenir d'un geste
+  const toggleNight = () => {
+    if (themeKey === 'rouge') setPrefs({ ...prefs, theme: prefs.dayTheme && prefs.dayTheme !== 'rouge' ? prefs.dayTheme : 'nuit' });
+    else setPrefs({ ...prefs, theme: 'rouge', dayTheme: themeKey });
+  };
   const disconnect = () => {
     client.close();
     setClient(null);
@@ -220,19 +231,23 @@ export default function App() {
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
-      {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} />}
+      {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} night={themeKey === 'rouge'} onNight={toggleNight} />}
       {tab === 'reglages' && <SettingsScreen client={client} theme={theme} prefs={prefs} onPrefs={setPrefs} onDisconnect={disconnect} />}
     </View>
   );
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {wide && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
       {body}
       {!wide && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
+      {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
       <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />
+      <FirstRun client={client} theme={theme} visible={firstRun} onClose={() => { setFirstRun(false); save('demarrageVu', true); }} onGestures={() => setTuto(true)} onTryHere={(cfg) => setMonitor({ cfg, owner: true })} />
+      <LarsenWatch client={client} theme={theme} />
+      {themeKey === 'rouge' && <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(25,0,0,0.35)' }} />}
       <TipHost theme={theme} />
       <AlertHost theme={theme} />
     </View>

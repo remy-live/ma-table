@@ -1,7 +1,7 @@
 // Inviter un musicien : d'abord des visages (un par retour), puis le QR code
 // expliqué en 3 images, et ses droits en tuiles.
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { QrCode } from '../ui/QrCode';
@@ -25,6 +25,7 @@ interface Saved {
 }
 
 export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; onTryHere: (cfg: MonConfig) => void }) {
+  const wideI = useWindowDimensions().width >= 900;
   const { client, theme } = props;
   const [bus, setBus] = useState<number | null>(null);
   const [me, setMe] = useState<number[]>([]);
@@ -96,13 +97,10 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
           )}
 
           {sel && cfg && (
-            <>
-              <View style={[styles.card, { backgroundColor: theme.panel, borderColor: sel.color, alignItems: 'center' }]}>
-                {host === 'demo' ? (
-                  <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>En démo, pas de QR code : connecte-toi à la vraie table. Tu peux quand même essayer l’écran du musicien.</Text>
-                ) : (
-                  <QrCode value={link} size={200} />
-                )}
+            <View style={{ flexDirection: wideI ? 'row' : 'column', gap: 12, alignItems: 'flex-start' }}>
+              <View style={[styles.card, { flex: wideI ? 1 : undefined, alignSelf: 'stretch', backgroundColor: theme.panel, borderColor: sel.color, alignItems: 'center' }]}>
+                <QrCode value={link} size={200} />
+                {host === 'demo' && <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Démo : ce QR code est un exemple, il ne mène à aucune table. Sur la vraie table, le musicien le scanne et arrive sur son retour.</Text>}
                 <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', alignItems: 'center' }}>
                   <Pic icon="📷" text="Il ouvre son appareil photo" theme={theme} />
                   <Text style={{ color: theme.muted }}>›</Text>
@@ -128,6 +126,7 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
                 </View>
               </View>
 
+              <View style={{ flex: wideI ? 1 : undefined, alignSelf: 'stretch', gap: 12 }}>
               <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={[styles.kicker, { color: theme.muted, flex: 1 }]}>SES VOIES (bouton « Plus de moi »)</Text>
@@ -162,7 +161,8 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
                 })}
               </View>
               <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}>Le verrou est dans l’appli : il évite les fausses manips, pas un musicien déterminé (la table n’a pas de mot de passe).</Text>
-            </>
+              </View>
+            </View>
           )}
         </ScrollView>
       </View>

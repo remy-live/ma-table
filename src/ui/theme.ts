@@ -34,6 +34,12 @@ export interface Theme {
 const base = { mute: '#EF4444', onMute: '#1A0505', ok: '#34D399' };
 
 export const THEMES: Record<string, Theme> = {
+  rouge: {
+    ...base, id: 'rouge', name: 'Nuit rouge', desc: 'Très sombre, tout en rouge : n’éblouit pas sur une scène noire', look: 'flat', dark: true,
+    bg: '#050101', panel: '#0D0303', deep: '#030000', line: '#2A0A0A', line2: '#3D1010', text: '#E05252', muted: '#8A2E2E',
+    track: '#1C0606', cap: '#B83C3C', capGroove: '#5A1A1A', meterBg: '#030000', accent: '#D93A3A', onAccent: '#140202',
+    knobBody: '#0A0202', knobEdge: '#4A1414', knobMark: '#E05252', mute: '#7A1A1A', onMute: '#F08080', ok: '#C04848',
+  },
   nuit: {
     ...base, id: 'nuit', name: 'Nuit', desc: 'Sombre et sobre, le design par défaut', look: 'flat', dark: true,
     bg: '#111418', panel: '#181C21', deep: '#0E1114', line: '#2A3038', line2: '#3A424C', text: '#E8EAED', muted: '#9AA3AD',
@@ -94,6 +100,66 @@ export const THEMES: Record<string, Theme> = {
     track: '#D3D8DE', cap: '#2B3138', capGroove: '#8A939C', meterBg: '#1F2937', accent: '#B45309', onAccent: '#FFFFFF', mute: '#DC2626', onMute: '#FFFFFF', ok: '#047857',
     knobBody: '#FFFFFF', knobEdge: '#A9B1BA', knobMark: '#111418',
   },
+  foret: {
+    ...base, id: 'foret', name: 'Forêt', desc: 'Verts sombres et mousse, très doux pour les yeux', look: 'flat', dark: true,
+    bg: '#0E1511', panel: '#152019', deep: '#0A100C', line: '#22332A', line2: '#33493C', text: '#E4EFE7', muted: '#93AA9B',
+    track: '#1C2A22', cap: '#D7E6DB', capGroove: '#7C9384', meterBg: '#070B08', accent: '#4ADE80', onAccent: '#04160A',
+    knobBody: '#0A100C', knobEdge: '#33493C', knobMark: '#E4EFE7',
+  },
+  lave: {
+    ...base, id: 'lave', name: 'Lave', desc: 'Noir volcanique, accents orange brûlé', look: 'real', dark: true,
+    bg: '#150C0A', panel: '#221310', deep: '#0F0807', line: '#3B211B', line2: '#573127', text: '#F7E7E1', muted: '#C09A8E',
+    track: '#120908', cap: '#EED5CB', capGroove: '#8E6A5E', meterBg: '#0A0504', accent: '#F97316', onAccent: '#1C0802', mute: '#E11D48',
+    knobBody: '#2A1713', knobEdge: '#7A4A3C', knobMark: '#F7E7E1',
+  },
+  violet: {
+    ...base, id: 'violet', name: 'Améthyste', desc: 'Violets profonds, accent lilas', look: 'flat', dark: true,
+    bg: '#110D19', panel: '#1A1426', deep: '#0C0912', line: '#2C2240', line2: '#43345F', text: '#EEE8FA', muted: '#A699C2',
+    track: '#231B34', cap: '#E2DAF5', capGroove: '#867AA6', meterBg: '#08060D', accent: '#A78BFA', onAccent: '#140A2A',
+    knobBody: '#0C0912', knobEdge: '#43345F', knobMark: '#EEE8FA',
+  },
+  cuivre: {
+    ...base, id: 'cuivre', name: 'Cuivre', desc: 'Faders et boutons cuivrés, comme une console boutique', look: 'real', dark: true,
+    bg: '#16120F', panel: '#231C17', deep: '#100D0B', line: '#3A2F26', line2: '#57463A', text: '#F4EBE3', muted: '#B7A493',
+    track: '#0D0A08', cap: '#D9A77A', capGroove: '#7E5A3C', meterBg: '#090706', accent: '#D9894A', onAccent: '#1D0F05',
+    knobBody: '#3B2C21', knobEdge: '#C08552', knobMark: '#F4EBE3',
+  },
+  graphite: {
+    ...base, id: 'graphite', name: 'Graphite', desc: 'Gris neutres, accent bleu acier, très pro', look: 'real', dark: true,
+    bg: '#17191C', panel: '#202327', deep: '#121417', line: '#30343A', line2: '#454A52', text: '#ECEEF0', muted: '#9CA2AA',
+    track: '#0E1012', cap: '#C4CAD1', capGroove: '#6B727A', meterBg: '#0A0B0C', accent: '#60A5FA', onAccent: '#04111F',
+    knobBody: '#2B2F34', knobEdge: '#6B727A', knobMark: '#FFFFFF',
+  },
+  synthwave: {
+    ...base, id: 'synthwave', name: 'Synthwave', desc: 'Années 80 : violet nuit, rose et cyan', look: 'neon', dark: true,
+    bg: '#120A20', panel: '#1C1030', deep: '#0C0716', line: '#33204F', line2: '#4E3274', text: '#FBEFFF', muted: '#B49BCF',
+    track: '#1F1236', cap: '#FFD1F2', capGroove: '#9D6FB8', meterBg: '#0A0512', accent: '#FF4FD8', onAccent: '#24031C',
+    knobBody: '#150B26', knobEdge: '#4E3274', knobMark: '#38F0FF', ok: '#38F0FF',
+  },
+  menthe: {
+    ...base, id: 'menthe', name: 'Menthe', desc: 'Bleu nuit et vert menthe, net et frais', look: 'led', dark: true,
+    bg: '#0A1316', panel: '#111D21', deep: '#071012', line: '#1C2E33', line2: '#2B454C', text: '#E2F4F2', muted: '#8FB0AD',
+    track: '#16262A', cap: '#CFEDEA', capGroove: '#6F9894', meterBg: '#050B0C', accent: '#2DD4BF', onAccent: '#031714',
+    knobBody: '#0D181B', knobEdge: '#2B454C', knobMark: '#2DD4BF',
+  },
+  sable: {
+    ...base, id: 'sable', name: 'Sable', desc: 'Clair et chaud, papier crème, pour la journée', look: 'flat', dark: false,
+    bg: '#F3EDE2', panel: '#FBF8F2', deep: '#E8E0D1', line: '#D9CDB8', line2: '#B5A68D', text: '#2A2118', muted: '#6B5C49',
+    track: '#DDD2BE', cap: '#3A2F24', capGroove: '#8C7C66', meterBg: '#2A2118', accent: '#B45309', onAccent: '#FFFFFF', mute: '#C2410C', onMute: '#FFFFFF', ok: '#15803D',
+    knobBody: '#FBF8F2', knobEdge: '#B5A68D', knobMark: '#2A2118',
+  },
+  glace: {
+    ...base, id: 'glace', name: 'Glace', desc: 'Blanc bleuté et bleu vif, lumineux', look: 'minimal', dark: false,
+    bg: '#EAF1F8', panel: '#F8FBFE', deep: '#DCE6F1', line: '#C9D6E4', line2: '#97A9BE', text: '#0F1B2A', muted: '#4A5B70',
+    track: '#CCD8E6', cap: '#1E3A5F', capGroove: '#7D90A8', meterBg: '#0F1B2A', accent: '#1D4ED8', onAccent: '#FFFFFF', mute: '#DC2626', onMute: '#FFFFFF', ok: '#047857',
+    knobBody: '#F8FBFE', knobEdge: '#97A9BE', knobMark: '#0F1B2A',
+  },
+  papier: {
+    ...base, id: 'papier', name: 'Papier', desc: 'Noir sur blanc, sans couleur superflue', look: 'minimal', dark: false,
+    bg: '#FFFFFF', panel: '#F7F7F7', deep: '#EDEDED', line: '#DADADA', line2: '#A3A3A3', text: '#0A0A0A', muted: '#525252',
+    track: '#DADADA', cap: '#0A0A0A', capGroove: '#8A8A8A', meterBg: '#0A0A0A', accent: '#0A0A0A', onAccent: '#FFFFFF', mute: '#DC2626', onMute: '#FFFFFF', ok: '#15803D',
+    knobBody: '#FFFFFF', knobEdge: '#A3A3A3', knobMark: '#0A0A0A',
+  },
 };
 
-export const THEME_ORDER = ['nuit', 'studio', 'vintage', 'led', 'neon', 'minimal', 'ambre', 'contraste', 'ocean', 'jour'];
+export const THEME_ORDER = ['nuit', 'studio', 'graphite', 'vintage', 'cuivre', 'led', 'menthe', 'neon', 'synthwave', 'minimal', 'ambre', 'lave', 'foret', 'violet', 'ocean', 'contraste', 'jour', 'sable', 'glace', 'papier', 'rouge'];

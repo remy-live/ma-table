@@ -11,14 +11,15 @@ import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'reac
 import { Segmented } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { showTip } from '../ui/tip';
-import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, inDca, insrcPath, insrcPlug } from '../xair/addresses';
+import { BUS_COUNT, busNamePath, CH_COUNT, MAIN, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, inDca, insrcPath, insrcPlug } from '../xair/addresses';
 import { readGroups } from '../xair/groups';
+import { onSide } from '../xair/wiring';
 import { goMono, isMono, monoPaths, onMonoChange } from '../xair/mono';
 import { chColor } from '../xair/smartName';
 import { f as oscF, i as oscI, s as oscS } from '../osc/osc';
 import { useAnyTick } from '../ui/useTick';
 import { LevelKnob } from './ChannelDrawer';
-import { dbToFader } from '../xair/levels';
+import { dbToFader, faderToDb } from '../xair/levels';
 import { XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import {
@@ -139,10 +140,14 @@ const ZoneG = React.memo(function ZoneG({ x1, y1, x2, y2, color, label, on, n, b
 });
 
 /** Fond de scène + prises de la table : ne change que si les prises occupées changent. */
-const BackG = React.memo(function BackG({ H, STAGE_H, IN_Y, OUT_Y, usedKey, selKey, namesKey }: { H: number; STAGE_H: number; IN_Y: number; OUT_Y: number; usedKey: string; selKey: string; namesKey: string }) {
+const BackG = React.memo(function BackG({ H, STAGE_H, IN_Y, OUT_Y, usedKey, selKey, namesKey, relKey }: { H: number; STAGE_H: number; IN_Y: number; OUT_Y: number; usedKey: string; selKey: string; namesKey: string; relKey: string }) {
   const used = new Set(usedKey.split(','));
   // « p3=Guitare|#60A5FA » : nom et couleur de ce qui est branché sur chaque prise
-  const names = new Map(namesKey.split('\n').filter(Boolean).map((l) => { const [k, rest] = l.split('='); const [n, c] = rest.split('|'); return [k, { n, c }] as const; }));
+  const parse = (key: string) => new Map(key.split('\n').filter(Boolean).map((l) => { const i = l.indexOf('='); const [n, c] = l.slice(i + 1).split('|'); return [l.slice(0, i), { n, c }] as const; }));
+  const names = parse(namesKey);
+  // qui entend quoi : rp<prise> = entendue par le retour choisi, ro<sortie> = entend la prise choisie, d<sortie> = couleurs entendues
+  const rel = parse(relKey);
+  const anyRel = rel.has('sel');
   return (
     <G>
       <Rect x={0} y={0} width={W} height={H} fill="#111317" />
@@ -154,18 +159,25 @@ const BackG = React.memo(function BackG({ H, STAGE_H, IN_Y, OUT_Y, usedKey, selK
       {Array.from({ length: 18 }, (_, k) => k + 1).map((n) => {
         const u = used.has('p' + n);
         const on = selKey === 'p' + n;
+        const nm = names.get('p' + n);
+        const ring = rel.get('rp' + n); // entendue par le retour choisi
+        const c = nm?.c ?? '#3A414B';
+        const op = anyRel && !on && !ring ? 0.35 : 1;
         return (
-          <G key={n}>
-            <Circle cx={plugX(n)} cy={IN_Y} r={11} fill="#0B0D10" stroke={on ? '#FFFFFF' : u ? '#E8EAED' : '#3A414B'} strokeWidth={on ? 4 : 2} />
-            <Circle cx={plugX(n)} cy={IN_Y} r={4} fill={u ? '#E8EAED' : '#2A3038'} />
-            <SvgText x={plugX(n)} y={IN_Y + 24} textAnchor="middle" fontSize={11} fontWeight="800" fill={u ? '#E8EAED' : '#5B636D'}>{String(n)}</SvgText>
-            {names.get('p' + n) && <SvgText x={plugX(n)} y={IN_Y + 37} textAnchor="middle" fontSize={9.5} fontWeight="800" fill={names.get('p' + n)!.c}>{shortName(names.get('p' + n)!.n, 8)}</SvgText>}
+          <G key={n} opacity={op}>
+            <Rect x={plugX(n) - 23} y={IN_Y - 20} width={46} height={60} rx={8} fill={on ? '#22272D' : u ? '#181B20' : '#121417'} stroke={on ? '#FFFFFF' : ring ? c : u ? '#3A414B' : '#262B31'} strokeWidth={on || ring ? 2.5 : 1.2} strokeDasharray={u || n >= 17 ? undefined : '4 3'} />
+            {u && <Rect x={plugX(n) - 13} y={IN_Y - 16} width={26} height={3} rx={1.5} fill={c} />}
+            <Circle cx={plugX(n)} cy={IN_Y} r={8} fill="#0B0D10" stroke={u ? '#E8EAED' : '#3A414B'} strokeWidth={2} />
+            <Circle cx={plugX(n)} cy={IN_Y} r={3} fill={u ? '#E8EAED' : '#2A3038'} />
+            <SvgText x={plugX(n)} y={IN_Y + 22} textAnchor="middle" fontSize={11} fontWeight="900" fill={u ? '#E8EAED' : '#5B636D'}>{String(n)}</SvgText>
+            <SvgText x={plugX(n)} y={IN_Y + 34} textAnchor="middle" fontSize={8.5} fontWeight="800" fill={nm ? c : '#4B525C'}>{nm ? shortName(nm.n, 8) : n >= 17 ? 'Ordi' : 'libre'}</SvgText>
+            {ring && <SvgText x={plugX(n)} y={IN_Y - 24} textAnchor="middle" fontSize={8.5} fontWeight="900" fill="#FCD34D">{ring.n}</SvgText>}
           </G>
         );
       })}
-      <SvgText x={plugX(1) - 20} y={IN_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">IN</SvgText>
+      <SvgText x={plugX(1) - 28} y={IN_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">IN</SvgText>
       <Line x1={30} y1={(IN_Y + OUT_Y) / 2 + 4} x2={W - 30} y2={(IN_Y + OUT_Y) / 2 + 4} stroke="#2A3038" strokeWidth={1.5} />
-      <SvgText x={outX('aux1') - 30} y={OUT_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">OUT</SvgText>
+      <SvgText x={outX('aux1') - 28} y={OUT_Y + 4} textAnchor="end" fontSize={11} fontWeight="800" fill="#9AA3AD">OUT</SvgText>
       <Rect x={LR_X - 30} y={OUT_Y - 14} width={60} height={28} rx={14} fill="#0B0D10" stroke={MIX_COLORS[0]} strokeWidth={1.5} strokeDasharray="4 3" />
       <SvgText x={LR_X} y={OUT_Y + 4} textAnchor="middle" fontSize={12} fontWeight="900" fill={MIX_COLORS[0]}>L + R</SvgText>
       {names.get('mono') && <SvgText x={(outX('mainL') + outX('mainR')) / 2} y={OUT_Y + 39} textAnchor="middle" fontSize={9} fontWeight="900" fill={names.get('mono')!.n === '1' ? '#FCD34D' : '#9AA3AD'}>{names.get('mono')!.n === '1' ? 'MONO · 1 ENCEINTE' : 'STÉRÉO'}</SvgText>}
@@ -173,12 +185,22 @@ const BackG = React.memo(function BackG({ H, STAGE_H, IN_Y, OUT_Y, usedKey, selK
         const u = used.has(id);
         const on = selKey === id;
         const c = k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0];
+        const x = outX(id);
+        const main = k >= 6;
+        const hl = rel.get('ro' + id); // entend l'entrée choisie
+        const dots = (rel.get('d' + id)?.n ?? '').split(',').filter(Boolean);
+        const op = anyRel && !on && !hl ? 0.35 : 1;
         return (
-          <G key={id}>
-            <Circle cx={outX(id)} cy={OUT_Y} r={13} fill="#0B0D10" stroke={on ? '#FFFFFF' : c} strokeWidth={on ? 4 : 2.5} />
-            <Circle cx={outX(id)} cy={OUT_Y} r={5} fill={u ? c : '#2A3038'} />
-            <SvgText x={outX(id)} y={OUT_Y + 27} textAnchor="middle" fontSize={10} fontWeight="800" fill={c}>{k < 6 ? `AUX${k + 1}` : id === 'mainL' ? 'MAIN L' : 'MAIN R'}</SvgText>
-            {names.get(id) && <SvgText x={outX(id)} y={OUT_Y + 38} textAnchor="middle" fontSize={8.5} fontWeight="800" fill="#9AA3AD">{shortName(names.get(id)!.n, 7)}</SvgText>}
+          <G key={id} opacity={op}>
+            <Rect x={x - 20} y={OUT_Y - 24} width={main ? 62 : 92} height={64} rx={10} fill={on ? '#22272D' : '#181B20'} stroke={on ? '#FFFFFF' : hl ? c : u ? c : '#3A414B'} strokeWidth={on || hl ? 2.5 : 1.5} strokeDasharray={u || main ? undefined : '4 3'} />
+            <Circle cx={x} cy={OUT_Y} r={10} fill="#0B0D10" stroke={c} strokeWidth={2.5} />
+            <Circle cx={x} cy={OUT_Y} r={4} fill={u ? c : '#2A3038'} />
+            <SvgText x={x + 15} y={OUT_Y - 9} fontSize={9.5} fontWeight="900" fill={c}>{main ? (id === 'mainL' ? 'L' : 'R') : `AUX ${k + 1}`}</SvgText>
+            {!main && <SvgText x={x + 15} y={OUT_Y + 4} fontSize={10} fontWeight="800" fill="#E8EAED">{shortName(names.get(id)?.n ?? `Retour ${k + 1}`, 9)}</SvgText>}
+            {main && <SvgText x={x + 15} y={OUT_Y + 4} fontSize={9} fontWeight="800" fill="#E8EAED">MAIN</SvgText>}
+            {!main && dots.slice(0, 9).map((dc, j) => <Circle key={j} cx={x - 12 + j * 9} cy={OUT_Y + 22} r={3.2} fill={dc} />)}
+            {hl ? <SvgText x={x - 15} y={OUT_Y + 35} fontSize={8.5} fontWeight="900" fill="#FCD34D">{main ? hl.n.replace('l’entend ', '') : hl.n}</SvgText>
+              : !main && <SvgText x={x - 15} y={OUT_Y + 35} fontSize={8.5} fontWeight="700" fill="#9AA3AD">{dots.length ? `entend ${dots.length} voie${dots.length > 1 ? 's' : ''}` : u ? 'n’entend rien' : 'libre'}</SvgText>}
           </G>
         );
       })}
@@ -306,7 +328,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
 
   useEffect(() => {
     const chs = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
-    const paths = [...chs.map(chNamePath), ...chs.map(insrcPath), ...chs.map(chDcaPath), ...chs.map((c) => `/ch/${String(c).padStart(2, '0')}/config/color`), ...Array.from({ length: BUS_COUNT }, (_, k) => busNamePath(k + 1)), ...Array.from({ length: DCA_COUNT }, (_, k) => dcaNamePath(k + 1)), ...monoPaths()];
+    const paths = [...chs.map(chNamePath), ...chs.map(insrcPath), ...chs.map(chDcaPath), ...chs.map((c) => `/ch/${String(c).padStart(2, '0')}/config/color`), ...Array.from({ length: BUS_COUNT }, (_, k) => busNamePath(k + 1)), ...Array.from({ length: DCA_COUNT }, (_, k) => dcaNamePath(k + 1)), ...monoPaths(), ...chs.flatMap((c) => [chLevelPath(c, MAIN), ...Array.from({ length: BUS_COUNT }, (_, k) => chLevelPath(c, { kind: 'bus', n: k + 1 }))])];
     Promise.all([load<Stage>('scene', EMPTY), client.loadPaths(paths).catch(() => {})]).then(([s]) => {
       let cur = s ?? EMPTY;
       // plan lié à la table : les pistes déjà occupées arrivent toutes seules, câblées
@@ -325,6 +347,11 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const owned = useRef<number[]>([]);
   const lastWrite = useRef(0);
   const [monoV, setMonoV] = useState(() => isMono(client));
+  const [mixTick, setMixTick] = useState(0);
+  // les câbles des retours et de la façade peuvent être cachés (le plan reste léger)
+  const [showOut, setShowOut] = useState(true);
+  useEffect(() => { load<boolean>('sceneShowOut', true).then((v) => setShowOut(v !== false)); }, []);
+  const toggleOut = () => setShowOut((v) => { save('sceneShowOut', !v); return !v; });
   useEffect(() => onMonoChange(setMonoV), []);
   const dirty = useRef(false);
   const stRef = useRef(st);
@@ -376,7 +403,9 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   useEffect(() => {
     if (!loaded) return;
     let t: ReturnType<typeof setTimeout> | null = null;
+    let mt: ReturnType<typeof setTimeout> | null = null;
     const off = client.on('*', (_v, path) => {
+      if (/\/mix\/(\d\d\/level|fader)$/.test(String(path))) { if (!mt) mt = setTimeout(() => { mt = null; setMixTick((x) => x + 1); }, 150); return; }
       if (!/\/(config\/name|grp\/dca|config\/insrc)$/.test(String(path))) return;
       if (Date.now() - lastWrite.current < 1200 || dirty.current) return; // c'est nous qui venons d'écrire
       if (t) clearTimeout(t);
@@ -779,6 +808,28 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   }, [st.cables]);
   const usedKey = [...perEnd.keys()].filter((k) => !k.startsWith('o:')).sort().join(',');
   const selKey = selEnd && !('o' in selEnd) ? ('plug' in selEnd ? 'p' + selEnd.plug : selEnd.out) : '';
+  // qui entend quoi, lu sur la table : les retours montrent leurs voies, la sélection s'allume
+  void mixTick;
+  const relKey = (() => {
+    if (linkMode === 'free') return '';
+    const tOf = (id: string) => (id.startsWith('aux') ? { kind: 'bus' as const, n: Number(id.slice(3)) } : MAIN);
+    const lv = (c: number, id: string) => (id.startsWith('main') && !monoV && !onSide(client, [c], id === 'mainL' ? 'L' : 'R') ? 0 : Number(client.get(chLevelPath(c, tOf(id))) ?? 0));
+    const dbs = (v: number) => { const d = Math.round(faderToDb(v)); return `${d > 0 ? '+' : ''}${d} dB`; };
+    const named = Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(chNamePath(c)) ?? '').trim());
+    const lines: string[] = [];
+    for (const id of OUTS) lines.push(`d${id}=${named.filter((c) => lv(c, id) > 0).map((c) => chColor(client, c)).join(',')}`);
+    const selPlug = selEnd && 'plug' in selEnd ? selEnd.plug : selObj ? selObj.plug ?? plugOf(st, selObj.id) : undefined;
+    const selOutId = selEnd && 'out' in selEnd ? selEnd.out : selObj && family(selObj.kind) === 'monitor' ? touching(st, { o: selObj.id }).map((c) => ('out' in c.a ? c.a.out : 'out' in c.b ? c.b.out : '')).find(Boolean) : undefined;
+    if (selOutId && selOutId !== 'mainLR') {
+      lines.push('sel=1');
+      for (const c of named) { const v = lv(c, selOutId); if (v > 0) lines.push(`rp${plugOfChan(c)}=${dbs(v)}`); }
+    } else if (selPlug !== undefined) {
+      lines.push('sel=1');
+      const c = chanOfPlug(selPlug);
+      if (c) for (const id of OUTS) { const v = lv(c, id); if (v > 0) lines.push(`ro${id}=l’entend ${dbs(v)}`); }
+    }
+    return lines.join('\n');
+  })();
   // une couleur par voie, la même que sur la table ; un retour a la couleur de son AUX
   const objColor = (o: StageObj): string => {
     if (linkMode === 'free') return FAM[family(o.kind)];
@@ -875,6 +926,9 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
             <Text style={{ color: theme.text, fontWeight: '900', fontSize: 12 }}>🎒 {xlrN} XLR · {jackN} jack</Text>
           </Pressable>
           <Pressable onPress={exportMenu} style={[styles.tool, { borderColor: theme.accent, backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 12 }}>↗ Exporter</Text></Pressable>
+          <Pressable onPress={toggleOut} onLongPress={() => showTip('Montre ou cache les câbles qui vont aux retours et à la façade. Cachés, ceux d’un retour réapparaissent quand tu le touches.')} accessibilityState={{ selected: showOut }} style={[styles.tool, showOut ? { borderColor: theme.line2 } : { borderColor: theme.accent, backgroundColor: 'rgba(245,158,11,0.12)' }]}>
+            <Text style={{ color: showOut ? theme.text : theme.accent, fontWeight: '800', fontSize: 12 }}>{showOut ? '◉ Câbles retours' : '○ Retours cachés'}</Text>
+          </Pressable>
           <Pressable onPress={more} accessibilityLabel="Plus" style={[styles.tool, { borderColor: theme.line2, paddingHorizontal: 12 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>⋯</Text></Pressable>
         </View>
 
@@ -883,14 +937,14 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           {sc > 0 && (
             <View ref={boxRef} style={{ width: W * sc, height: H * sc }}>
               <Svg ref={svgRef} width={W * sc} height={H * sc} viewBox={`0 0 ${W} ${H}`} pointerEvents="none">
-                <BackG H={H} STAGE_H={STAGE_H} IN_Y={IN_Y} OUT_Y={OUT_Y} usedKey={usedKey} selKey={selKey} namesKey={namesKey} />
+                <BackG H={H} STAGE_H={STAGE_H} IN_Y={IN_Y} OUT_Y={OUT_Y} usedKey={usedKey} selKey={selKey} namesKey={namesKey} relKey={relKey} />
                 {/* cadres */}
                 {zonesOf(st).map((z) => {
                   const r = zoneRect(z);
                   return <ZoneG key={z.id} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} color={zoneColor(z)} label={`${z.name}${z.drums ? ` · ${membersOf(st, z.id).length} él.` : ''}`} on={selZone?.id === z.id || ghost?.zone === z.id} n={zoneTableCables(st, z.id).length} bundled={!!z.bundled} />;
                 })}
                 {/* câbles */}
-                {st.cables.filter((c) => !hiddenCable.has(c.id)).map((c) => <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} />)}
+                {st.cables.filter((c) => !hiddenCable.has(c.id) && (showOut || selIds.has(c.id) || !('out' in c.a || 'out' in c.b))).map((c) => <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} />)}
                 {/* faisceaux : un gros câble par cadre, jusqu'à ses prises */}
                 {bundles.map(({ z, cables }) => {
                   const r = zoneRect(z);

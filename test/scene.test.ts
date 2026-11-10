@@ -96,3 +96,12 @@ test('lien fort : un cadre de 2 voies devient un groupe, un groupe de la table d
   const st2 = S.removeFromPlan(st, kick.id);
   assert.equal(S.zonesOf(st2).some((q) => q.id === z.id), false);
 });
+
+test('un groupe de la table qui réunit deux musiciens ne casse pas leurs cadres', async () => {
+  const S = await import('../src/store/stage');
+  let st = S.fromChannels([{ plug: 2, name: 'Guitare 1' }, { plug: 3, name: 'Guitare 2' }], []);
+  const before = S.zonesOf(st).length;
+  st = S.groupsToStage(st, [{ k: 2, name: 'Guitares', plugs: [2, 3] }]);
+  assert.equal(S.zonesOf(st).length, before);
+  assert.equal(S.zonesOf(st).some((z) => z.name === 'Guitares'), false);
+});

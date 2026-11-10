@@ -16,9 +16,7 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
   const mono = isMono(client);
   const toMono = async () => { await goMono(client); setSaved(await hasSavedPans()); };
   const toStereo = async () => {
-    const n = await goStereo(client);
-    // passe en 2 enceintes dans tous les cas ; sans réglage gardé, les sons restent au centre
-    showTip(n > 0 ? `Deux enceintes : ${n} panoramique${n > 1 ? 's' : ''} remis comme avant.` : saved ? 'Deux enceintes.' : 'Deux enceintes. Les sons sont au centre : écarte-les gauche / droite dans chaque voie si tu veux de la stéréo.');
+    await goStereo(client); // 2 enceintes : MAIN L et MAIN R deviennent deux sorties
   };
   if (compact) {
     // un seul bouton : montre l'état, un appui bascule

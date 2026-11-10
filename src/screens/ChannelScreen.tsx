@@ -30,7 +30,7 @@ import { PresetsSheet } from './PresetsSheet';
 import { meterIndex } from '../xair/addresses';
 
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
-type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx';
+type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx' | 'qui';
 
 /** Téléphone : plein écran, un bloc à la fois. Tablette (`wide`) : panneau latéral, tout visible d'un coup. */
 /** Bouton Avant / Après : entendre le son d'avant les réglages, puis revenir. */
@@ -57,7 +57,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
   const [blockSel, setBlock] = useState<Block>('eq');
   const block = blockSel;
-  const show = (b: Block | Block[]) => wide || (Array.isArray(b) ? b.includes(block) : block === b);
+  // un bloc à la fois, sur téléphone comme sur tablette : tout tient sans défiler
+  const show = (b: Block | Block[]) => (Array.isArray(b) ? b.includes(block) : block === b);
   const [band, setBand] = useState(2);
   const [lib, setLib] = useState(false);
   const [fxOpen, setFxOpen] = useState<number | null>(null);
@@ -107,6 +108,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
     { id: 'eq', icon: '〰', label: 'EQ', sub: eqOn ? '4 bandes' : 'off', color: theme.accent },
     { id: 'comp', icon: '◐', label: 'Comp', sub: dynOn ? `${fToCompDb(dynThr).toFixed(0)} dB` : 'off', color: '#34D399' },
     { id: 'fx', icon: '✦', label: 'Effets', sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
+    { id: 'qui', icon: '🎧', label: 'Qui entend', sub: `${destLv.filter((v) => v > 0).length} sortie${destLv.filter((v) => v > 0).length > 1 ? 's' : ''}`, color: '#60A5FA' },
   ];
   const active = (b: Block) => (b === 'hpf' ? hpOn : b === 'gate' ? gateOn : b === 'eq' ? eqOn : b === 'comp' ? dynOn : b === 'fx' ? fxCount > 0 : true);
 
@@ -134,12 +136,12 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
       </View>
 
       {/* LE TRAJET DU SON (téléphone : navigation ; tablette : tout est affiché) */}
-      {!wide && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }} style={{ flexGrow: 0 }}>
+      {<ScrollView horizontal scrollEnabled={!wide} showsHorizontalScrollIndicator={false} contentContainerStyle={[{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }, wide && { gap: 4, flexGrow: 1 }]} style={{ flexGrow: 0 }}>
         {BLOCKS.map((bl) => {
           const on = block === bl.id;
           const act = active(bl.id);
           return (
-            <Pressable key={bl.id} onPress={() => setBlock(bl.id)} accessibilityState={{ selected: on }} accessibilityLabel={`${bl.label} · ${bl.sub}`} style={[styles.block, { borderColor: on ? bl.color : theme.line, backgroundColor: on ? theme.deep : theme.panel, opacity: act || on ? 1 : 0.6 }]}>
+            <Pressable key={bl.id} onPress={() => setBlock(bl.id)} accessibilityState={{ selected: on }} accessibilityLabel={`${bl.label} · ${bl.sub}`} style={[styles.block, wide && { minWidth: 0, width: undefined, flex: 1, paddingHorizontal: 2 }, { borderColor: on ? bl.color : theme.line, backgroundColor: on ? theme.deep : theme.panel, opacity: act || on ? 1 : 0.6 }]}>
               <Text style={{ fontSize: 18 }}>{bl.icon}</Text>
               <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{bl.label}</Text>
               <Text style={{ color: on ? bl.color : theme.muted, fontSize: 10 }} numberOfLines={1}>{bl.sub}</Text>
@@ -178,7 +180,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
           </Card>
         )}
 
-        {show(['eq', 'hpf']) && (
+        {show('eq') && (
           <Card theme={theme} title="Égaliseur" color="#FBBF24" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
             <EqGraph
               bands={bands}
@@ -194,7 +196,6 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
                 setBandG(k, db);
               }}
             />
-            <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center' }}>Glisse un point : gauche-droite = fréquence, haut-bas = plus ou moins. Les boutons − / + affinent.</Text>
             {eqAB.changed && <ABButton theme={theme} ab={eqAB} />}
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {bands.map((bd, k) => (
@@ -224,11 +225,12 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
                 </Pressable>
               ))}
             </View>
-            <View style={[styles.sub, { borderTopColor: theme.line }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ color: theme.text, fontWeight: '800', flex: 1 }}>Coupe-bas</Text>
-                <Toggle on={hpOn} theme={theme} onPress={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))} />
-              </View>
+          </Card>
+        )}
+
+        {show('hpf') && (
+          <Card theme={theme} title="Coupe-bas" color="#60A5FA" on={hpOn} onToggle={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))}>
+            <View style={{ gap: 8 }}>
               <Text style={{ color: theme.muted, fontSize: 11 }}>Enlève le grondement sous la voix (100 Hz) ou sous les guitares (80 Hz). Garde-le coupé pour le kick et la basse.</Text>
               <HSlider label="Fréquence" value={hpf} valueText={formatHz(fToHpfHz(hpf))} onChange={(v) => client.set(hpfPath(ch), f(v))} color="#60A5FA" theme={theme} />
               <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -305,7 +307,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
         )}
 
         {/* QUI ENTEND CETTE VOIE */}
-        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, borderWidth: 1 }]}>
+        {show('qui') && <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, borderWidth: 1 }]}>
           <Text style={[styles.kicker, { color: theme.muted }]}>QUI ENTEND « {name.toUpperCase()} »</Text>
           {dests.map((t, k) => {
             const m = mixInfo(client, t);
@@ -325,7 +327,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
               </View>
             );
           })}
-        </View>
+        </View>}
 
         <View style={{ height: 30 }} />
       </ScrollView>

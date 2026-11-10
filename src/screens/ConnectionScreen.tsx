@@ -11,13 +11,15 @@ import { SessionsScreen } from './SessionsScreen';
 
 const KEYS = ['balance', 'ordre', 'mesPresets', 'autos', 'mesEffets', 'jeuxEffets', 'fxNoms', 'prefs'];
 
-export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAirClient; theme: Theme; onDisconnect: () => void }) {
+/** compact : tout sur une colonne sans défilement (réglages de la tablette). */
+export function ConnectionScreen({ client, theme, onDisconnect, compact }: { client: XAirClient; theme: Theme; onDisconnect: () => void; compact?: boolean }) {
   const [status, setStatus] = useState<Status>(client.status);
   const [silence, setSilence] = useState(client.silenceSeconds());
   const [importText, setImportText] = useState('');
   const [netOpen, setNetOpen] = useState(false);
   const [dbgOpen, setDbgOpen] = useState(false);
   const [sessOpen, setSessOpen] = useState(false);
+  const [impOpen, setImpOpen] = useState(false);
   useEffect(() => client.onStatus(setStatus), [client]);
   useEffect(() => {
     const t = setInterval(() => setSilence(client.silenceSeconds()), 1000);
@@ -45,6 +47,46 @@ export function ConnectionScreen({ client, theme, onDisconnect }: { client: XAir
       Alert.alert('Import impossible', 'Colle ici le texte complet d’une sauvegarde « Ma table ».');
     }
   };
+
+  const link = (label: string, sub: string, color: string, onPress: () => void) => (
+    <Pressable onPress={onPress} style={[styles.cardS, { backgroundColor: theme.panel, borderColor: color }]}>
+      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{label} ›</Text>
+      <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
+    </Pressable>
+  );
+  if (compact) return (
+    <View style={{ gap: 8 }}>
+      {status === 'perdu' && <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 13 }}>Liaison perdue · reconnexion en cours (la table garde son mix)</Text>}
+      <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: theme.line, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 26 }}>
+          {[8, 14, 20, 26].map((h, k) => <View key={h} style={{ width: 6, height: h, borderRadius: 2, backgroundColor: k < bars ? theme.ok : theme.line }} />)}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{ok ? `Connecté à ${client.info?.name ?? 'la table'}` : status === 'perdu' ? 'Recherche de la table…' : status}</Text>
+          <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11 }}>{client.info ? `${client.info.model} · ${client.info.ip}` : ''}{lk.ms !== null ? ` · ${lk.ms} ms · ${lk.lost} % perdus` : ''}</Text>
+          {ok && <Text numberOfLines={1} style={{ color: bars >= 3 ? theme.ok : '#FCD34D', fontWeight: '800', fontSize: 11 }}>{verdict}</Text>}
+        </View>
+      </View>
+      {link('Réseau de la table', 'Partage de connexion, routeur, câble ou Wi-Fi de la table', theme.accent, () => setNetOpen(true))}
+      {link('Mes soirées et sauvegardes', 'Enregistrer, nouvelle soirée, reprendre, copie dans la table', '#34D399', () => setSessOpen(true))}
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <Pressable onPress={doExport} style={[styles.btnS, { flex: 1, backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 13 }}>Exporter</Text></Pressable>
+        <Pressable onPress={() => setImpOpen((x) => !x)} style={[styles.btnS, { flex: 1, borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{impOpen ? 'Fermer' : 'Importer…'}</Text></Pressable>
+      </View>
+      {impOpen && (
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <TextInput value={importText} onChangeText={setImportText} placeholder="Coller une sauvegarde" placeholderTextColor={theme.muted} style={[styles.input, { flex: 1, minHeight: 40, color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+          <Pressable onPress={doImport} disabled={!importText} style={[styles.btnS, { paddingHorizontal: 14, backgroundColor: theme.accent, opacity: importText ? 1 : 0.5 }]}><Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 13 }}>OK</Text></Pressable>
+        </View>
+      )}
+      <Text style={{ color: isPersistent() ? theme.ok : theme.accent, fontSize: 11 }}>{isPersistent() ? '✓ Sauvegarde automatique active' : '⚠ Sauvegarde en mémoire seulement'}</Text>
+      {link('Débogage', 'Journal, diagnostic de la table, envoyer le rapport', theme.line2, () => setDbgOpen(true))}
+      <Pressable onPress={onDisconnect} style={[styles.btnS, { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Se déconnecter de la table</Text></Pressable>
+      <NetworkSetupScreen client={client} theme={theme} visible={netOpen} onClose={() => setNetOpen(false)} />
+      <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => setSessOpen(false)} />
+      <DebugScreen client={client} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
+    </View>
+  );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.body}>
@@ -141,6 +183,8 @@ const styles = StyleSheet.create({
   banner: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 2 },
   card: { borderWidth: 1, borderRadius: 16, padding: 14 },
   section: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginTop: 4 },
+  cardS: { borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, gap: 1 },
+  btnS: { height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   btn: { height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   input: { minHeight: 70, borderWidth: 1, borderRadius: 12, padding: 10, fontSize: 13, textAlignVertical: 'top' },
 });
