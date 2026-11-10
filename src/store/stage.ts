@@ -311,3 +311,87 @@ export function syncWithTable(st: Stage, chans: Chan[]): { st: Stage; added: num
   });
   return { st: out, added: missing.length };
 }
+
+// ---------- cadres qui s'adaptent ----------
+
+/** Le cadre épouse ses blocs (marge pour l'étiquette en haut et les noms en bas). */
+export function fitZone(st: Stage, zid: string): Stage {
+  const m = membersOf(st, zid);
+  if (!m.length) return st;
+  const xs = m.map((o) => o.x);
+  const ys = m.map((o) => o.y);
+  const x1 = Math.max(0, Math.min(...xs) - 0.05);
+  const x2 = Math.min(1, Math.max(...xs) + 0.05);
+  const y1 = Math.max(0, Math.min(...ys) - 0.13);
+  const y2 = Math.min(1, Math.max(...ys) + 0.13);
+  const w = Math.max(0.12, x2 - x1);
+  const h = Math.max(0.24, y2 - y1);
+  return { ...st, zones: zonesOf(st).map((z) => (z.id === zid ? { ...z, x: Math.min(x1, 1 - w), y: Math.min(y1, 1 - h), w, h } : z)) };
+}
+/** Un bloc posé : il entre dans le cadre où on l'a lâché (ou en sort), et les cadres concernés s'adaptent. */
+export function dropAndFit(st: Stage, oid: string): Stage {
+  const before = st.objs.find((o) => o.id === oid)?.zone;
+  let out = dropInZone(st, oid);
+  const after = out.objs.find((o) => o.id === oid)?.zone;
+  for (const z of new Set([before, after].filter(Boolean) as string[])) out = fitZone(out, z);
+  return out;
+}
+/** Un cadre dessiné au doigt : il prend les blocs qu'il entoure. */
+export function zoneFromRect(st: Stage, r: { x: number; y: number; w: number; h: number }, name = 'Musicien'): { st: Stage; id: string } {
+  const z: Zone = { id: newId('z'), name, color: ZONE_COLORS[zonesOf(st).length % ZONE_COLORS.length], ...r };
+  const inside = (o: StageObj) => o.x >= r.x && o.x <= r.x + r.w && o.y >= r.y && o.y <= r.y + r.h;
+  const objs = st.objs.map((o) => (inside(o) ? { ...o, zone: z.id } : o));
+  return { st: { ...st, zones: [...zonesOf(st), z], objs }, id: z.id };
+}
+
+// ---------- configurations toutes prêtes ----------
+
+export interface Config { key: string; label: string; sub: string; drums?: boolean; items: { kind: Kind; name?: string; dx: number; dy: number }[]; links: [number, number, CableType][] }
+export const CONFIGS: Config[] = [
+  { key: 'drums-full', label: 'Batterie complète', sub: '7 éléments', drums: true, items: [
+    { kind: 'kick', dx: 0.07, dy: 0.32 }, { kind: 'snare', dx: 0.0, dy: 0.2 }, { kind: 'hihat', dx: -0.07, dy: 0.12 }, { kind: 'tom', dx: 0.07, dy: 0.08 },
+    { kind: 'floortom', dx: 0.15, dy: 0.24 }, { kind: 'overhead', name: 'OH gauche', dx: 0.0, dy: -0.02 }, { kind: 'overhead', name: 'OH droite', dx: 0.15, dy: -0.02 }], links: [] },
+  { key: 'drums-light', label: 'Batterie légère', sub: 'GC, caisse, OH', drums: true, items: [
+    { kind: 'kick', dx: 0.05, dy: 0.25 }, { kind: 'snare', dx: -0.03, dy: 0.12 }, { kind: 'overhead', dx: 0.05, dy: -0.02 }], links: [] },
+  { key: 'gtr-amp', label: 'Guitare › pédalier › ampli', sub: 'micro sur l’ampli', items: [
+    { kind: 'ampli', dx: 0, dy: 0 }, { kind: 'micro', name: 'Micro ampli', dx: 0.07, dy: 0.1 }, { kind: 'guitare', dx: 0, dy: 0.26 }, { kind: 'pedalboard', dx: 0, dy: 0.44 }],
+    links: [[2, 3, 'jack'], [3, 0, 'jack']] },
+  { key: 'gtr-di', label: 'Guitare › pédalier › DI', sub: 'sans ampli', items: [
+    { kind: 'guitare', dx: 0, dy: 0 }, { kind: 'pedalboard', dx: 0, dy: 0.2 }, { kind: 'di', dx: 0, dy: 0.4 }], links: [[0, 1, 'jack'], [1, 2, 'jack']] },
+  { key: 'bass-di', label: 'Basse › DI', sub: 'direct', items: [{ kind: 'basse', dx: 0, dy: 0 }, { kind: 'di', dx: 0, dy: 0.22 }], links: [[0, 1, 'jack']] },
+  { key: 'bass-amp', label: 'Basse › ampli + DI', sub: 'DI avant l’ampli', items: [
+    { kind: 'basse', dx: 0, dy: 0.26 }, { kind: 'di', dx: 0.07, dy: 0.1 }, { kind: 'ampli', dx: 0, dy: 0 }], links: [[0, 1, 'jack'], [1, 2, 'jack']] },
+  { key: 'acou-di', label: 'Guitare acou › DI', sub: '', items: [{ kind: 'acoustique', dx: 0, dy: 0 }, { kind: 'di', dx: 0, dy: 0.22 }], links: [[0, 1, 'jack']] },
+  { key: 'keys-st', label: 'Clavier stéréo', sub: '2 DI (G / D)', items: [
+    { kind: 'clavier', dx: 0.04, dy: 0 }, { kind: 'di', name: 'DI gauche', dx: 0, dy: 0.22 }, { kind: 'di', name: 'DI droite', dx: 0.08, dy: 0.22 }], links: [[0, 1, 'jack'], [0, 2, 'jack']] },
+  { key: 'singer', label: 'Chanteur', sub: 'voix + retour', items: [{ kind: 'voix', dx: 0, dy: 0 }, { kind: 'retour', dx: 0, dy: 0.26 }], links: [] },
+  { key: 'singer-gtr', label: 'Chanteur guitariste', sub: 'voix, acou › DI, retour', items: [
+    { kind: 'voix', dx: 0, dy: 0 }, { kind: 'acoustique', dx: 0.08, dy: 0.12 }, { kind: 'di', dx: 0.08, dy: 0.32 }, { kind: 'retour', dx: 0, dy: 0.4 }], links: [[1, 2, 'jack']] },
+];
+
+/** Pose une configuration toute prête dans un nouveau cadre, à l'endroit libre le plus proche de (x, y). */
+export function addConfig(st: Stage, key: string, x?: number, y?: number): { st: Stage; zone: string } {
+  const c = CONFIGS.find((q) => q.key === key)!;
+  const zid = newId('z');
+  const ids: string[] = [];
+  const maxDx = Math.max(0, ...c.items.map((i) => i.dx));
+  const maxDy = Math.max(0, ...c.items.map((i) => i.dy));
+  if (x === undefined || y === undefined) {
+    // la première place libre (sans chevaucher un cadre ni un bloc), de gauche à droite puis de haut en bas
+    const w = Math.max(0.12, maxDx + 0.1);
+    const h = Math.max(0.24, maxDy + 0.26);
+    const busy = (bx: number, by: number) => zonesOf(st).some((z) => bx < z.x + z.w && bx + w > z.x && by < z.y + z.h && by + h > z.y) || st.objs.some((o) => o.x > bx - 0.02 && o.x < bx + w + 0.02 && o.y > by - 0.04 && o.y < by + h + 0.04);
+    let spot: [number, number] | null = null;
+    for (let yy = 0.02; yy <= 1 - h && !spot; yy += 0.08) for (let xx = 0.02; xx <= 1 - w && !spot; xx += 0.04) if (!busy(xx, yy)) spot = [xx, yy];
+    const [sx, sy] = spot ?? [0.4, 0.2];
+    x = sx + 0.05;
+    y = sy + 0.13;
+  }
+  const ox = Math.max(0.05, Math.min(0.95 - maxDx, x));
+  const oy = Math.max(0.12, Math.min(0.88 - maxDy, y));
+  const objs = c.items.map((i) => { const o: StageObj = { id: newId('o'), kind: i.kind, name: i.name ?? kindLabel(i.kind), x: ox + i.dx, y: oy + i.dy, zone: zid }; ids.push(o.id); return o; });
+  const z: Zone = { id: zid, name: c.drums ? 'Batterie' : c.label.split(' ›')[0], color: c.drums ? '#F59E0B' : ZONE_COLORS[zonesOf(st).length % ZONE_COLORS.length], x: 0, y: 0, w: 0.2, h: 0.3, drums: c.drums };
+  let out: Stage = { ...st, objs: [...st.objs, ...objs], zones: [...zonesOf(st), z] };
+  for (const [a, b, t] of c.links) out = addCable(out, { o: ids[a] }, { o: ids[b] }, t);
+  return { st: fitZone(out, zid), zone: zid };
+}

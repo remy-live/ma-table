@@ -15,9 +15,9 @@ import { BUS_COUNT, busNamePath, CH_COUNT, chNamePath, insrcPath, insrcPlug } fr
 import { XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import {
-  addCable, CableType, dropInZone, DRUM_PIECES, EMPTY, End, endLabel, family, Family, fromChannels, gear, isTableEnd, Kind, kindLabel, kindShort, KINDS,
-  membersOf, moveZone, newId, removeCable, removeObj, sameEnd, setCableType, Stage, stageText, StageObj, syncWithTable, touching, Zone, ZONE_COLORS,
-  zoneAt, zonesOf, zoneTableCables,
+  addCable, addConfig, CableType, CONFIGS, dropAndFit, DRUM_PIECES, EMPTY, End, endLabel, family, Family, fromChannels, gear, isTableEnd, Kind, kindLabel, kindShort, KINDS,
+  fitZone, membersOf, moveZone, newId, removeCable, removeObj, sameEnd, setCableType, Stage, stageText, StageObj, syncWithTable, touching, Zone, ZONE_COLORS,
+  zoneFromRect, zonesOf, zoneTableCables,
 } from '../store/stage';
 import { MIX_COLORS } from './MixPicker';
 
@@ -64,7 +64,7 @@ export function KindIcon({ kind, x, y, c, s = 1 }: { kind: Kind; x: number; y: n
 }
 
 type Sel = { obj: string } | { zone: string } | { end: End } | { gear: true } | null;
-type DragKind = 'obj' | 'zone' | 'resize' | 'wire';
+type DragKind = 'obj' | 'zone' | 'resize' | 'wire' | 'marquee';
 type Drag = { kind: DragKind; from?: End; id?: string; x: number; y: number; x0: number; y0: number; moved: boolean; start?: { x: number; y: number; w?: number; h?: number } } | null;
 const PALETTE: { title: string; kinds: Kind[] }[] = [
   { title: 'Voix', kinds: ['voix', 'choeur'] },
@@ -76,6 +76,7 @@ const PALETTE: { title: string; kinds: Kind[] }[] = [
 
 export function StageEditor({ client, theme }: { client: XAirClient; theme: Theme }) {
   const [st, setSt] = useState<Stage>(EMPTY);
+  const [palTab, setPalTab] = useState<'blocs' | 'configs'>('blocs');
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState<'move' | 'wire'>('move');
   const [ctype, setCtype] = useState<'auto' | CableType>('auto');
@@ -111,7 +112,8 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
       setLoaded(true);
     });
   }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (loaded) save('scene', st); }, [st, loaded]);
+  // enregistré une demi-seconde après le dernier changement (pas à chaque mouvement du doigt)
+  useEffect(() => { if (!loaded) return; const t = setTimeout(() => save('scene', st), 500); return () => clearTimeout(t); }, [st, loaded]);
 
   // ---- géométrie : la scène prend toute la place disponible
   const H = size.w ? Math.max(520, Math.min(1000, Math.round((W * size.h) / size.w))) : 600;
@@ -193,6 +195,14 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const latest = useRef({ sc, st, mode, ctype, hit, sel, fx, fy, SY });
   latest.current = { sc, st, mode, ctype, hit, sel, fx, fy, SY };
   const dref = useRef<Drag>(null);
+  const frame = useRef(0);
+  // les déplacements ne redessinent qu'une fois par image (fluide sur tablette)
+  const pendingSt = useRef<((s: Stage) => Stage) | null>(null);
+  const stFrame = useRef(0);
+  const setStThrottled = (f: (s: Stage) => Stage) => {
+    pendingSt.current = f;
+    if (!stFrame.current) stFrame.current = requestAnimationFrame(() => { stFrame.current = 0; const g = pendingSt.current; pendingSt.current = null; if (g) setSt(g); });
+  };
   const putDrag = (d: Drag) => { dref.current = d; setDrag(d); };
   const pan = useRef(
     PanResponder.create({
@@ -206,7 +216,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
         const y = e.nativeEvent.locationY / s;
         const h = L.hit(x, y);
         const base = { x, y, x0: x, y0: y, moved: false };
-        if (!h) { putDrag(null); return; }
+        if (!h) { putDrag(L.mode === 'move' ? { ...base, kind: 'marquee' } : null); return; }
         if (h.t === 'pill' || h.t === 'bundle') { putDrag({ ...base, kind: 'obj', id: h.t + ':' + h.id }); return; }
         if (h.t === 'zone') { const z = zonesOf(L.st).find((q) => q.id === h.id)!; putDrag({ ...base, kind: 'zone', id: h.id, start: { x: z.x, y: z.y } }); return; }
         if (h.t === 'resize') { const z = zonesOf(L.st).find((q) => q.id === h.id)!; putDrag({ ...base, kind: 'resize', id: h.id, start: { x: z.x, y: z.y, w: z.w, h: z.h } }); return; }
@@ -226,15 +236,19 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
         if (moved && d.start && d.id && !d.id.includes(':')) {
           const id = d.id;
           const s0 = d.start;
-          if (d.kind === 'obj') setSt((cur) => ({ ...cur, objs: cur.objs.map((q) => (q.id === id ? { ...q, x: Math.max(0, Math.min(1, s0.x + dx)), y: Math.max(0, Math.min(1, s0.y + dy)) } : q)) }));
-          if (d.kind === 'zone') setSt((cur) => { const z = zonesOf(cur).find((q) => q.id === id)!; return moveZone(cur, id, s0.x + dx - z.x, s0.y + dy - z.y); });
-          if (d.kind === 'resize') setSt((cur) => ({ ...cur, zones: zonesOf(cur).map((q) => (q.id === id ? { ...q, w: Math.max(0.08, Math.min(1 - q.x, (s0.w ?? 0.2) + dx)), h: Math.max(0.12, Math.min(1 - q.y, (s0.h ?? 0.3) + dy)) } : q)) }));
+          if (d.kind === 'obj') setStThrottled((cur) => ({ ...cur, objs: cur.objs.map((q) => (q.id === id ? { ...q, x: Math.max(0, Math.min(1, s0.x + dx)), y: Math.max(0, Math.min(1, s0.y + dy)) } : q)) }));
+          if (d.kind === 'zone') setStThrottled((cur) => { const z = zonesOf(cur).find((q) => q.id === id)!; return moveZone(cur, id, s0.x + dx - z.x, s0.y + dy - z.y); });
+          if (d.kind === 'resize') setStThrottled((cur) => ({ ...cur, zones: zonesOf(cur).map((q) => (q.id === id ? { ...q, w: Math.max(0.08, Math.min(1 - q.x, (s0.w ?? 0.2) + dx)), h: Math.max(0.12, Math.min(1 - q.y, (s0.h ?? 0.3) + dy)) } : q)) }));
         }
-        putDrag({ ...d, x: e.nativeEvent.locationX / s, y: e.nativeEvent.locationY / s, moved });
+        dref.current = { ...d, x: e.nativeEvent.locationX / s, y: e.nativeEvent.locationY / s, moved };
+        if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; setDrag(dref.current); });
       },
       onPanResponderRelease: (e) => {
         const L = latest.current;
         const d = dref.current;
+        if (stFrame.current) { cancelAnimationFrame(stFrame.current); stFrame.current = 0; }
+        if (pendingSt.current) { const g = pendingSt.current; pendingSt.current = null; setSt(g); }
+        if (frame.current) { cancelAnimationFrame(frame.current); frame.current = 0; }
         putDrag(null);
         if (!d) { setSel(null); return; }
         const s = L.sc || 1;
@@ -246,13 +260,23 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           setSel((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? null : next));
           return;
         }
+        if (d.kind === 'marquee') {
+          // cadre dessiné au doigt : il prend les blocs qu'il entoure
+          const x1 = L.fx(Math.min(d.x0, d.x)), x2 = L.fx(Math.max(d.x0, d.x));
+          const y1 = L.fy(Math.min(d.y0, d.y)), y2 = L.fy(Math.max(d.y0, d.y));
+          if (x2 - x1 > 0.06 && y2 - y1 > 0.1) {
+            const r = { x: Math.max(0, x1), y: Math.max(0, y1), w: Math.min(1, x2) - Math.max(0, x1), h: Math.min(1, y2) - Math.max(0, y1) };
+            setSt((cur) => { const out = zoneFromRect(cur, r); setSel({ zone: out.id }); return out.st; });
+          }
+          return;
+        }
         if (d.kind === 'wire' && d.from) {
           const to = endOfHit(h);
           if (to && !sameEnd(to, d.from)) { const ty = L.ctype === 'auto' ? undefined : L.ctype; const from = d.from; setSt((cur) => addCable(cur, from, to, ty)); setSel('o' in d.from ? { obj: d.from.o } : { end: d.from }); }
           return;
         }
-        if (d.kind === 'obj' && d.id) { const id = d.id; setSt((cur) => dropInZone(cur, id)); setSel({ obj: id }); }
-        if (d.kind === 'zone' || d.kind === 'resize') setSel({ zone: d.id! });
+        // après un déplacement : rien ne s'ouvre, le bloc entre (ou sort) du cadre et les cadres s'adaptent
+        if (d.kind === 'obj' && d.id) { const id = d.id; setSt((cur) => dropAndFit(cur, id)); }
       },
       onPanResponderTerminate: () => putDrag(null),
     }),
@@ -318,6 +342,9 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     </G>
   );
   const anySel = !!sel && !('gear' in (sel as object));
+  // la carte se met du côté opposé à ce qu'on a choisi, pour ne pas le cacher
+  const selX = selObj ? selObj.x : selZone ? selZone.x + selZone.w / 2 : selEnd && !('o' in selEnd) ? posOf(selEnd).x / W : 0;
+  const cardLeft = selX > 0.55;
   const g = gear(st);
   const xlrN = g.find((x) => x.key === 'xlr')?.n ?? 0;
   const jackN = g.find((x) => x.key === 'jack')?.n ?? 0;
@@ -328,11 +355,19 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
       {/* palette */}
       <View style={[styles.palette, { backgroundColor: theme.panel, borderColor: theme.line }]}>
         <ScrollView contentContainerStyle={{ gap: 4, paddingVertical: 6, alignItems: 'center' }} showsVerticalScrollIndicator={false}>
-          <Pressable onPress={addZone} onLongPress={() => showTip('Un cadre par musicien : tu y ranges ses blocs, et le cadre se déplace d’un coup avec tout son contenu.')} style={[styles.pal, { borderColor: theme.accent, borderStyle: 'dashed' }]}>
+          <Pressable onPress={() => setPalTab('blocs')} style={[styles.tab, palTab === 'blocs' ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: palTab === 'blocs' ? theme.onAccent : theme.text, fontSize: 11, fontWeight: '900' }}>Blocs</Text></Pressable>
+          <Pressable onPress={() => setPalTab('configs')} onLongPress={() => showTip('Configurations toutes prêtes : une batterie complète, guitare › pédalier › ampli, basse › DI… posées dans leur cadre, déjà câblées entre elles.')} style={[styles.tab, palTab === 'configs' ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: palTab === 'configs' ? theme.onAccent : theme.text, fontSize: 11, fontWeight: '900' }}>Configs</Text></Pressable>
+          {palTab === 'configs' && CONFIGS.map((c) => (
+            <Pressable key={c.key} onPress={() => { const r = addConfig(st, c.key); setSt(r.st); setSel(null); }} style={[styles.pal, { borderColor: c.drums ? FAM.drum : theme.line2, minHeight: 74 }]}>
+              <Svg width={30} height={30} viewBox="0 0 30 30"><KindIcon kind={c.drums ? 'batterie' : c.items[0].kind} x={15} y={15} c={FAM[family(c.drums ? 'batterie' : c.items[0].kind)]} s={0.62} /></Svg>
+              <Text numberOfLines={3} style={[styles.palT, { color: theme.text }]}>{c.label}</Text>
+            </Pressable>
+          ))}
+          {palTab === 'blocs' && <Pressable onPress={addZone} onLongPress={() => showTip('Un cadre par musicien : dessine-le en glissant sur un endroit vide de la scène, ou touche ici. Il se déplace d’un coup avec tout son contenu.')} style={[styles.pal, { borderColor: theme.accent, borderStyle: 'dashed' }]}>
             <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>▢</Text>
             <Text style={[styles.palT, { color: theme.accent }]}>Cadre</Text>
-          </Pressable>
-          {PALETTE.map((sec) => (
+          </Pressable>}
+          {palTab === 'blocs' && PALETTE.map((sec) => (
             <React.Fragment key={sec.title}>
               <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '900', marginTop: 6 }}>{sec.title.toUpperCase()}</Text>
               {sec.kinds.map((k) => (
@@ -352,7 +387,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           <Segmented theme={theme} value={mode} onChange={setMode} options={[['move', '✋ Déplacer'], ['wire', '🔌 Câbler']] as const} />
           {mode === 'wire' && <Segmented theme={theme} value={ctype} onChange={setCtype} options={[['auto', 'Auto'], ['jack', 'Jack'], ['xlr', 'XLR']] as const} />}
           <Text style={{ flex: 1, color: theme.muted, fontSize: 12 }} numberOfLines={2}>
-            {mode === 'wire' ? 'Glisse d’un bloc à un autre, ou jusqu’à une prise.' : 'Glisse un bloc, ou le haut d’un cadre pour tout déplacer. Coin du cadre = taille.'}
+            {mode === 'wire' ? 'Glisse d’un bloc à un autre, ou jusqu’à une prise.' : 'Glisse un bloc · le haut d’un cadre déplace tout · glisse sur un endroit vide pour dessiner un cadre.'}
           </Text>
           <Pressable onPress={toggleFree} onLongPress={() => showTip('Lié à la table : les voies nommées arrivent toutes seules sur le plan, câblées à leur prise. Plan libre : tu dessines sans tenir compte de la table (autre salle, autre groupe).')} style={[styles.tool, st.free ? { borderColor: theme.line2 } : { borderColor: '#34D399', backgroundColor: '#13261E' }]}>
             <Text style={{ color: st.free ? theme.text : '#6EE7B7', fontWeight: '800', fontSize: 12 }}>{st.free ? '○ Plan libre' : '● Lié à la table'}</Text>
@@ -440,6 +475,9 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                     </G>
                   );
                 })}
+                {drag && drag.kind === 'marquee' && drag.moved && (
+                  <Rect x={Math.min(drag.x0, drag.x)} y={Math.min(drag.y0, drag.y)} width={Math.abs(drag.x - drag.x0)} height={Math.abs(drag.y - drag.y0)} rx={14} fill="rgba(96,165,250,0.10)" stroke="#60A5FA" strokeWidth={3} strokeDasharray="10 7" />
+                )}
                 {/* câble en train d'être tiré */}
                 {drag && drag.moved && drag.kind === 'wire' && drag.from && (() => {
                   const a = posOf(drag.from);
@@ -487,7 +525,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
 
               {/* carte de la sélection */}
               {sel && (
-                <View style={[styles.card, { backgroundColor: theme.panel, borderColor: selZone ? selZone.color : selObj ? FAM[family(selObj.kind)] : theme.accent }]}>
+                <View style={[styles.card, cardLeft ? { left: 10 } : { right: 10 }, { maxHeight: H * sc - 20, backgroundColor: theme.panel, borderColor: selZone ? selZone.color : selObj ? FAM[family(selObj.kind)] : theme.accent }]}>
                   <ScrollView contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '900' }} numberOfLines={1}>
@@ -572,14 +610,13 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   );
 }
 
-void zoneAt;
-
 const styles = StyleSheet.create({
   palette: { width: 78, borderWidth: 1, borderRadius: 14 },
   pal: { width: 66, minHeight: 52, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 3 },
   palT: { fontSize: 9, fontWeight: '800', textAlign: 'center' },
+  tab: { width: 66, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tool: { height: 40, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1.5, justifyContent: 'center' },
-  card: { position: 'absolute', right: 10, top: 10, bottom: 10, width: 320, borderWidth: 2, borderRadius: 18, padding: 12 },
+  card: { position: 'absolute', top: 10, width: 290, borderWidth: 2, borderRadius: 18, padding: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, minHeight: 46 },
   type: { height: 32, paddingHorizontal: 10, borderRadius: 16, justifyContent: 'center' },
   input: { height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 16, fontWeight: '800' },
