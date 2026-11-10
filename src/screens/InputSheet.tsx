@@ -14,7 +14,7 @@ export function InputSheet({ client, ch, theme, onClose, actions }: { client: XA
   const { width, height } = useWindowDimensions();
   // une action qui mène ailleurs (égaliseur, copie) ferme d'abord le tiroir
   const wrapped: DrawerActions | undefined = actions && {
-    onDetail: actions.onDetail && ((c) => { onClose(); actions.onDetail!(c); }),
+    onDetail: actions.onDetail && ((c, st) => { onClose(); actions.onDetail!(c, st); }),
     onCopy: actions.onCopy && ((c) => { onClose(); actions.onCopy!(c); }),
   };
   const color = ch !== null ? chColor(client, ch) : theme.line;

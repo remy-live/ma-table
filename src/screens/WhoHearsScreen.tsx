@@ -1,6 +1,7 @@
 // « Qui entend quoi » en bulles : une ligne par source, une colonne par
 // personne. Grosse bulle = fort, pas de bulle = rien. Touche une bulle pour
 // la régler. Les groupes se déplient. Touche un nom pour isoler.
+import { CloseX } from '../ui/kit';
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { f } from '../osc/osc';
@@ -119,7 +120,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
             {pickDest.t.kind !== 'main' && (
               <Pressable onPress={sameAsMain} style={[styles.small, { borderColor: theme.accent }]}><Text style={{ color: theme.accent, fontSize: 11, fontWeight: '800' }}>Comme le public</Text></Pressable>
             )}
-            <Pressable onPress={() => setPick(null)} accessibilityLabel="Fermer" style={{ width: 36, alignItems: 'center' }}><Text style={{ color: theme.muted, fontSize: 20 }}>×</Text></Pressable>
+            <CloseX theme={theme} size={38} onPress={() => setPick(null)} />
           </View>
         ) : (
           <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Glisse une bulle vers la droite pour monter, vers la gauche pour baisser · touche une personne ou un nom pour isoler · un groupe se déplie</Text>

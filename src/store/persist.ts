@@ -16,10 +16,21 @@ const memoryBackend: Backend = {
 
 let backend: Backend = memoryBackend;
 let persistent = false;
+// Les lectures faites avant la fin de initStorage attendent qu'il ait choisi
+// où lire (sinon, au lancement, on lirait la mémoire vide au lieu du téléphone).
+let started = false;
+let markReady: () => void = () => {};
+const ready = new Promise<void>((r) => { markReady = r; });
 export const isPersistent = () => persistent;
 
 /** Appelé une fois au démarrage de l'appli. */
-export async function initStorage(): Promise<boolean> {
+let initP: Promise<boolean> | null = null;
+export function initStorage(): Promise<boolean> {
+  if (!initP) initP = doInit();
+  return initP;
+}
+async function doInit(): Promise<boolean> {
+  started = true;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('@react-native-async-storage/async-storage');
@@ -31,10 +42,13 @@ export async function initStorage(): Promise<boolean> {
     backend = memoryBackend;
     persistent = false;
   }
+  markReady();
   return persistent;
 }
 
 export async function load<T>(key: string, fallback: T): Promise<T> {
+  if (!started) void initStorage();
+  await ready;
   try {
     const raw = await backend.getItem('matable:' + key);
     return raw ? (JSON.parse(raw) as T) : fallback;
@@ -44,6 +58,8 @@ export async function load<T>(key: string, fallback: T): Promise<T> {
 }
 
 export async function save<T>(key: string, value: T): Promise<void> {
+  if (!started) void initStorage();
+  await ready;
   try {
     await backend.setItem('matable:' + key, JSON.stringify(value));
   } catch {

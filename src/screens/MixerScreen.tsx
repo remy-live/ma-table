@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CloseX } from '../ui/kit';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId,
@@ -94,7 +95,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [renameCh, setRenameCh] = useState<number | null>(null);
   const drawerActions = {
     // l'égaliseur s'ouvre à côté des tranches : on revient à la vue complète si on était en Gains ou Table
-    onDetail: (c: number) => { setView((v) => (v === 'gains' || v === 'table' ? 'full' : v)); setDetailCh(c); },
+    onDetail: (c: number, st?: 'preset' | 'eq') => { setView((v) => (v === 'gains' || v === 'table' ? 'full' : v)); setDetailStart(st); setDetailCh(c); },
     onCopy: (c: number) => setCopySet(c),
   };
   const [groupsOpen, setGroupsOpen] = useState(false);
@@ -117,6 +118,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [pickerOpen, setPickerOpen] = useState(false);
   const [larsen, setLarsen] = useState(false);
   const [rangerOpen, setRangerOpen] = useState(false);
+  const [detailStart, setDetailStart] = useState<'preset' | 'eq' | undefined>(undefined);
   const [monoOpen, setMonoOpen] = useState(false);
   const mono = useMono(client);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -404,7 +406,6 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
           </View>
         </View>
       )}
-      {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}
       <SoloBar client={client} theme={theme} />
       <ClipBanner client={client} onOpen={setInputCh} />
       {picking && view !== 'table' && (
@@ -496,7 +497,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
             </View>
             {wide && detailCh !== null && (
               <View style={{ width: Math.min(560, width * 0.46) }}>
-                <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} wide />
+                <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => { setDetailCh(null); setDetailStart(undefined); }} wide start={detailStart} />
               </View>
             )}
           </>
@@ -512,9 +513,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                 Prise {insrcPlug(Number(client.get(insrcPath(sel)) ?? sel - 1))} · {mode === 'swap' ? 'touche la voie avec laquelle échanger sa place à l’écran (les branchements ne bougent pas)' : 'que faire ?'}
               </Text>
             </View>
-            <Pressable onPress={() => { setSel(null); setMode(null); }} accessibilityLabel="Fermer" style={styles.close}>
-              <Text style={{ color: theme.muted, fontSize: 22 }}>×</Text>
-            </Pressable>
+            <CloseX theme={theme} onPress={() => { setSel(null); setMode(null); }} />
           </View>
           {mode === 'swap' && (
             <View style={styles.barRow}>
@@ -530,7 +529,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         </View>
       )}
 
-      {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />}
+      {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => { setDetailCh(null); setDetailStart(undefined); }} start={detailStart} />}
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={drawerActions} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
       {rangerMenu}

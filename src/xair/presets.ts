@@ -19,11 +19,12 @@ export interface Preset {
   fx: [number, number, number, number]; // envois FX1..FX4 en dB (-Infinity = rien)
   family?: Family;
   variant?: string; // « Lead », « Chœurs »…
+  element?: string; // batterie : Kick, Caisse claire…
   desc?: string;
 }
 
-export type Family = 'Voix' | 'Guitares' | 'Basse' | 'Batterie' | 'Claviers' | 'Mes réglages';
-export const FAMILIES: Family[] = ['Voix', 'Guitares', 'Basse', 'Batterie', 'Claviers', 'Mes réglages'];
+export type Family = 'Voix' | 'Guitares' | 'Basse' | 'Batterie' | 'Claviers' | 'Vents & cordes' | 'Mes réglages';
+export const FAMILIES: Family[] = ['Voix', 'Guitares', 'Basse', 'Batterie', 'Claviers', 'Vents & cordes', 'Mes réglages'];
 
 const OFF = -Infinity;
 
@@ -43,28 +44,107 @@ const FAM: Record<string, Family> = {
   Voix: 'Voix', 'Guitare acou': 'Guitares', 'Guitare élec': 'Guitares', Basse: 'Basse',
   Kick: 'Batterie', 'Caisse claire': 'Batterie', Charley: 'Batterie', Toms: 'Batterie', Overhead: 'Batterie',
 };
+const ELEM: Record<string, string> = { Kick: 'Kick', 'Caisse claire': 'Caisse claire', Charley: 'Charley', Toms: 'Toms', Overhead: 'Overheads' };
+
+/** Éléments de batterie, pour les retrouver vite. */
+export const DRUM_PARTS = ['Kick', 'Caisse claire', 'Charley', 'Toms', 'Overheads', 'Ride', 'Ambiance', 'Percus'];
+
+type P = Omit<Preset, 'eq' | 'fx'> & { eq: [number, number, number][]; fx: [number, number, number, number] };
+const v = (family: Family, variant: string, desc: string, eq: [number, number, number][], lowCut: number | null, gate: number | null, comp: number | null, fx: [number, number, number, number], element?: string): P =>
+  ({ name: `${element ?? family} · ${variant}`, family, variant, desc, eq, lowCut, gate, comp, fx, element });
 
 /** Bibliothèque : les préréglages de base + des variantes par instrument. */
 export const LIBRARY: Preset[] = [
-  ...PRESETS.map((p) => ({ ...p, family: FAM[p.name], variant: 'Standard', desc: 'Point de départ équilibré' })),
-  { name: 'Voix lead douce', family: 'Voix', variant: 'Ballade', desc: 'Moins d’aigus, plus de réverbe', eq: [[120, -2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], lowCut: 90, gate: null, comp: -20, fx: [-8, -18, OFF, OFF] },
-  { name: 'Voix rock', family: 'Voix', variant: 'Rock', desc: 'Présence, compresseur plus ferme', eq: [[120, -3, 1], [400, -3, 1.2], [3500, 4, 1.2], [10000, 1, 1]], lowCut: 120, gate: null, comp: -24, fx: [-16, -16, OFF, OFF] },
-  { name: 'Chœurs', family: 'Voix', variant: 'Chœurs', desc: 'Plus légers derrière la voix principale', eq: [[150, -4, 1], [350, -3, 1.4], [3000, 1, 1.2], [10000, 2, 1]], lowCut: 140, gate: null, comp: -20, fx: [-10, OFF, OFF, OFF] },
-  { name: 'Voix parlée', family: 'Voix', variant: 'Parole', desc: 'Annonces entre les chansons, sans effet', eq: [[120, -3, 1], [250, -2, 1.4], [3000, 2, 1.2], [8000, 0, 1]], lowCut: 120, gate: null, comp: -16, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Guitare acou arpèges', family: 'Guitares', variant: 'Arpèges', desc: 'Brillante, détaillée', eq: [[100, -5, 1], [250, -2, 1.4], [3000, 2, 1.2], [10000, 3, 1]], lowCut: 100, gate: null, comp: -22, fx: [-12, OFF, OFF, OFF] },
-  { name: 'Guitare acou rythmique', family: 'Guitares', variant: 'Rythmique', desc: 'Moins de boum, laisse la place à la voix', eq: [[120, -6, 1], [300, -3, 1.4], [2000, -1, 1.2], [8000, 2, 1]], lowCut: 120, gate: null, comp: -18, fx: [-18, OFF, OFF, OFF] },
-  { name: 'Guitare clean', family: 'Guitares', variant: 'Clean', desc: 'Claire, un peu de chorus et de réverbe', eq: [[100, -2, 1], [400, -1, 1.4], [2500, 2, 1.2], [9000, 1, 1]], lowCut: 80, gate: null, comp: -22, fx: [-14, OFF, -14, OFF] },
-  { name: 'Guitare crunch', family: 'Guitares', variant: 'Crunch', desc: 'Moins de bas-médiums, garde le mordant', eq: [[100, -1, 1], [350, -3, 1.2], [1800, 2, 1.4], [7000, -1, 1]], lowCut: 90, gate: null, comp: null, fx: [-20, -18, OFF, OFF] },
-  { name: 'Basse ronde', family: 'Basse', variant: 'Ronde', desc: 'Doigts, grosse fondamentale', eq: [[70, 4, 1], [250, -2, 1.4], [800, 1, 1.2], [4000, -4, 1]], lowCut: 30, gate: null, comp: -14, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Basse claquante', family: 'Basse', variant: 'Slap / médiator', desc: 'Plus d’attaque', eq: [[80, 2, 1], [300, -4, 1.2], [1200, 3, 1.4], [6000, 2, 1]], lowCut: 35, gate: null, comp: -20, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Kick rock', family: 'Batterie', variant: 'Kick rock', desc: 'Clic marqué', eq: [[60, 4, 1], [400, -8, 1], [4000, 5, 1.4], [10000, 0, 1]], lowCut: 35, gate: -30, comp: -16, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Kick jazz', family: 'Batterie', variant: 'Kick jazz', desc: 'Naturel, résonnant', eq: [[70, 2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], lowCut: 35, gate: null, comp: null, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Caisse claire sèche', family: 'Batterie', variant: 'Caisse sèche', desc: 'Sans réverbe, gate serré', eq: [[180, 2, 1], [500, -3, 1.4], [4000, 3, 1.2], [9000, 1, 1]], lowCut: 90, gate: -34, comp: -14, fx: [OFF, OFF, OFF, OFF] },
-  { name: 'Cajon', family: 'Batterie', variant: 'Cajon', desc: 'Grave rond + claque', eq: [[80, 3, 1], [350, -4, 1.2], [3000, 3, 1.4], [9000, 0, 1]], lowCut: 40, gate: null, comp: -18, fx: [-20, OFF, OFF, OFF] },
-  { name: 'Piano', family: 'Claviers', variant: 'Piano', desc: 'Moins de boue, un peu d’air', eq: [[100, -2, 1], [300, -2, 1.4], [3000, 1, 1.2], [10000, 2, 1]], lowCut: 60, gate: null, comp: -22, fx: [-16, OFF, OFF, OFF] },
-  { name: 'Synthé nappe', family: 'Claviers', variant: 'Nappe', desc: 'Discret, laisse la place', eq: [[150, -4, 1], [500, -2, 1.4], [3000, -1, 1.2], [9000, 1, 1]], lowCut: 120, gate: null, comp: null, fx: [-14, OFF, OFF, OFF] },
-  { name: 'Ordi / lecteur', family: 'Claviers', variant: 'Bande son', desc: 'Neutre, sans effet', eq: [[100, 0, 1], [400, 0, 1.4], [3000, 0, 1.2], [10000, 0, 1]], lowCut: null, gate: null, comp: null, fx: [OFF, OFF, OFF, OFF] },
+  ...PRESETS.map((p) => ({ ...p, family: FAM[p.name], variant: FAM[p.name] === 'Batterie' ? 'Standard' : p.name === 'Voix' || p.name === 'Basse' ? 'Standard' : p.name.replace('Guitare a', 'A').replace('Guitare é', 'É') + ' · standard', desc: 'Point de départ équilibré', element: ELEM[p.name] })),
+  // VOIX
+  v('Voix', 'Voix d’homme', 'Moins de boum, plus de présence', [[150, -3, 1], [350, -2, 1.4], [3000, 3, 1.2], [10000, 1, 1]], 100, null, -18, [-12, -20, OFF, OFF]),
+  v('Voix', 'Voix de femme', 'Douce dans les aigus, sans dureté', [[200, -2, 1], [500, -1, 1.4], [3500, 2, 1.4], [11000, 2, 1]], 120, null, -18, [-11, -20, OFF, OFF]),
+  v('Voix', 'Rock', 'Présence, compresseur plus ferme', [[120, -3, 1], [400, -3, 1.2], [3500, 4, 1.2], [10000, 1, 1]], 120, null, -24, [-16, -16, OFF, OFF]),
+  v('Voix', 'Ballade', 'Moins d’aigus, plus de réverbe', [[120, -2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], 90, null, -20, [-8, -18, OFF, OFF]),
+  v('Voix', 'Rap / slam', 'Mots bien clairs, sec, compresseur fort', [[120, -1, 1], [300, -3, 1.4], [3000, 3, 1.2], [9000, 1, 1]], 90, null, -26, [-24, OFF, OFF, OFF]),
+  v('Voix', 'Chœurs', 'Plus légers derrière la voix principale', [[150, -4, 1], [350, -3, 1.4], [3000, 1, 1.2], [10000, 2, 1]], 140, null, -20, [-10, OFF, OFF, OFF]),
+  v('Voix', 'Chanteur guitariste', 'Coupe le bruit de la guitare dans le micro', [[180, -4, 1], [400, -3, 1.4], [3000, 3, 1.2], [10000, 1, 1]], 150, null, -18, [-12, OFF, OFF, OFF]),
+  v('Voix', 'Parole', 'Annonces entre les chansons, sans effet', [[120, -3, 1], [250, -2, 1.4], [3000, 2, 1.2], [8000, 0, 1]], 120, null, -16, [OFF, OFF, OFF, OFF]),
+  // GUITARES
+  v('Guitares', 'Acou · arpèges', 'Brillante, détaillée', [[100, -5, 1], [250, -2, 1.4], [3000, 2, 1.2], [10000, 3, 1]], 100, null, -22, [-12, OFF, OFF, OFF]),
+  v('Guitares', 'Acou · rythmique', 'Moins de boum, laisse la place à la voix', [[120, -6, 1], [300, -3, 1.4], [2000, -1, 1.2], [8000, 2, 1]], 120, null, -18, [-18, OFF, OFF, OFF]),
+  v('Guitares', 'Classique (nylon)', 'Chaude, un peu d’air', [[100, -3, 1], [250, -1, 1.4], [2500, 1, 1.2], [9000, 2, 1]], 80, null, -24, [-12, OFF, OFF, OFF]),
+  v('Guitares', 'Élec · clean', 'Claire, un peu de chorus et de réverbe', [[100, -2, 1], [400, -1, 1.4], [2500, 2, 1.2], [9000, 1, 1]], 80, null, -22, [-14, OFF, -14, OFF]),
+  v('Guitares', 'Élec · crunch', 'Moins de bas-médiums, garde le mordant', [[100, -1, 1], [350, -3, 1.2], [1800, 2, 1.4], [7000, -1, 1]], 90, null, null, [-20, -18, OFF, OFF]),
+  v('Guitares', 'Élec · saturée', 'Gros son sans boue ni aigus qui piquent', [[100, -2, 1], [300, -3, 1.2], [1500, 2, 1.4], [6000, -3, 1]], 90, null, null, [-22, OFF, OFF, OFF]),
+  v('Guitares', 'Élec · solo', 'Passe devant, avec de l’écho', [[100, -2, 1], [500, -1, 1.4], [2000, 3, 1.2], [7000, 0, 1]], 100, null, -24, [-16, -12, OFF, OFF]),
+  v('Guitares', 'Élec · funk', 'Claquante et sèche', [[120, -4, 1], [400, -2, 1.4], [3000, 3, 1.2], [9000, 2, 1]], 120, null, -20, [OFF, OFF, OFF, OFF]),
+  // BASSE
+  v('Basse', 'Ronde', 'Doigts, grosse fondamentale', [[70, 4, 1], [250, -2, 1.4], [800, 1, 1.2], [4000, -4, 1]], 30, null, -14, [OFF, OFF, OFF, OFF]),
+  v('Basse', 'Claquante', 'Slap ou médiator, plus d’attaque', [[80, 2, 1], [300, -4, 1.2], [1200, 3, 1.4], [6000, 2, 1]], 35, null, -20, [OFF, OFF, OFF, OFF]),
+  v('Basse', 'Boîtier direct (DI)', 'Branchée sans ampli', [[60, 2, 1], [250, -3, 1.4], [1000, 2, 1.2], [5000, -2, 1]], 35, null, -16, [OFF, OFF, OFF, OFF]),
+  v('Basse', 'Contrebasse', 'Boisée, sans résonance qui gronde', [[90, 2, 1], [200, -3, 1.4], [1500, 2, 1.2], [6000, 0, 1]], 40, null, -18, [-24, OFF, OFF, OFF]),
+  // BATTERIE
+  v('Batterie', 'Rock', 'Clic marqué, grave serré', [[60, 4, 1], [400, -8, 1], [4000, 5, 1.4], [10000, 0, 1]], 35, -30, -16, [OFF, OFF, OFF, OFF], 'Kick'),
+  v('Batterie', 'Jazz', 'Naturel, résonnant', [[70, 2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], 35, null, null, [OFF, OFF, OFF, OFF], 'Kick'),
+  v('Batterie', 'Métal', 'Très claquant, très serré', [[55, 3, 1], [350, -9, 1], [5000, 6, 1.4], [10000, 1, 1]], 40, -28, -18, [OFF, OFF, OFF, OFF], 'Kick'),
+  v('Batterie', 'Pop', 'Rond et propre', [[65, 4, 1], [300, -5, 1.2], [3000, 2, 1.4], [9000, 0, 1]], 35, -34, -16, [OFF, OFF, OFF, OFF], 'Kick'),
+  v('Batterie', 'Sèche', 'Sans réverbe, gate serré', [[180, 2, 1], [500, -3, 1.4], [4000, 3, 1.2], [9000, 1, 1]], 90, -34, -14, [OFF, OFF, OFF, OFF], 'Caisse claire'),
+  v('Batterie', 'Grasse', 'Plus de corps, réverbe', [[200, 3, 1], [600, -2, 1.4], [3000, 2, 1.2], [9000, 1, 1]], 80, -38, -16, [-12, OFF, OFF, OFF], 'Caisse claire'),
+  v('Batterie', 'Brillante', 'Timbre bien présent', [[200, 0, 1], [450, -3, 1.4], [5000, 4, 1.2], [10000, 3, 1]], 100, -36, -16, [-16, OFF, OFF, OFF], 'Caisse claire'),
+  v('Batterie', 'Doux', 'Moins d’aigus qui piquent', [[300, -6, 1], [800, -2, 1.4], [6000, -2, 1.2], [12000, 1, 1]], 300, null, null, [OFF, OFF, OFF, OFF], 'Charley'),
+  v('Batterie', 'Tom basse', 'Grave profond', [[80, 4, 1], [350, -5, 1.4], [3500, 2, 1.2], [9000, 0, 1]], 50, -38, -18, [-18, OFF, OFF, OFF], 'Toms'),
+  v('Batterie', 'Tom aigu', 'Attaque nette', [[120, 2, 1], [450, -4, 1.4], [4500, 3, 1.2], [9000, 0, 1]], 80, -38, -18, [-18, OFF, OFF, OFF], 'Toms'),
+  v('Batterie', 'Jazz', 'Toute la batterie, naturelle', [[120, -1, 1], [400, -1, 1.4], [4000, 0, 1.2], [11000, 2, 1]], 100, null, null, [-22, OFF, OFF, OFF], 'Overheads'),
+  v('Batterie', 'Cymbales seules', 'Juste le brillant, pas de fûts', [[300, -6, 1], [800, -2, 1.4], [5000, 1, 1.2], [12000, 3, 1]], 300, null, null, [-22, OFF, OFF, OFF], 'Overheads'),
+  v('Batterie', 'Standard', 'Le ping sans le grondement', [[250, -4, 1], [700, -2, 1.4], [4000, 1, 1.2], [11000, 2, 1]], 250, null, null, [-24, OFF, OFF, OFF], 'Ride'),
+  v('Batterie', 'Standard', 'Micro d’ambiance, à doser fin', [[100, -2, 1], [400, -3, 1.4], [3000, 0, 1.2], [9000, -2, 1]], 80, null, -26, [OFF, OFF, OFF, OFF], 'Ambiance'),
+  v('Batterie', 'Cajon', 'Grave rond + claque', [[80, 3, 1], [350, -4, 1.2], [3000, 3, 1.4], [9000, 0, 1]], 40, null, -18, [-20, OFF, OFF, OFF], 'Percus'),
+  v('Batterie', 'Congas / djembé', 'Peau chaude, claque nette', [[100, 2, 1], [400, -3, 1.4], [3500, 2, 1.2], [9000, 1, 1]], 60, null, -20, [-18, OFF, OFF, OFF], 'Percus'),
+  v('Batterie', 'Batterie électronique', 'Déjà mixée : on n’y touche presque pas', [[80, 0, 1], [400, 0, 1.4], [3000, 0, 1.2], [10000, 0, 1]], null, null, null, [OFF, OFF, OFF, OFF], 'Percus'),
+  // CLAVIERS
+  v('Claviers', 'Piano', 'Moins de boue, un peu d’air', [[100, -2, 1], [300, -2, 1.4], [3000, 1, 1.2], [10000, 2, 1]], 60, null, -22, [-16, OFF, OFF, OFF]),
+  v('Claviers', 'Piano électrique', 'Chaud et rond, un peu de chorus', [[100, -1, 1], [350, -2, 1.4], [2500, 1, 1.2], [8000, 0, 1]], 60, null, -22, [-18, OFF, -16, OFF]),
+  v('Claviers', 'Orgue', 'Pas trop de grave, pas trop d’aigu', [[120, -3, 1], [500, -1, 1.4], [3000, 1, 1.2], [8000, -2, 1]], 80, null, null, [-18, OFF, OFF, OFF]),
+  v('Claviers', 'Synthé nappe', 'Discret, laisse la place', [[150, -4, 1], [500, -2, 1.4], [3000, -1, 1.2], [9000, 1, 1]], 120, null, null, [-14, OFF, OFF, OFF]),
+  v('Claviers', 'Synthé lead', 'Passe devant, avec de l’écho', [[150, -2, 1], [600, -1, 1.4], [2500, 2, 1.2], [8000, 0, 1]], 100, null, -24, [-18, -14, OFF, OFF]),
+  v('Claviers', 'Ordi / lecteur', 'Bande son : neutre, sans effet', [[100, 0, 1], [400, 0, 1.4], [3000, 0, 1.2], [10000, 0, 1]], null, null, null, [OFF, OFF, OFF, OFF]),
+  // VENTS & CORDES
+  v('Vents & cordes', 'Saxophone', 'Moins nasal, plus doux', [[150, -2, 1], [800, -3, 1.4], [3000, 1, 1.2], [9000, 1, 1]], 100, null, -20, [-14, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Trompette', 'Sans dureté dans les aigus', [[200, -2, 1], [1000, -1, 1.4], [3500, -2, 1.4], [9000, 0, 1]], 150, null, -22, [-16, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Flûte', 'Souffle léger', [[300, -3, 1], [700, -1, 1.4], [4000, 1, 1.2], [11000, 2, 1]], 200, null, -24, [-12, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Violon', 'Moins de grincement, plus d’air', [[250, -2, 1], [600, -1, 1.4], [3000, -2, 1.4], [10000, 2, 1]], 180, null, -22, [-12, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Violoncelle', 'Boisé, sans grondement', [[100, 1, 1], [250, -2, 1.4], [2000, 1, 1.2], [8000, 0, 1]], 60, null, -22, [-14, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Accordéon', 'Moins de médiums qui saturent', [[150, -2, 1], [600, -3, 1.4], [3000, 1, 1.2], [9000, 0, 1]], 100, null, -20, [-16, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Harmonica', 'Sans aigus qui piquent', [[200, -3, 1], [800, 1, 1.4], [3000, -2, 1.4], [8000, -2, 1]], 200, null, -20, [-18, OFF, OFF, OFF]),
+  v('Vents & cordes', 'Ukulélé / mandoline', 'Brillant sans être aigrelet', [[150, -4, 1], [400, -2, 1.4], [3000, 1, 1.2], [10000, 2, 1]], 150, null, -22, [-14, OFF, OFF, OFF]),
 ];
+
+/** Ce que l'appli devine d'un nom de voie : la famille (et l'élément de batterie). */
+export function guessFamily(name: string): { family: Family; element?: string } | null {
+  const t = name.trim().toLowerCase();
+  if (!t) return null;
+  const has = (...k: string[]) => k.some((x) => t.includes(x));
+  if (has('kick', 'grosse caisse', 'bd')) return { family: 'Batterie', element: 'Kick' };
+  if (has('caisse claire', 'snare', 'cc', 'sn')) return { family: 'Batterie', element: 'Caisse claire' };
+  if (has('charley', 'hihat', 'hi-hat', 'hh')) return { family: 'Batterie', element: 'Charley' };
+  if (has('tom', 'floor')) return { family: 'Batterie', element: 'Toms' };
+  if (has('overhead', 'oh', 'cymbale', 'crash')) return { family: 'Batterie', element: 'Overheads' };
+  if (has('ride')) return { family: 'Batterie', element: 'Ride' };
+  if (has('room', 'ambiance')) return { family: 'Batterie', element: 'Ambiance' };
+  if (has('cajon', 'conga', 'djemb', 'percu', 'batterie')) return { family: 'Batterie', element: 'Percus' };
+  if (has('voix', 'chant', 'choeur', 'chœur', 'lead', 'vocal', 'micro', 'parole', 'annonce')) return { family: 'Voix' };
+  if (has('contrebasse', 'basse', 'bass')) return { family: 'Basse' };
+  if (has('guit', 'gtr', 'acou', 'élec', 'elec', 'nylon')) return { family: 'Guitares' };
+  if (has('piano', 'clavier', 'synth', 'orgue', 'keys', 'rhodes', 'ordi', 'pc', 'usb', 'lecteur')) return { family: 'Claviers' };
+  if (has('sax', 'trompette', 'flûte', 'flute', 'violon', 'cello', 'accord', 'harmonica', 'ukul', 'mandol', 'banjo')) return { family: 'Vents & cordes' };
+  return null;
+}
+
+/** Les préréglages à proposer pour une voie (d'après son nom). */
+export function suggestFor(name: string): Preset[] {
+  const g = guessFamily(name);
+  if (!g) return [];
+  const list = LIBRARY.filter((p) => p.family === g.family && (!g.element || p.element === g.element));
+  // les plus proches du nom d'abord (ex. « Voix rock » → Rock)
+  const t = name.toLowerCase();
+  return list.slice().sort((a, b) => Number(t.includes((b.variant ?? '').toLowerCase())) - Number(t.includes((a.variant ?? '').toLowerCase())));
+}
 
 /** Photo du réglage d'une voie, pour « Mes réglages ». */
 export function presetFromChannel(client: XAirClient, ch: number, name: string): Preset {

@@ -1,4 +1,5 @@
 // Enregistrer / charger : un effet seul (Mes effets) ou les 4 d'un coup (jeux d'effets).
+import { CloseX } from '../ui/kit';
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FxVisual } from '../ui/FxVisual';
@@ -60,7 +61,7 @@ export function FxSaveSheet(props: { client: XAirClient; theme: Theme; mode: Sav
         <Pressable style={[styles.sheet, { backgroundColor: theme.panel, borderColor: col }]} onPress={() => {}}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={{ flex: 1, color: theme.text, fontSize: 20, fontWeight: '800' }}>{mode.kind === 'one' ? `Enregistrer / charger FX${mode.slot}` : 'Enregistrer / charger les 4 effets'}</Text>
-            <Pressable onPress={props.onClose} hitSlop={10}><Text style={{ color: theme.muted, fontSize: 24 }}>×</Text></Pressable>
+            <CloseX theme={theme} onPress={props.onClose} />
           </View>
           <Text style={[styles.kicker, { color: theme.muted }]}>ENREGISTRER SOUS</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>

@@ -15,6 +15,7 @@ import { WhoAmIScreen } from './src/screens/WhoAmIScreen';
 import { Tutorial } from './src/screens/Tutorial';
 import { FirstRun } from './src/screens/FirstRun';
 import { LarsenWatch } from './src/screens/LarsenWatch';
+import { LinkBanner } from './src/ui/LinkBanner';
 import { blankTable, safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -170,6 +171,7 @@ export default function App() {
                 ]);
               }), 2500);
             }
+            if (c.hostAddress === 'demo') (globalThis as unknown as { __demoClient?: XAirClient }).__demoClient = c; // essais du fichier de démo
             setClient(c);
           }}
         />
@@ -212,6 +214,7 @@ export default function App() {
             setMonitor(null);
           }}
         />
+        <LinkBanner client={client} top={40} />
       </>
     );
   }
@@ -247,6 +250,7 @@ export default function App() {
       <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />
       <FirstRun client={client} theme={theme} visible={firstRun} onClose={() => { setFirstRun(false); save('demarrageVu', true); }} onGestures={() => setTuto(true)} onTryHere={(cfg) => setMonitor({ cfg, owner: true })} />
       <LarsenWatch client={client} theme={theme} />
+      <LinkBanner client={client} top={wide ? 64 : 110} />
       {themeKey === 'rouge' && <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(25,0,0,0.35)' }} />}
       <TipHost theme={theme} />
       <AlertHost theme={theme} />

@@ -61,7 +61,7 @@ test('Bibliothèque : familles valides, « Mes réglages » survit à la sauvega
   withTable(10171, presetPaths(3), async (c, sim) => {
     for (const p of LIBRARY) assert.ok(FAMILIES.includes(p.family!), p.name);
     assert.ok(LIBRARY.filter((p) => p.family === 'Voix').length >= 4);
-    applyPreset(c, 3, LIBRARY.find((p) => p.name === 'Basse ronde')!);
+    applyPreset(c, 3, LIBRARY.find((p) => p.name === 'Basse · Ronde')!);
     await sleep(100);
     const mine = presetFromChannel(c, 3, 'Ma basse');
     assert.equal(mine.lowCut, 30);

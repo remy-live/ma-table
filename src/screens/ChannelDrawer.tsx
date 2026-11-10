@@ -32,7 +32,7 @@ import { SmartRenameSheet } from './SmartRenameSheet';
 
 export interface DrawerActions {
   /** ouvrir l'égaliseur / le détail de la voie */
-  onDetail?: (ch: number) => void;
+  onDetail?: (ch: number, start?: 'preset' | 'eq') => void;
   /** copier les réglages de cette voie vers d'autres */
   onCopy?: (ch: number) => void;
 }
@@ -95,7 +95,7 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
             <Groups client={client} theme={theme} ch={ch} />
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
               {props.actions?.onDetail && <Btn theme={theme} small icon="〰" label="Égaliseur" onPress={() => props.actions!.onDetail!(ch)} style={styles.act} />}
-              <Btn theme={theme} small icon="★" label="Préréglages" onPress={() => setPresets(true)} style={styles.act} />
+              <Btn theme={theme} small icon="★" label="Préréglages" onPress={() => (props.actions?.onDetail ? props.actions.onDetail(ch, 'preset') : setPresets(true))} style={styles.act} />
               {props.actions?.onCopy && <Btn theme={theme} small icon="⧉" label="Copier les réglages" onPress={() => props.actions!.onCopy!(ch)} style={styles.act} />}
             </View>
           </View>

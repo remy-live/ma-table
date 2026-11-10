@@ -6,29 +6,39 @@ import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
-import { applyPreset, FAMILIES, Family, LIBRARY, Preset, presetFromChannel, presetPaths } from '../xair/presets';
+import { applyPreset, DRUM_PARTS, FAMILIES, Family, LIBRARY, Preset, presetFromChannel, presetPaths } from '../xair/presets';
 import { XAirClient } from '../xair/XAirClient';
 import { EqThumb, PresetDots } from '../ui/EqThumb';
 
-const FAM_COLORS: Record<string, string> = { Voix: '#F472B6', Guitares: '#2DD4BF', Basse: '#60A5FA', Batterie: '#F59E0B', Claviers: '#A3E635', 'Mes réglages': '#FBBF24' };
+const FAM_COLORS: Record<string, string> = { Voix: '#F472B6', Guitares: '#2DD4BF', Basse: '#60A5FA', Batterie: '#F59E0B', Claviers: '#A3E635', 'Vents & cordes': '#C084FC', 'Mes réglages': '#FBBF24' };
+const FAM_ICON: Record<string, string> = { Voix: '🎤', Guitares: '🎸', Basse: '🎸', Batterie: '🥁', Claviers: '🎹', 'Vents & cordes': '🎷', 'Mes réglages': '★' };
+const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 
-export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; ch: number | null; onClose: () => void }) {
+export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; ch: number | null; onClose: () => void; family?: Family; element?: string }) {
   const { client, theme } = props;
   const [fam, setFam] = useState<Family>('Voix');
   const [mine, setMine] = useState<Preset[]>([]);
   const [targets, setTargets] = useState<number[]>([]);
   const [sel, setSel] = useState<Preset | null>(null);
   const [newName, setNewName] = useState('');
+  const [q, setQ] = useState('');
+  const [part, setPart] = useState<string | null>(null);
 
   useEffect(() => {
     if (!props.visible) return;
     load<Preset[]>('mesPresets', []).then(setMine);
     setTargets(props.ch ? [props.ch] : []);
     setSel(null);
-  }, [props.visible, props.ch]);
+    setQ('');
+    if (props.family) setFam(props.family);
+    setPart(props.element ?? null);
+  }, [props.visible, props.ch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const list = fam === 'Mes réglages' ? mine : LIBRARY.filter((p) => p.family === fam);
+  // recherche : dans toute la bibliothèque (« kick », « saxo », « rock »…)
+  const list = q.trim()
+    ? [...LIBRARY, ...mine].filter((p) => norm(`${p.name} ${p.variant ?? ''} ${p.desc ?? ''} ${p.family ?? ''} ${p.element ?? ''}`).includes(norm(q.trim())))
+    : fam === 'Mes réglages' ? mine : LIBRARY.filter((p) => p.family === fam && (fam !== 'Batterie' || !part || p.element === part));
   const chName = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
   const toggle = (c: number) => setTargets((t) => (t.includes(c) ? t.filter((x) => x !== c) : [...t, c].sort((a, b) => a - b)));
 
@@ -64,18 +74,29 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
             <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 15 }}>Fermer</Text>
           </Pressable>
         </View>
-        <View>
+        <TextInput value={q} onChangeText={setQ} placeholder="🔎 Cherche : kick, voix rock, saxo, cajon…" placeholderTextColor={theme.muted}
+          style={{ height: 48, borderRadius: 12, borderWidth: 2, paddingHorizontal: 12, fontSize: 15, color: theme.text, borderColor: q ? theme.accent : theme.line2, backgroundColor: theme.deep, marginBottom: 8 }} />
+        <View style={{ opacity: q ? 0.4 : 1 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
             {FAMILIES.map((fa) => (
-              <Pressable key={fa} onPress={() => setFam(fa)} style={[styles.chip, fa === fam ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
-                <Text style={{ color: fa === fam ? theme.onAccent : theme.text, fontWeight: '700', fontSize: 13 }}>{fa}</Text>
+              <Pressable key={fa} onPress={() => { setFam(fa); setQ(''); setPart(null); }} style={[styles.chip, fa === fam && !q ? { backgroundColor: FAM_COLORS[fa], borderColor: FAM_COLORS[fa] } : { borderColor: theme.line2 }]}>
+                <Text style={{ color: fa === fam && !q ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 13 }}>{FAM_ICON[fa]} {fa}</Text>
               </Pressable>
             ))}
           </ScrollView>
         </View>
+        {fam === 'Batterie' && !q && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, marginTop: 8, minHeight: 40 }} contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
+            {[null, ...DRUM_PARTS].map((d) => (
+              <Pressable key={d ?? 'tout'} onPress={() => setPart(d)} accessibilityState={{ selected: part === d }} style={[styles.small, part === d ? { backgroundColor: FAM_COLORS.Batterie, borderColor: FAM_COLORS.Batterie } : { borderColor: theme.line2 }]}>
+                <Text style={{ color: part === d ? '#0B0D10' : theme.text, fontSize: 12, fontWeight: '800' }}>{d ?? 'Toute la batterie'}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
 
         <ScrollView contentContainerStyle={{ gap: 8, paddingTop: 12, paddingBottom: 30 }}>
-          {list.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Rien ici pour l’instant. Règle une voie à ton goût, puis « Garder ce réglage » en bas.</Text>}
+          {list.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>{q ? `Rien pour « ${q} ». Essaie un autre mot : voix, guitare, kick…` : 'Rien ici pour l’instant. Règle une voie à ton goût, puis « Garder ce réglage » en bas.'}</Text>}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {list.map((p) => {
               const on = sel?.name === p.name;
@@ -85,7 +106,8 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
                   <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: theme.meterBg }}>
                     <EqThumb p={p} width={150} height={56} color={c} theme={theme} />
                   </View>
-                  <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{p.variant && p.variant !== 'Standard' ? p.variant : p.name}</Text>
+                  <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{p.element && (q || !part) ? `${p.element} · ` : ''}{p.variant ?? p.name}</Text>
+                  {!!q && <Text numberOfLines={1} style={{ color: c, fontSize: 10, fontWeight: '800' }}>{p.family}</Text>}
                   <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 11, minHeight: 28 }}>{p.desc ?? p.name}</Text>
                   <PresetDots p={p} theme={theme} />
                 </Pressable>

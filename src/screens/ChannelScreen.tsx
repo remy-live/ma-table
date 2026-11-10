@@ -1,6 +1,9 @@
 // La voie, visuelle : le trajet du son en blocs (Entrée › Coupe-bas › Gate ›
 // EQ › Comp › Effets), un égaliseur dessiné avec 4 points, des effets en
 // tuiles avec « Retirer », et en bas qui entend cette voie.
+import { LinkBanner } from '../ui/LinkBanner';
+import { BlockIcon, BlockKind } from '../ui/BlockIcon';
+import { CloseX } from '../ui/kit';
 import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -27,11 +30,12 @@ import { FxNames, loadFxNames, saveFxNames } from '../xair/fxSlots';
 import { InputSheet } from './InputSheet';
 import { InputSourceSheet } from './InputSourceSheet';
 import { mixInfo } from './MixPicker';
-import { PresetsSheet } from './PresetsSheet';
+import { PresetPanel } from './PresetPanel';
+import { showTip } from '../ui/tip';
 import { meterIndex } from '../xair/addresses';
 
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
-type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx' | 'qui';
+type Block = 'preset' | 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx' | 'qui';
 
 /** Téléphone : plein écran, un bloc à la fois. Tablette (`wide`) : panneau latéral, tout visible d'un coup. */
 /** Bouton Avant / Après : entendre le son d'avant les réglages, puis revenir. */
@@ -45,23 +49,26 @@ export function ABButton({ theme, ab }: { theme: Theme; ab: { mode: 'apres' | 'a
   );
 }
 
-export function ChannelScreen({ client, ch, theme, onClose, wide }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void; wide?: boolean }) {
-  if (wide) return ch !== null ? <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} wide /> : null;
+export function ChannelScreen({ client, ch, theme, onClose, wide, start }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void; wide?: boolean; start?: 'preset' | 'eq' }) {
+  if (wide) return ch !== null ? <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} wide start={start} /> : null;
   return (
     <Modal visible={ch !== null} animationType="slide" onRequestClose={onClose}>
-      {ch !== null && <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} />}
+      {ch !== null && <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} start={start} />}
+      {ch !== null && <LinkBanner client={client} top={100} />}
     </Modal>
   );
 }
 
-export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAirClient; ch: number; theme: Theme; onClose: () => void; wide?: boolean }) {
+export function ChannelBody({ client, ch, theme, onClose, wide, start }: { client: XAirClient; ch: number; theme: Theme; onClose: () => void; wide?: boolean; start?: 'preset' | 'eq' }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const [blockSel, setBlock] = useState<Block>('eq');
+  const [blockSel, setBlock] = useState<Block>(start ?? 'eq');
+  useEffect(() => { if (start) setBlock(start); }, [ch, start]);
   const block = blockSel;
   // un bloc à la fois, sur téléphone comme sur tablette : tout tient sans défiler
   const show = (b: Block | Block[]) => (Array.isArray(b) ? b.includes(block) : block === b);
   const [band, setBand] = useState(2);
-  const [lib, setLib] = useState(false);
+  const [lastPreset, setLastPreset] = useState<string | null>(null);
+  useEffect(() => { setLastPreset(null); }, [ch]);
   const [fxOpen, setFxOpen] = useState<number | null>(null);
   const [fxNames, setFxNames] = useState<FxNames>({});
   useEffect(() => { loadFxNames().then(setFxNames); }, []);
@@ -103,6 +110,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
 
   const fxCount = sends.filter((v) => v > 0).length;
   const BLOCKS: { id: Block; icon: string; label: string; sub: string; color: string }[] = [
+    { id: 'preset', icon: '', label: 'Préréglage', sub: lastPreset ?? 'choisir', color: '#FBBF24' },
     { id: 'in', icon: '🎤', label: 'Entrée', sub: `prise ${insrcPlug(insrc)} · ${gain === undefined ? kind : `${fToGainDb(Number(gain)) > 0 ? '+' : ''}${fToGainDb(Number(gain)).toFixed(0)} dB`}`, color: '#C9CED4' },
     { id: 'hpf', icon: '⤴', label: 'Coupe-bas', sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
     { id: 'gate', icon: '▯', label: 'Gate', sub: gateOn ? `${fToGateDb(gateThr).toFixed(0)} dB` : 'off', color: '#9AA3AD' },
@@ -122,36 +130,45 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }, wide ? styles.wideRoot : { paddingBottom: bottomPad() }]}>
       <View style={styles.head}>
-        <Pressable onPress={onClose} accessibilityLabel={wide ? 'Fermer le panneau' : 'Retour à la table'} style={[styles.back, { backgroundColor: theme.panel }]}>
-          <Text style={{ color: theme.text, fontSize: 20 }}>{wide ? '×' : '‹'}</Text>
+        {wide ? <CloseX theme={theme} onPress={onClose} label="Fermer le panneau" /> : (
+        <Pressable onPress={onClose} accessibilityLabel="Retour à la table" style={[styles.back, { backgroundColor: theme.panel, borderWidth: 2, borderColor: theme.text }]}>
+          <Text style={{ color: theme.text, fontSize: 24, fontWeight: '900' }}>‹</Text>
         </Pressable>
+        )}
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>{name}</Text>
           <Text style={{ color: theme.muted, fontSize: 12 }}>
             Voie {ch} · prise {insrcPlug(insrc)} · {kind.toLowerCase()}
           </Text>
         </View>
-        <Pressable onPress={() => setLib(true)} style={[styles.chip, { borderColor: theme.accent, borderWidth: 1 }]}>
-          <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 13 }}>Préréglage ▾</Text>
-        </Pressable>
       </View>
 
-      {/* LE TRAJET DU SON (téléphone : navigation ; tablette : tout est affiché) */}
-      {<ScrollView horizontal scrollEnabled={!wide} showsHorizontalScrollIndicator={false} contentContainerStyle={[{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }, wide && { gap: 4, flexGrow: 1 }]} style={{ flexGrow: 0 }}>
-        {BLOCKS.map((bl) => {
+      {/* LE TRAJET DU SON : des onglets accrochés au panneau en dessous */}
+      {(() => {
+        const tabs = BLOCKS.map((bl) => {
           const on = block === bl.id;
           const act = active(bl.id);
           return (
-            <Pressable key={bl.id} onPress={() => setBlock(bl.id)} accessibilityState={{ selected: on }} accessibilityLabel={`${bl.label} · ${bl.sub}`} style={[styles.block, wide && { minWidth: 0, width: undefined, flex: 1, paddingHorizontal: 2 }, { borderColor: on ? bl.color : theme.line, backgroundColor: on ? theme.deep : theme.panel, opacity: act || on ? 1 : 0.6 }]}>
-              <Text style={{ fontSize: 18 }}>{bl.icon}</Text>
-              <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>{bl.label}</Text>
-              <Text style={{ color: on ? bl.color : theme.muted, fontSize: 10 }} numberOfLines={1}>{bl.sub}</Text>
+            <Pressable key={bl.id} onPress={() => setBlock(bl.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={`${bl.label} · ${bl.sub}`}
+              style={[styles.block, wide && { width: undefined, flex: 1, minWidth: 0, paddingHorizontal: 1 },
+                on ? { backgroundColor: theme.panel, borderColor: bl.color, height: 66, marginBottom: -2, zIndex: 2 } : { backgroundColor: theme.deep, borderColor: theme.line, opacity: act ? 1 : 0.65 }]}>
+              <BlockIcon kind={bl.id as BlockKind} color={on ? bl.color : act ? theme.text : theme.muted} size={wide ? 20 : 22} />
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ color: theme.text, fontSize: wide ? 9.5 : 11, fontWeight: '800', letterSpacing: wide ? -0.2 : 0 }}>{bl.label}</Text>
+              <Text numberOfLines={1} style={{ color: on ? bl.color : theme.muted, fontSize: wide ? 9 : 9.5 }}>{bl.sub}</Text>
             </Pressable>
           );
-        })}
-      </ScrollView>}
+        });
+        return wide
+          ? <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingHorizontal: 12, paddingTop: 6, zIndex: 2 }}>{tabs}</View>
+          : <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, zIndex: 2 }} contentContainerStyle={{ gap: 4, paddingHorizontal: 12, paddingTop: 6, alignItems: 'flex-end' }}>{tabs}</ScrollView>;
+      })()}
 
-      <ScrollView contentContainerStyle={[styles.body, wide && { paddingTop: 4 }]}>
+      <ScrollView contentContainerStyle={[styles.body, { paddingTop: 0 }]}>
+        {show('preset') && (
+          <Card theme={theme} title="Préréglages" color="#FBBF24">
+            <PresetPanel client={client} ch={ch} theme={theme} name={name} wide={!!wide} onApplied={(p) => setLastPreset(p ? p.variant ?? p.name : null)} />
+          </Card>
+        )}
         {show('in') && (
           <Card theme={theme} title="Entrée" color="#C9CED4">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -206,19 +223,23 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
                 </Pressable>
               ))}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexGrow: 1, flexBasis: 220 }}>
               <Pressable onPress={() => setBandG(band, b.db - 1)} accessibilityLabel="Baisser la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>−</Text></Pressable>
               <View style={{ flex: 1, alignItems: 'stretch' }}>
                 <Text style={{ textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{`${b.db > 0 ? '+' : ''}${b.db.toFixed(1)} dB`}</Text>
                 <View style={{ flexDirection: 'row' }}><DragBar center frac={(b.db + 15) / 30} onFrac={(x) => setBandG(band, Math.round((x * 30 - 15) * 2) / 2)} color={BAND_COLORS[band]} bg={theme.deep} barH={8} style={{ height: 30 }} label="Gain de la bande" valueText={`${b.db.toFixed(1)} dB`} /></View>
               </View>
               <Pressable onPress={() => setBandG(band, b.db + 1)} accessibilityLabel="Monter la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>+</Text></Pressable>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexGrow: 1, flexBasis: 200 }}>
               <Pressable onPress={() => setBandF(band, b.hz / 1.2)} accessibilityLabel="Plus grave" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>◀</Text></Pressable>
-              <View style={{ width: 110 }}>
+              <View style={{ flex: 1 }}>
                 <Text style={{ textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '700' }}>{formatHz(b.hz)}</Text>
                 <View style={{ flexDirection: 'row' }}><DragBar frac={Math.log(b.hz / 20) / Math.log(1000)} onFrac={(x) => setBandF(band, 20 * Math.pow(1000, x))} color={BAND_COLORS[band]} bg={theme.deep} barH={8} style={{ height: 30 }} label="Fréquence de la bande" valueText={formatHz(b.hz)} /></View>
               </View>
               <Pressable onPress={() => setBandF(band, b.hz * 1.2)} accessibilityLabel="Plus aigu" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>▶</Text></Pressable>
+              </View>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {[
@@ -335,7 +356,6 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
         <View style={{ height: 30 }} />
       </ScrollView>
 
-      <PresetsSheet client={client} theme={theme} visible={lib} ch={ch} onClose={() => setLib(false)} />
       <EffectDetail client={client} theme={theme} slot={fxOpen} names={fxNames} onNames={(n) => { setFxNames(n); saveFxNames(n); }} onClose={() => setFxOpen(null)} onOpen={setFxOpen} />
       <InputSheet client={client} ch={inputOpen ? ch : null} theme={theme} onClose={() => setInputOpen(false)} />
       <InputSourceSheet client={client} ch={srcOpen ? ch : null} theme={theme} onClose={() => setSrcOpen(false)} />
@@ -372,9 +392,11 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 4 },
   back: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 12, gap: 12 },
+  trial: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 12, marginTop: 6, padding: 6, paddingLeft: 10, borderRadius: 14, borderWidth: 2 },
+  sugg: { height: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1, justifyContent: 'center' },
   chip: { height: 40, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center' },
-  block: { width: 78, height: 70, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
-  card: { borderRadius: 18, padding: 14, gap: 10 },
+  block: { width: 78, height: 62, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomWidth: 0, borderWidth: 2, alignItems: 'center', justifyContent: 'center', gap: 1, paddingHorizontal: 4 },
+  card: { borderRadius: 18, borderTopLeftRadius: 4, padding: 14, gap: 10 },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   toggle: { height: 32, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center' },
   plug: { width: 64, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

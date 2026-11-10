@@ -1,5 +1,6 @@
 // Connexion et sauvegarde : état de la liaison, ce qui est gardé dans l'appli,
 // export / import, conseil de scène, quitter.
+import { TableCheckSheet } from './TableCheckSheet';
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Status, XAirClient } from '../xair/XAirClient';
@@ -18,6 +19,7 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
   const [importText, setImportText] = useState('');
   const [netOpen, setNetOpen] = useState(false);
   const [dbgOpen, setDbgOpen] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
   const [sessOpen, setSessOpen] = useState(false);
   const [impOpen, setImpOpen] = useState(false);
   useEffect(() => client.onStatus(setStatus), [client]);
@@ -80,11 +82,13 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
         </View>
       )}
       <Text style={{ color: isPersistent() ? theme.ok : theme.accent, fontSize: 11 }}>{isPersistent() ? '✓ Sauvegarde automatique active' : '⚠ Sauvegarde en mémoire seulement'}</Text>
+      {link('🩺 Vérifier ma table', 'Chaque fonction essayée sur la table : ✓ ou ✗', '#F87171', () => setCheckOpen(true))}
       {link('Débogage', 'Journal, diagnostic de la table, envoyer le rapport', theme.line2, () => setDbgOpen(true))}
       <Pressable onPress={onDisconnect} style={[styles.btnS, { borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Se déconnecter de la table</Text></Pressable>
       <NetworkSetupScreen client={client} theme={theme} visible={netOpen} onClose={() => setNetOpen(false)} />
       <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => setSessOpen(false)} />
       <DebugScreen client={client} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
+      <TableCheckSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
     </View>
   );
 
@@ -163,12 +167,17 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
         <Text style={{ color: theme.muted, fontSize: 12 }}>Enregistrer la soirée, en démarrer une nouvelle, reprendre, sauvegardes automatiques, copie dans la table.</Text>
       </Pressable>
 
+      <Pressable onPress={() => setCheckOpen(true)} style={[styles.card, { backgroundColor: theme.panel, borderColor: '#F87171', gap: 2 }]}>
+        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>🩺 Vérifier ma table ›</Text>
+        <Text style={{ color: theme.muted, fontSize: 12 }}>L’appli essaie chaque fonction sur ta table et te dit ce qui marche.</Text>
+      </Pressable>
       <Pressable onPress={() => setDbgOpen(true)} style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line2, gap: 2 }]}>
         <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Débogage ›</Text>
         <Text style={{ color: theme.muted, fontSize: 12 }}>Journal, diagnostic de la table, envoyer le rapport</Text>
       </Pressable>
       <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => setSessOpen(false)} />
       <DebugScreen client={client} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
+      <TableCheckSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
 
       <Pressable onPress={onDisconnect} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}>
         <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>Se déconnecter de la table</Text>

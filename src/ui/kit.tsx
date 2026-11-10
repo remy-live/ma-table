@@ -87,3 +87,13 @@ const styles = StyleSheet.create({
   btn: { minHeight: 48, paddingHorizontal: SP.lg, borderRadius: RAD.md, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SP.sm },
   btnSmall: { minHeight: 40, paddingHorizontal: SP.md, borderRadius: RAD.sm + 2 },
 });
+
+/** Croix de fermeture bien visible : un rond contrasté de 44 px. */
+export function CloseX({ theme, onPress, label = 'Fermer', size = 44 }: { theme: Theme; onPress: () => void; label?: string; size?: number }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel={label}
+      style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: theme.text, backgroundColor: theme.deep, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: theme.text, fontSize: size * 0.42, fontWeight: '900', lineHeight: size * 0.5 }}>✕</Text>
+    </Pressable>
+  );
+}

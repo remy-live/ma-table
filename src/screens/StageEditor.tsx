@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { Segmented } from '../ui/kit';
+import { Segmented, CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { showTip } from '../ui/tip';
 import { BUS_COUNT, busNamePath, CH_COUNT, MAIN, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, inDca, insrcPath, insrcPlug } from '../xair/addresses';
@@ -1013,7 +1013,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                           {selEnd && 'plug' in selEnd && plugName(selEnd.plug) ? <Text style={{ color: theme.muted, fontSize: 12 }}> · {plugName(selEnd.plug)}</Text> : null}
                         </Text>
                       )}
-                      <Pressable onPress={() => setSel(null)} style={styles.x} accessibilityLabel="Fermer"><Text style={{ color: theme.muted, fontSize: 18 }}>✕</Text></Pressable>
+                      <CloseX theme={theme} size={38} onPress={() => setSel(null)} />
                     </View>
 
                     {'gear' in sel && (
@@ -1095,7 +1095,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           <Pressable onPress={() => {}} style={[styles.linkBox, { backgroundColor: theme.panel, borderColor: theme.line2 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ flex: 1, color: theme.text, fontSize: 18, fontWeight: '900' }}>Le plan et la table</Text>
-              <Pressable onPress={() => setLinkBox(false)} style={styles.x} accessibilityLabel="Fermer"><Text style={{ color: theme.muted, fontSize: 18 }}>✕</Text></Pressable>
+              <CloseX theme={theme} size={38} onPress={() => setLinkBox(false)} />
             </View>
             {([
               ['free', '○ Plan libre', '#94A3B8', 'Le plan ne touche jamais la table, et la table ne touche pas le plan.', ['Pour préparer une autre salle ou un autre groupe.']],

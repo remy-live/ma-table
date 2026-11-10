@@ -19,7 +19,7 @@ import { connect, disconnect, likeMain, link, unlink, nudge, Outlet, outlets, ou
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
-import { Btn, ScreenHeader, Segmented } from '../ui/kit';
+import { Btn, ScreenHeader, Segmented, CloseX } from '../ui/kit';
 import { ManyDrawer } from './TableWiring';
 import { StageEditor } from './StageEditor';
 import { ChannelDrawer } from './ChannelDrawer';
@@ -168,7 +168,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={[styles.num, { borderColor: plugColor(selPlug) }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{selPlug.n}</Text></View>
                   <Text style={{ color: theme.muted, fontSize: 13, flex: 1 }}>Prise {selPlug.n} : rien ne l’écoute. Donne-lui une voie depuis la Table (touche une tranche › Branchée sur › Changer).</Text>
-                  <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
+                  <CloseX theme={theme} onPress={() => setSel(null)} />
                 </View>
               ))}
               {sel?.kind === 'many' && (
@@ -207,7 +207,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                       </Pressable>
                     )}
                     <Pressable onPress={() => setFold((x) => !x)} accessibilityLabel={fold ? 'Déplier' : 'Réduire'} style={styles.close}><Text style={{ color: theme.muted, fontSize: 18 }}>{fold ? '▴' : '▾'}</Text></Pressable>
-                    <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
+                    <CloseX theme={theme} onPress={() => setSel(null)} />
                   </View>
                   {!fold && <>
                   <AddRow theme={theme} label="Ajouter" items={P.filter((p) => p.chans.length && !selWires.some((w) => w.plug === p.n)).map((p) => ({ key: String(p.n), text: `${p.n} · ${p.name || 'voie ' + p.chans[0]}`, color: plugColor(p), add: () => { link(client, p, selOut); say(`Prise ${p.n} → ${selOut.label} · −6 dB`); } }))} />

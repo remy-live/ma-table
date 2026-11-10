@@ -15,6 +15,9 @@ import * as dbg from '../debug/log';
 import { DebugScreen } from './DebugScreen';
 import { Theme } from '../ui/theme';
 
+// une seule tentative automatique par lancement de l'appli (pas après « Quitter »)
+let autoTried = false;
+
 interface MyTable { ip: string; name: string; model: string; at: number; ssid?: string; mode?: number }
 
 export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig, musician?: boolean, prep?: boolean) => void; invite?: MonConfig | null }) {
@@ -50,9 +53,21 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Au lancement : on se reconnecte tout seul à la dernière table
+  const [auto, setAuto] = useState<{ host: string; name: string } | null>(null);
+  const autoCancel = React.useRef(false);
   useEffect(() => {
-    load<string | null>('derniereIp', null).then(setLast);
-  }, []);
+    load<string | null>('derniereIp', null).then(async (ip0) => {
+      setLast(ip0);
+      if (autoTried || !ip0 || invite) return;
+      autoTried = true;
+      const t = await load<MyTable | null>('maTable', null);
+      autoCancel.current = false;
+      setAuto({ host: ip0, name: t?.ip === ip0 ? t.name : ip0 });
+      await connect(ip0, false, undefined, false, false, autoCancel);
+      setAuto(null);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Partage de connexion : la diffusion ne passe pas toujours, on interroge chaque adresse. */
   const searchHotspot = async () => {
@@ -109,12 +124,13 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     connect(cfg.host, false, cfg);
   };
 
-  const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false) => {
+  const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }) => {
     setBusy(true);
     setError('');
     const client = new XAirClient(demo ? new DemoTransport() : new RnUdpTransport());
     try {
       await client.connect(host);
+      if (cancel?.current) { client.close(); setBusy(false); return; }
       if (!demo && !mon && !musician) {
         save('derniereIp', host);
         const inf = client.info;
@@ -132,7 +148,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     } catch (e) {
       client.close();
       dbg.error(`Connexion à ${host} impossible : ${String(e)}`);
-      setError(`Pas de réponse de ${host}. Vérifie que le téléphone est sur le Wi-Fi de la table.`);
+      if (!cancel?.current) setError(`Pas de réponse de ${host}. Vérifie que le téléphone est sur le Wi-Fi de la table.`);
     }
     setBusy(false);
   };
@@ -144,6 +160,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   };
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40, flexGrow: 1, justifyContent: 'center' }]} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={[styles.logo, { backgroundColor: theme.accent }]}>
@@ -333,6 +350,17 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
       {!!error && <Text style={{ color: theme.mute, marginTop: 8, fontWeight: '700' }}>{error}</Text>}
       <DebugScreen client={null} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
     </ScrollView>
+      {auto && (
+        <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, zIndex: 50 }}>
+          <ActivityIndicator size="large" color={theme.accent} />
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', textAlign: 'center' }}>Je retrouve ta table…</Text>
+          <Text style={{ color: theme.muted, fontSize: 14, textAlign: 'center' }}>{auto.name}{auto.name !== auto.host ? ` · ${auto.host}` : ''}</Text>
+          <Pressable onPress={() => { autoCancel.current = true; setAuto(null); setBusy(false); }} style={{ minHeight: 50, paddingHorizontal: 24, borderRadius: 14, borderWidth: 2, borderColor: theme.line2, justifyContent: 'center' }}>
+            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Annuler · choisir une autre table</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
   );
 }
 
