@@ -3,12 +3,12 @@
 //   2. pour le donner à QUI (une ou plusieurs)
 //   3. quelles voies (toutes cochées ; un appui décoche)
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { dbLabel } from '../ui/format';
 import { readInset } from '../ui/immersive';
 import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
-import { allTargets, CH_COUNT, chLevelPath, chNamePath, Target, targetId } from '../xair/addresses';
+import { allTargets, BUS_COUNT, CH_COUNT, chLevelPath, chNamePath, Target, targetId } from '../xair/addresses';
 import { copyMix } from '../xair/groups';
 import { chColor, colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
@@ -46,6 +46,15 @@ export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible:
     props.onDone('copié');
     props.onClose();
   };
+  const allLikePublic = () => Alert.alert('Mix de base pour tous ?', 'Les 6 retours deviennent identiques à ce qu’entend le public. Une sauvegarde est faite avant.', [
+    { text: 'Annuler', style: 'cancel' },
+    { text: 'Copier', onPress: async () => {
+      await safetyBackup(client, 'avant mix de base pour tous').catch(() => null);
+      for (let b = 1; b <= BUS_COUNT; b++) copyMix(client, { kind: 'main' }, { kind: 'bus', n: b });
+      props.onDone('copié');
+      props.onClose();
+    } },
+  ]);
   const Person = ({ t, on, onPress, disabled }: { t: Target; on: boolean; onPress: () => void; disabled?: boolean }) => {
     const m = mixInfo(client, t);
     return (
@@ -59,6 +68,16 @@ export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible:
       <Pressable style={[styles.scrim, { paddingBottom: 20 + readInset() }]} onPress={props.onClose}>
         <Pressable style={[styles.sheet, { backgroundColor: theme.panel, borderColor: srcInfo.color }]} onPress={() => {}}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>Copier un mix</Text>
+
+          {/* raccourci : un mix de base identique pour tous, chacun ajoute ensuite un peu de lui (Plus de moi) */}
+          <Pressable onPress={allLikePublic} style={[styles.base, { borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.10)' }]}>
+            <Text style={{ fontSize: 26 }}>👥</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>Mix de base pour tous</Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>Les 6 retours reçoivent ce qu’entend le public. Ensuite chacun se monte avec « Plus de moi ».</Text>
+            </View>
+            <Text style={{ color: '#34D399', fontWeight: '900', fontSize: 15 }}>Copier ›</Text>
+          </Pressable>
 
           <Kicker theme={theme}>1 · JE PRENDS CE QU’ENTEND… (un seul)</Kicker>
           <View style={styles.wrap}>
@@ -100,6 +119,7 @@ export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible:
 }
 
 const styles = StyleSheet.create({
+  base: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 2, borderRadius: 16, padding: 12 },
   scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   sheet: { width: '100%', maxWidth: 900, borderWidth: 2, borderRadius: 20, padding: 16, gap: 10 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

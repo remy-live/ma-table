@@ -17,6 +17,7 @@ import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
 import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { ManyDrawer } from './TableWiring';
+import { StageEditor } from './StageEditor';
 import { ChannelDrawer } from './ChannelDrawer';
 import { useAnyTick } from '../ui/useTick';
 import { MonoSwitch } from '../ui/MonoSwitch';
@@ -24,7 +25,7 @@ import { readGroups } from '../xair/groups';
 import { GROUP_COLORS } from './GroupsSheet';
 import { load, save } from '../store/persist';
 
-type View3 = 'arriere' | 'colonnes' | 'bulles';
+type View3 = 'arriere' | 'colonnes' | 'bulles' | 'scene';
 type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'many'; ns: number[] } | null;
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
@@ -38,8 +39,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   // 2 vues : les câbles (face arrière sur tablette, colonnes sur téléphone) et les bulles.
   // La table dessinée (régler + relier) est dans Table › Vue Table.
   const cables: View3 = width > 700 ? 'arriere' : 'colonnes';
-  const VIEWS: readonly (readonly [View3, string])[] = [[cables, 'Câbles'], ['bulles', 'Bulles']];
-  useEffect(() => { load<string>('vueBranchements', 'arriere').then((v) => setView(v === 'bulles' ? 'bulles' : cables)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const VIEWS: readonly (readonly [View3, string])[] = [[cables, 'Câbles'], ['bulles', 'Bulles'], ['scene', 'Scène']];
+  useEffect(() => { load<string>('vueBranchements', 'arriere').then((v) => setView(v === 'bulles' || v === 'scene' ? v : cables)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
   const [multi, setMulti] = useState(false);
   const [showAll, setShowAll] = useState(true);
@@ -98,8 +99,8 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <ScreenHeader theme={theme} title="Branchements" sub={view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
-          {view !== 'bulles' && (
+        <ScreenHeader theme={theme} title="Branchements" sub={view === 'scene' ? 'La scène vue de dessus : objets, câbles jack et XLR, retours · le matériel à emporter' : view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+          {view !== 'bulles' && view !== 'scene' && (
             <Pressable onPress={() => { const m = !multi; setMulti(m); if (m && sel?.kind === 'plug') setSel({ kind: 'many', ns: [sel.n] }); if (!m && sel?.kind === 'many') setSel(null); }} accessibilityRole="switch" accessibilityState={{ checked: multi }}
               style={[styles.small, { height: 44, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : 'transparent' }]}>
               <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Plusieurs${sel?.kind === 'many' ? ` (${sel.ns.length})` : ''}` : '☐ Plusieurs'}</Text>
@@ -109,7 +110,9 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           {!props.embedded && <Btn theme={theme} kind="primary" label="Terminé" onPress={props.onClose} />}
         </ScreenHeader>
 
-        {view === 'bulles' ? (
+        {view === 'scene' ? (
+          <StageEditor client={client} theme={theme} />
+        ) : view === 'bulles' ? (
           <WhoHearsScreen client={client} theme={theme} visible embedded onClose={props.onClose} />
         ) : (
           <>

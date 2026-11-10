@@ -2,6 +2,7 @@
 // reprendre une ancienne, envoyer / recevoir, et les filets de sécurité
 // (sauvegardes automatiques, copie dans la table).
 import React, { useEffect, useState } from 'react';
+import { shareBackup, pickAndRestore } from '../store/backup';
 import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import {
@@ -134,6 +135,23 @@ export function SessionsScreen(props: { client: XAirClient; theme: Theme; visibl
               </View>
             </View>
           )}
+
+          {/* TOUT SAUVEGARDER : un fichier, vers Google Drive ou ailleurs */}
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: '#60A5FA' }]}>
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>☁ Tout sauvegarder (Google Drive, mail…)</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Un seul fichier avec toutes les soirées, ta scène, tes effets et les réglages de l’appli. Choisis « Drive » dans le menu qui s’ouvre. Pour le reprendre sur un autre appareil : « Reprendre un fichier ».</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={() => shareBackup().catch(() => Alert.alert('Impossible', 'La sauvegarde n’a pas pu être préparée.'))} style={[styles.btn, { backgroundColor: '#60A5FA' }]}><Text style={{ color: '#061A33', fontWeight: '800', fontSize: 14 }}>↗ Sauvegarder vers…</Text></Pressable>
+              <Pressable onPress={async () => {
+                try {
+                  const n = await pickAndRestore();
+                  if (n === null) return;
+                  Alert.alert('Repris', `${n} éléments repris (soirées, scène, réglages). Rouvre les écrans pour les voir.`);
+                  refresh();
+                } catch { Alert.alert('Impossible', 'Ce fichier n’est pas une sauvegarde complète « Ma table ».'); }
+              }} style={[styles.btn, { borderColor: '#60A5FA', borderWidth: 1 }]}><Text style={{ color: '#93C5FD', fontWeight: '800', fontSize: 14 }}>Reprendre un fichier</Text></Pressable>
+            </View>
+          </View>
 
           {/* ENREGISTRÉES */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>

@@ -55,3 +55,20 @@ export async function save<T>(key: string, value: T): Promise<void> {
 export function _resetMemory() {
   memory.clear();
 }
+
+/** Tout ce que l'appli garde (soirées, scène, réglages, effets…), pour une sauvegarde complète. */
+export async function dumpAll(): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const b = backend as Backend & { getAllKeys?: () => Promise<readonly string[]> };
+  const keys = b.getAllKeys ? await b.getAllKeys() : [...memory.keys()];
+  for (const k of keys) {
+    if (!k.startsWith('matable:') || k === 'matable:__test') continue;
+    try { const raw = await backend.getItem(k); if (raw) out[k.slice(8)] = JSON.parse(raw); } catch { /* ignoré */ }
+  }
+  return out;
+}
+export async function restoreAll(data: Record<string, unknown>): Promise<number> {
+  let n = 0;
+  for (const [k, v] of Object.entries(data)) { await save(k, v); n++; }
+  return n;
+}
