@@ -48,6 +48,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [checkOpen, setCheckOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [openG, setOpenG] = useState<number[]>([]);
   const [gainCh, setGainCh] = useState<number | null>(null);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [cur, setCur] = useState<Current | null>(null);
@@ -160,7 +161,11 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
           <View style={styles.grid}>
             {groups.map((g) => (
-              <GroupTile key={'g' + g.k} client={client} g={g} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudge(g, d)} />
+              <React.Fragment key={'g' + g.k}>
+                <GroupTile client={client} g={g} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudge(g, d)} open={openG.includes(g.k)} onToggle={() => setOpenG((o) => (o.includes(g.k) ? o.filter((x) => x !== g.k) : [...o, g.k]))} />
+                {/* groupe déplié : chaque voie du groupe se règle à part */}
+                {openG.includes(g.k) && g.members.map((c) => <ChTile key={'gm' + c} client={client} ch={c} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudgeCh(c, d)} />)}
+              </React.Fragment>
             ))}
             {solos.map((c) => <ChTile key={c} client={client} ch={c} mix={mix} theme={theme} wide={wide} onNudge={(d) => nudgeCh(c, d)} />)}
           </View>
@@ -236,7 +241,7 @@ function ChTile(props: { client: XAirClient; ch: number; mix: Target; theme: The
   );
 }
 
-function GroupTile(props: { client: XAirClient; g: Group; mix: Target; theme: Theme; wide: boolean; onNudge: (db: number) => void }) {
+function GroupTile(props: { client: XAirClient; g: Group; mix: Target; theme: Theme; wide: boolean; onNudge: (db: number) => void; open?: boolean; onToggle?: () => void }) {
   const { client, g, mix, theme } = props;
   const fader = Number(useParam<number>(client, dcaFaderPath(g.k), 0.75));
   const on = Number(useParam<number>(client, dcaOnPath(g.k), 1)) === 1;
@@ -265,7 +270,10 @@ function GroupTile(props: { client: XAirClient; g: Group; mix: Target; theme: Th
           </Pressable>
         )}
       </View>
-      <Text style={{ color: theme.muted, fontSize: 10 }}>{g.members.length} voies{isMain ? '' : ' · toutes bougent ensemble'}</Text>
+      <Pressable onPress={props.onToggle} hitSlop={8} accessibilityRole="button" accessibilityState={{ expanded: !!props.open }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 30 }}>
+        <Text style={{ color: gc, fontSize: 13, fontWeight: '900' }}>{props.open ? '◂ Replier' : 'Déplier ▸'}</Text>
+        <Text style={{ color: theme.muted, fontSize: 11 }}>{g.members.length} voies{props.open ? ' · chacune se règle à part' : isMain ? '' : ' · toutes bougent ensemble'}</Text>
+      </Pressable>
     </View>
   );
 }

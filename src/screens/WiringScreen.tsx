@@ -118,7 +118,19 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           <>
             <View style={{ flex: 1 }}>
               {view === 'arriere' ? (
-                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onEmpty={() => setSel(null)} onGroup={(k) => setSel(sel?.kind === 'group' && sel.k === k ? null : { kind: 'group', k })} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
+                <RearPanel client={client} theme={theme} P={P} O={O} W={showAll || !sel ? W : W.filter(touches)} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} onLink={linkDrag} onEmpty={() => setSel(null)} onGroup={(k) => {
+                  if (multi) {
+                    // « Plusieurs » : tout le groupe entre (ou sort) de la sélection
+                    const g = readGroups(client).find((x) => x.k === k);
+                    const gp = g ? P.filter((p) => p.chans.some((c) => g.members.includes(c))).map((p) => p.n) : [];
+                    const cur = sel?.kind === 'many' ? sel.ns : sel?.kind === 'plug' ? [sel.n] : [];
+                    const all = gp.length > 0 && gp.every((n) => cur.includes(n));
+                    const ns = all ? cur.filter((n) => !gp.includes(n)) : [...new Set([...cur, ...gp])].sort((a, b) => a - b);
+                    setSel(ns.length ? { kind: 'many', ns } : null);
+                    return;
+                  }
+                  setSel(sel?.kind === 'group' && sel.k === k ? null : { kind: 'group', k });
+                }} onCut={(pl, out) => { const o = O.find((x) => x.id === out); if (o) { disconnect(client, P[pl - 1], o.t); say(`Prise ${pl} retirée de ${o.label}`); } }} />
               ) : (
                 <Columns theme={theme} P={P} O={O} W={visibleWires} sel={sel} plugColor={plugColor} outColor={outColor} onPlug={tapPlug} onOut={tapOut} />
               )}

@@ -2,16 +2,17 @@
 // qu'entend chaque retour. Une page claire à montrer, et un texte à envoyer
 // au groupe ou à l'ingé son de la salle (SMS, WhatsApp, mail…).
 import React, { useEffect } from 'react';
-import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { Theme } from '../ui/theme';
-import { useAnyTick } from '../ui/useTick';
 import { chLevelPath, chNamePath, insrcPath, insrcPlug, MODEL, phantomPath, sourceKind } from '../xair/addresses';
 import { faderToDb } from '../xair/levels';
 import { chColor } from '../xair/smartName';
 import { outlets, wiringPaths } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
-import { MIX_COLORS } from './MixPicker';
+import { load } from '../store/persist';
+import { EMPTY, endLabel, gearText, Stage } from '../store/stage';
+import { StageEditor } from './StageEditor';
 
 const CHS = Array.from({ length: 16 }, (_, k) => k + 1);
 
@@ -42,55 +43,31 @@ export function stagePlanText(client: XAirClient): string {
   return lines.join('\n');
 }
 
+/** Le plan de scène = l'éditeur à blocs (les mêmes données que Branchements › Scène).
+ *  « Partager » envoie tout : prises, qui entend quoi, câbles et matériel à emporter. */
 export function StagePlanSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
-  useAnyTick(client, 300);
-  const wide = useWindowDimensions().width >= 900;
   useEffect(() => { if (visible) client.loadPaths(wiringPaths()); }, [client, visible]);
   if (!visible) return null;
-  const { inputs, outs } = stagePlan(client);
+  const share = async () => {
+    const st = await load<Stage>('scene', EMPTY);
+    const cables = (st ?? EMPTY).cables.map((c) => `  ${endLabel(st, c.a)} → ${endLabel(st, c.b)} · ${c.type === 'xlr' ? 'XLR' : 'jack'}`);
+    const text = [stagePlanText(client).replace('\n\nFait avec Ma table', ''), '', ...(cables.length ? ['CÂBLES', ...cables, ''] : []), gearText(st ?? EMPTY), '', 'Fait avec Ma table'].join('\n');
+    Share.share({ message: text, title: 'Plan de scène' });
+  };
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>Plan de scène</Text>
-            <Text style={{ color: theme.muted, fontSize: 13 }}>Qui est branché où, et qui entend quoi · à envoyer au groupe ou à la salle</Text>
+            <Text style={{ color: theme.muted, fontSize: 13 }}>Déplace les blocs, relie-les · le même plan que Branchements › Scène</Text>
           </View>
-          <Pressable onPress={() => Share.share({ message: stagePlanText(client), title: 'Plan de scène' })} style={[styles.btn, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 15 }}>↗ Partager</Text></Pressable>
+          <Pressable onPress={share} style={[styles.btn, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 15 }}>↗ Partager tout</Text></Pressable>
           <Pressable onPress={onClose} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Fermer</Text></Pressable>
         </View>
-        <ScrollView contentContainerStyle={{ flexDirection: wide ? 'row' : 'column', gap: 14, paddingBottom: 12 }}>
-          <View style={[styles.col, { borderColor: theme.line, backgroundColor: theme.panel }]}>
-            <Text style={[styles.kicker, { color: theme.muted }]}>ENTRÉES · {inputs.length}</Text>
-            {inputs.map((i) => (
-              <View key={i.ch} style={styles.row}>
-                <View style={[styles.plug, { borderColor: chColor(client, i.ch) }]}><Text style={{ color: theme.text, fontWeight: '900' }}>{i.plug}</Text></View>
-                <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', flex: 1 }}>{i.name}</Text>
-                <Text style={{ color: i.kind === 'Micro 48V' ? '#F87171' : theme.muted, fontSize: 12, fontWeight: '700' }}>{i.kind}</Text>
-              </View>
-            ))}
-            {!inputs.length && <Text style={{ color: theme.muted }}>Aucune voie nommée : donne un nom aux voies (Table › touche un nom).</Text>}
-          </View>
-          <View style={[styles.col, { borderColor: theme.line, backgroundColor: theme.panel }]}>
-            <Text style={[styles.kicker, { color: theme.muted }]}>SORTIES · QUI ENTEND QUOI</Text>
-            {outs.map(({ o, hears }) => {
-              const c = o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD';
-              return (
-                <View key={o.id} style={{ gap: 6, paddingVertical: 4 }}>
-                  <View style={styles.row}>
-                    <View style={[styles.plug, { borderColor: c, width: 'auto', paddingHorizontal: 8 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 12 }}>{o.label.replace('MAIN L/R', 'MAIN')}</Text></View>
-                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', flex: 1 }}>{o.name}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingLeft: 8 }}>
-                    {hears.length ? hears.map((h) => (
-                      <View key={h.ch} style={[styles.chip, { backgroundColor: chColor(client, h.ch) }]}><Text style={{ color: '#0B0D10', fontWeight: '800', fontSize: 12 }}>{h.name}</Text></View>
-                    )) : <Text style={{ color: theme.muted, fontSize: 12 }}>rien</Text>}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
+        <View style={{ flex: 1, marginHorizontal: -10 }}>
+          <StageEditor client={client} theme={theme} />
+        </View>
       </View>
     </Modal>
   );

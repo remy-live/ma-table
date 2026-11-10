@@ -160,7 +160,7 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
   const cutHz = /voix|chant|vocal|chœur|choeur/i.test(nm) ? 100 : isBass ? 40 : 80;
   const T = ({ label, active, bg, onPress }: { label: string; active: boolean; bg: string; onPress: () => void }) => (
     <Pressable onPress={onPress} accessibilityRole="switch" accessibilityState={{ checked: active }} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2 }]}>
-      <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
     </Pressable>
   );
   return (
@@ -170,8 +170,8 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
       )}
       <T label="Phase Ø" active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
       <T label={on ? 'Couper' : 'Voie coupée'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
-      <T label={hp ? `Coupe-bas ${Math.round(fToHpfHz(Number(client.get(hpfPath(ch)) ?? 0)))} Hz` : advised ? 'Coupe-bas ★ conseillé' : 'Coupe-bas'} active={hp} bg="#2563EB" onPress={() => { if (hp) client.set(hpOnPath(ch), i(0)); else { client.set(hpfPath(ch), f(hpfHzToF(cutHz))); client.set(hpOnPath(ch), i(1)); } }} />
-      <T label={solo ? '🎧 Solo' : '🎧 Écouter seule'} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
+      <T label={hp ? `Coupe-bas ${Math.round(fToHpfHz(Number(client.get(hpfPath(ch)) ?? 0)))} Hz` : advised ? 'Coupe-bas ★' : 'Coupe-bas'} active={hp} bg="#2563EB" onPress={() => { if (hp) client.set(hpOnPath(ch), i(0)); else { client.set(hpfPath(ch), f(hpfHzToF(cutHz))); client.set(hpOnPath(ch), i(1)); } }} />
+      <T label={solo ? '🎧 Solo ✓' : '🎧 Solo'} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
     </View>
   );
 }
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   tag: { minWidth: 42, height: 42, borderRadius: RAD.md, borderWidth: 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
-  tg: { minHeight: 40, paddingHorizontal: 12, borderRadius: RAD.sm, borderWidth: 1, justifyContent: 'center' },
+  tg: { minHeight: 38, paddingHorizontal: 9, borderRadius: RAD.sm, borderWidth: 1, justifyContent: 'center' },
   line: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: RAD.sm + 2, paddingHorizontal: 10 },
   chip: { height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 2, justifyContent: 'center', maxWidth: 130 },
   act: { flexGrow: 1 },

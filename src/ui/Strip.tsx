@@ -234,17 +234,17 @@ export function GroupStrip(props: {
       <View style={[styles.head, { backgroundColor: GROUP_COLOR }]}>
         <Text style={{ color: '#1A1204', fontSize: 10, fontWeight: '800' }}>GROUPE</Text>
       </View>
-      <Text style={{ color: '#FBBF24', fontSize: 14, fontWeight: '800', textAlign: 'center' }} numberOfLines={2}>
+      <Text style={{ color: '#FBBF24', fontSize: narrow ? 12 : 14, fontWeight: '800', textAlign: 'center' }} numberOfLines={narrow ? 1 : 2} adjustsFontSizeToFit minimumFontScale={0.7}>
         {group.name}
       </Text>
-      <Text style={{ color: '#D6B46A', fontSize: 11 }}>{group.members.length} {group.members.length > 1 ? 'voies' : 'voie'}</Text>
+      <Text style={{ color: '#D6B46A', fontSize: 11 }} numberOfLines={1}>{narrow ? `${group.members.length} v.` : `${group.members.length} ${group.members.length > 1 ? 'voies' : 'voie'}`}</Text>
       <Pressable
         onPress={props.onToggleOpen}
         accessibilityRole="button"
         accessibilityState={{ expanded: props.open }}
         style={[styles.fold, narrow && { width: '100%' }]}
       >
-        <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{props.open ? '◂ Replier' : 'Déplier ▸'}</Text>
+        <Text numberOfLines={1} style={{ color: '#FCD34D', fontSize: narrow ? 18 : 12, fontWeight: '800', textAlign: 'center' }}>{narrow ? (props.open ? '◂' : '▸') : props.open ? '◂ Replier' : 'Déplier ▸'}</Text>
       </Pressable>
       <MiniMeters client={client} members={group.members} />
       {isMain ? <MuteButton muted={dcaMuted} onPress={toggleDca} theme={theme} narrow={narrow} /> : <View style={{ height: 30 }} />}

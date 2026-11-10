@@ -111,9 +111,18 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
     const L = latest.current;
     if (e.kind === 'fold') { setOpen((o) => (o.includes(e.k) ? o.filter((k) => k !== e.k) : [...o, e.k])); return; }
     if (e.kind === 'out') { setSel({ k: 'out', id: e.id }); return; }
-    if (e.kind === 'group') { const g = L.gInfo.find((x) => x.k === e.k); if (g) setSel({ k: 'many', ns: g.plugs, g: g.k }); return; }
+    const cur = L.sel?.k === 'many' && (L.multi || L.sel.g === undefined) ? L.sel.ns : L.sel?.k === 'in' ? [L.sel.n] : [];
+    if (e.kind === 'group') {
+      const g = L.gInfo.find((x) => x.k === e.k);
+      if (!g) return;
+      if (!L.multi) { setSel({ k: 'many', ns: g.plugs, g: g.k }); return; }
+      // « Plusieurs » : le groupe entier entre (ou sort) de la sélection
+      const all = g.plugs.every((n) => cur.includes(n));
+      const ns = all ? cur.filter((n) => !g.plugs.includes(n)) : [...new Set([...cur, ...g.plugs])].sort((a, b) => a - b);
+      setSel(ns.length ? { k: 'many', ns } : null);
+      return;
+    }
     if (L.multi) {
-      const cur = L.sel?.k === 'many' && L.sel.g === undefined ? L.sel.ns : L.sel?.k === 'in' ? [L.sel.n] : [];
       const ns = cur.includes(e.n) ? cur.filter((x) => x !== e.n) : [...cur, e.n].sort((a, b) => a - b);
       setSel(ns.length ? { k: 'many', ns } : null);
     } else setSel({ k: 'in', n: e.n });
