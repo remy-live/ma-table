@@ -43,7 +43,7 @@ function useBusTick(client: XAirClient, bus: number) {
   return tick;
 }
 
-export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme: Theme; onExit: () => void; owner?: boolean }) {
+export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme: Theme; onExit: () => void; owner?: boolean; onWho?: () => void }) {
   const { client, cfg, theme } = props;
   const { bus, rights } = cfg;
   const tick = useBusTick(client, bus);
@@ -109,13 +109,15 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
     <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
       <View style={styles.header}>
         <View style={[styles.avatar, { backgroundColor: '#60A5FA' }]}>
-          <Text style={styles.avatarText}>{cfg.name.slice(0, 3).toUpperCase()}</Text>
+          <Text style={styles.avatarText}>{(busName || cfg.name).slice(0, 3).toUpperCase()}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Mon retour</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-            {cfg.name} · {busName} · AUX {bus}
-          </Text>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>Ton retour : {busName}</Text>
+          <Pressable onPress={props.onWho} disabled={!props.onWho} hitSlop={8}>
+            <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
+              AUX {bus}{props.onWho ? <Text style={{ color: theme.accent, fontWeight: '800' }}> · ce n’est pas moi ›</Text> : null}
+            </Text>
+          </Pressable>
         </View>
         <Pressable onLongPress={askExit} delayLongPress={600} onPress={() => say('Appui long pour quitter')} style={[styles.lockChip, { borderColor: theme.line, backgroundColor: theme.panel }]} accessibilityLabel={`Verrouillé sur le retour ${bus}. Appui long pour quitter.`}>
           <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>🔒 AUX {bus}</Text>

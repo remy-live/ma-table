@@ -10,7 +10,8 @@ import { FxVisual } from '../ui/FxVisual';
 import { DragBubble } from '../ui/DragBubble';
 import { chColor } from '../xair/smartName';
 import { Theme } from '../ui/theme';
-import { CH_COUNT, FX_COUNT } from '../xair/addresses';
+import { CH_COUNT, FX_COUNT, meterIndex } from '../xair/addresses';
+import { useLevels } from '../xair/useMeter';
 import { fxParPath, fxType, fxTypePath, knobsFor } from '../xair/effects';
 import { chName, FxNames, fxLabel, fxPaths, loadFxNames, saveFxNames, sendPath, shareText, SLOT_COLORS, users } from '../xair/fxSlots';
 import { dbToFader, faderToDb } from '../xair/levels';
@@ -41,6 +42,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
   // Tableau : les lignes s'aplatissent pour que toutes les voies tiennent sans défiler.
   const [gridH, setGridH] = useState(0);
   const rowGap = 4;
+  const lv = useLevels(client, Array.from({ length: CH_COUNT }, (_, k) => k + 1), meterIndex.ch, 150);
   const named = useMemo(() => Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? '') || users(client, 1).includes(c) || users(client, 2).includes(c) || users(client, 3).includes(c) || users(client, 4).includes(c)), [client, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const rowH = gridH > 0 ? Math.max(26, Math.min(52, Math.floor((gridH - 4 - 98 - rowGap - 34) / Math.max(1, named.length)) - rowGap)) : 52;
   const bump = (c: number, k: number, d: number) => {
@@ -192,7 +194,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
                     const v = Number(client.get(sendPath(ch, k)) ?? 0);
                     const on = v > 0;
                     return (
-                      <DragBubble key={k} theme={theme} w={190} h={rowH} max={0} db={on ? faderToDb(v) : -Infinity} color={SLOT_COLORS[k - 1]} a11y={`${chName(client, ch)} dans ${fxLabel(client, names, k)}`}
+                      <DragBubble key={k} pulse={lv[ch] ?? 0} theme={theme} w={190} h={rowH} max={0} db={on ? faderToDb(v) : -Infinity} color={SLOT_COLORS[k - 1]} a11y={`${chName(client, ch)} dans ${fxLabel(client, names, k)}`}
                         onTap={() => { const d = faderToDb(v); client.set(sendPath(ch, k), f(!on ? dbToFader(-16) : d >= -4 ? 0 : dbToFader(Math.min(0, d + 4)))); }}
                         onSet={(db) => client.set(sendPath(ch, k), f(db === null ? 0 : dbToFader(db)))} />
                     );

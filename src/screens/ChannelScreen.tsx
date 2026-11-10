@@ -12,6 +12,7 @@ import {
 } from '../xair/addresses';
 import { Band, bandName } from '../xair/eqCurve';
 import { BAND_COLORS, EqGraph } from '../ui/EqGraph';
+import { useAB } from '../ui/useAB';
 import { fxType, fxTypePath } from '../xair/effects';
 import { dbToFader, faderToDb, formatDb } from '../xair/levels';
 
@@ -32,6 +33,17 @@ const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
 type Block = 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx';
 
 /** Téléphone : plein écran, un bloc à la fois. Tablette (`wide`) : panneau latéral, tout visible d'un coup. */
+/** Bouton Avant / Après : entendre le son d'avant les réglages, puis revenir. */
+export function ABButton({ theme, ab }: { theme: Theme; ab: { mode: 'apres' | 'avant'; toggle: () => void } }) {
+  const avant = ab.mode === 'avant';
+  return (
+    <Pressable onPress={ab.toggle} accessibilityRole="switch" accessibilityState={{ checked: avant }} style={{ flexDirection: 'row', height: 46, borderRadius: 12, borderWidth: 2, borderColor: avant ? '#A78BFA' : theme.line2, overflow: 'hidden' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: avant ? '#A78BFA' : 'transparent' }}><Text style={{ color: avant ? '#140F24' : theme.muted, fontWeight: '900', fontSize: 14 }}>◀ Avant</Text></View>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: avant ? 'transparent' : theme.accent }}><Text style={{ color: avant ? theme.muted : theme.onAccent, fontWeight: '900', fontSize: 14 }}>Après ▶</Text></View>
+    </Pressable>
+  );
+}
+
 export function ChannelScreen({ client, ch, theme, onClose, wide }: { client: XAirClient; ch: number | null; theme: Theme; onClose: () => void; wide?: boolean }) {
   if (wide) return ch !== null ? <ChannelBody client={client} ch={ch} theme={theme} onClose={onClose} wide /> : null;
   return (
@@ -57,6 +69,16 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
   useEffect(() => {
     client.loadPaths([...channelDetailPaths(ch), insrcPath(ch), headampGainPath(ch), phantomPath(ch), ...Array.from({ length: BUS_COUNT }, (_, k) => chLevelPath(ch, { kind: 'bus', n: k + 1 })), chLevelPath(ch, MAIN)]);
     client.startMeters();
+  }, [client, ch]);
+  // Avant / Après sur l'égaliseur
+  const eqAB = useAB(client, [eqOnPath(ch), hpOnPath(ch), hpfPath(ch), ...[1, 2, 3, 4].flatMap((b) => (['type', 'f', 'g', 'q'] as const).map((k) => eqPath(ch, b, k)))], `eq${ch}`);
+  // spectre en direct de la voie, dessiné derrière la courbe de l'égaliseur
+  const [rta, setRta] = useState<Float32Array | null>(null);
+  useEffect(() => {
+    client.startRta(ch);
+    let last = 0;
+    const off = client.onRta((d) => { const n = Date.now(); if (n - last < 90) return; last = n; setRta(new Float32Array(d)); });
+    return () => { off(); client.stopRta(); };
   }, [client, ch]);
 
   const num = (p: string, fb: number) => Number(useParam<number>(client, p, fb));
@@ -166,12 +188,14 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
               theme={theme}
               onSelect={setBand}
               onActivate={() => client.set(eqOnPath(ch), i(1))}
+              rta={rta}
               onChange={(k, hz, db) => {
                 setBandF(k, hz);
                 setBandG(k, db);
               }}
             />
             <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center' }}>Glisse un point : gauche-droite = fréquence, haut-bas = plus ou moins. Les boutons − / + affinent.</Text>
+            {eqAB.changed && <ABButton theme={theme} ab={eqAB} />}
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {bands.map((bd, k) => (
                 <Pressable key={k} onPress={() => setBand(k)} accessibilityState={{ selected: band === k }} style={[styles.bandBtn, { borderColor: band === k ? BAND_COLORS[k] : theme.line, backgroundColor: band === k ? theme.deep : theme.panel }]}>

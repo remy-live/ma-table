@@ -16,7 +16,7 @@ import { Theme } from '../ui/theme';
 
 interface MyTable { ip: string; name: string; model: string; at: number; ssid?: string; mode?: number }
 
-export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig) => void; invite?: MonConfig | null }) {
+export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig, musician?: boolean, prep?: boolean) => void; invite?: MonConfig | null }) {
   const [code, setCode] = useState('');
   const [lastMon, setLastMon] = useState<MonConfig | null>(null);
   const [found, setFound] = useState<TableInfo[]>([]);
@@ -107,13 +107,13 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     connect(cfg.host, false, cfg);
   };
 
-  const connect = async (host: string, demo = false, mon?: MonConfig) => {
+  const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false) => {
     setBusy(true);
     setError('');
     const client = new XAirClient(demo ? new DemoTransport() : new RnUdpTransport());
     try {
       await client.connect(host);
-      if (!demo && !mon) {
+      if (!demo && !mon && !musician) {
         save('derniereIp', host);
         const inf = client.info;
         const base: MyTable = { ip: host, name: inf?.name || host, model: inf?.model || '', at: Date.now(), ssid: mine?.ssid, mode: mine?.mode };
@@ -126,7 +126,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         }).catch(() => {});
       }
       if (mon && !demo) save('monRetour', mon);
-      onConnected(client, mon);
+      onConnected(client, mon, musician, prep);
     } catch (e) {
       client.close();
       dbg.error(`Connexion à ${host} impossible : ${String(e)}`);
@@ -194,7 +194,10 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
                 <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>{t.name}</Text>
                 <Text style={{ color: theme.muted, fontSize: 12 }}>{t.model} · {t.ip} · {t.firmware}</Text>
               </View>
-              <Text style={{ color: '#34D399', fontWeight: '800' }}>Connecter ›</Text>
+              <Pressable onPress={() => connect(t.ip, false, undefined, true)} style={[styles.small, { borderColor: '#34D399', height: 40 }]} accessibilityLabel="Je suis musicien : régler seulement mon retour">
+                <Text style={{ color: '#34D399', fontWeight: '800', fontSize: 12 }}>🎧 Je suis musicien</Text>
+              </Pressable>
+              <Text style={{ color: theme.accent, fontWeight: '800' }}>Sondier ›</Text>
             </Pressable>
           ))}
           <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
@@ -294,12 +297,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.muted, fontSize: 12 }}>Le plus simple : scanne le QR code du sondier avec l’appareil photo.</Text>
           </View>
 
+          <Pressable onPress={() => connect('demo', true, undefined, false, true)} style={[styles.card, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🏠 Préparer chez moi, sans table</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Noms, couleurs, groupes, qui entend quoi… puis tout est envoyé à la table en arrivant (sauf les gains et le 48 V).</Text>
+          </Pressable>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable onPress={() => connect('demo', true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo sans table</Text>
               <Text style={{ color: theme.muted, fontSize: 11 }}>rien n’est envoyé</Text>
             </Pressable>
-            <Pressable onPress={() => connect('demo', true, { host: 'demo', bus: 1, name: 'Bassiste', me: [4], rights: { ...DEFAULT_RIGHTS, fx: true } })} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
+            <Pressable onPress={() => connect('demo', true, undefined, true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo musicien</Text>
               <Text style={{ color: theme.muted, fontSize: 11 }}>le mode « Mon retour »</Text>
             </Pressable>

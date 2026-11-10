@@ -9,6 +9,9 @@ import { listSessions } from '../store/sessions';
 import { Theme } from '../ui/theme';
 import { busDyn } from '../xair/monitor';
 import { readWifiClient } from '../xair/network';
+import { clearClipHistory, clipHistory, onClipHistory } from '../xair/clip';
+import { chColor } from '../xair/smartName';
+import { chNamePath } from '../xair/addresses';
 import { Check, checklist, rescue, RescueState, unrescue } from '../xair/rescue';
 import { XAirClient } from '../xair/XAirClient';
 
@@ -126,3 +129,27 @@ const styles = StyleSheet.create({
   check: { borderWidth: 1, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   entry: { borderLeftWidth: 4, borderRadius: 10, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' },
 });
+
+/** « Ce soir, Voix a saturé 3 fois » : pour corriger entre deux morceaux. */
+export function ClipHistoryCard({ client, theme, onOpen }: { client: XAirClient; theme: Theme; onOpen?: (ch: number) => void }) {
+  const [, setT] = React.useState(0);
+  React.useEffect(() => onClipHistory(() => setT((x) => x + 1)), []);
+  const list = clipHistory();
+  const hhmm = (t: number) => new Date(t).toTimeString().slice(0, 5);
+  return (
+    <View style={{ borderWidth: 1, borderColor: list.length ? '#7F1D1D' : theme.line, backgroundColor: list.length ? '#2A1414' : theme.panel, borderRadius: 18, padding: 12, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: list.length ? '#FCA5A5' : theme.text, fontSize: 15, fontWeight: '800', flex: 1 }}>{list.length ? '🔴 Saturations ce soir' : '✓ Aucune saturation ce soir'}</Text>
+        {list.length > 0 && <Pressable onPress={clearClipHistory} style={{ height: 34, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: '#7F1D1D', justifyContent: 'center' }}><Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12 }}>Effacer</Text></Pressable>}
+      </View>
+      {list.slice(0, 6).map((e) => (
+        <View key={e.ch} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: chColor(client, e.ch) }} />
+          <Text style={{ color: theme.text, fontWeight: '800', flex: 1 }}>{String(client.get(chNamePath(e.ch)) ?? '') || `Voie ${e.ch}`} <Text style={{ color: '#FCA5A5' }}>× {e.count}</Text> <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '600' }}>· dernière à {hhmm(e.last)}</Text></Text>
+          {onOpen && <Pressable onPress={() => onOpen(e.ch)} style={{ height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#EF4444', justifyContent: 'center' }}><Text style={{ color: '#1A0505', fontWeight: '800', fontSize: 12 }}>Baisser le gain</Text></Pressable>}
+        </View>
+      ))}
+      {list.length > 0 && <Text style={{ color: theme.muted, fontSize: 11 }}>Baisse le gain de 2 à 3 dB entre deux morceaux, puis remonte le fader si besoin.</Text>}
+    </View>
+  );
+}

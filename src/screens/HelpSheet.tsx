@@ -6,13 +6,15 @@ import { XAirClient } from '../xair/XAirClient';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
 import { ChecklistSheet } from './ConcertExtras';
 import { GuideScreen } from './GuideScreen';
+import { Tutorial } from './Tutorial';
 
-type Which = 'auto' | 'guide' | 'check' | null;
+type Which = 'auto' | 'guide' | 'check' | 'tuto' | null;
 
 const ITEMS: [Exclude<Which, null>, string, string, string][] = [
   ['auto', 'Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle gains, faders et retours', '#22C55E'],
   ['guide', 'Mode guidé', 'Installer un concert pas à pas : ce qui est branché, groupes, retours, ambiance', '#60A5FA'],
   ['check', 'Avant le concert', 'La check-list : connexion, noms, retours, balance, sauvegarde', '#F59E0B'],
+  ['tuto', 'Les gestes en 30 s', 'Glisser, rester appuyé, choisir qui écoute, les bulles', '#A78BFA'],
 ];
 
 export function HelpSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
@@ -40,6 +42,7 @@ export function HelpSheet({ client, theme, visible, onClose }: { client: XAirCli
       <AutoBalanceScreen client={client} theme={theme} visible={visible && which === 'auto'} onClose={() => { setWhich(null); onClose(); }} />
       <GuideScreen client={client} theme={theme} visible={visible && which === 'guide'} onClose={() => { setWhich(null); onClose(); }} />
       <ChecklistSheet client={client} theme={theme} visible={visible && which === 'check'} onClose={() => { setWhich(null); onClose(); }} />
+      <Tutorial theme={theme} visible={visible && which === 'tuto'} onClose={() => { setWhich(null); onClose(); }} />
     </>
   );
 }

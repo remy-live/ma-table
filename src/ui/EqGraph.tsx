@@ -19,6 +19,8 @@ interface Props {
   onSelect: (k: number) => void;
   onChange: (k: number, hz: number, db: number) => void; // appelé pendant le glissement
   onActivate?: () => void; // on a touché la courbe alors que l'EQ est coupé
+  /** spectre en direct (100 bandes, en dB) : ce qui sort vraiment de la voie */
+  rta?: Float32Array | null;
 }
 
 export function EqGraph(props: Props) {
@@ -78,6 +80,13 @@ export function EqGraph(props: Props) {
   const path = w ? curvePath(pts.map(([x, g]) => [(PAD + x * (w - 2 * PAD)) / w, g]), w, H) : '';
   const area = path ? `${path} L${w - PAD} ${H / 2} L${PAD} ${H / 2} Z` : '';
   const sel = bands[props.selected];
+  // spectre : bande k = 20 Hz × 1000^(k/99) ; -80 dB en bas, 0 dB tout en haut
+  const rta = props.rta;
+  const hasRta = !!rta && w > 0 && Math.max(...Array.from(rta)) > -85;
+  const ry = (db: number) => H - Math.max(0, Math.min(1, (db + 80) / 80)) * (H - 16);
+  const rpts = hasRta ? Array.from(rta!, (db, k) => [gx(20 * Math.pow(1000, k / 99)), ry(db)] as const) : [];
+  const spectrumLine = hasRta ? rpts.map(([x, y], k) => `${k ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ') : '';
+  const spectrum = hasRta ? `${spectrumLine} L${rpts[rpts.length - 1][0].toFixed(1)} ${H} L${rpts[0][0].toFixed(1)} ${H} Z` : '';
 
   return (
     <View style={[styles.box, { backgroundColor: theme.meterBg }]} onLayout={(e) => setW(e.nativeEvent.layout.width)} {...pan.panHandlers} accessible accessibilityLabel="Égaliseur : glisse un point pour régler" >
@@ -99,6 +108,8 @@ export function EqGraph(props: Props) {
           ))}
           <SvgText x={PAD + 2} y={gy(12) - 3} fontSize={9} fill={theme.muted}>+12</SvgText>
           <SvgText x={PAD + 2} y={gy(-12) + 10} fontSize={9} fill={theme.muted}>−12</SvgText>
+          {spectrum && <Path d={spectrum} fill="#38BDF8" opacity={0.28} />}
+          {spectrum && <Path d={spectrumLine} fill="none" stroke="#7DD3FC" strokeWidth={1.5} opacity={0.8} />}
           <Path d={area} fill="url(#eqfill)" />
           <Path d={path} fill="none" stroke={on ? '#FBBF24' : '#6B7280'} strokeWidth={3} strokeLinejoin="round" strokeDasharray={on ? undefined : '6 5'} />
           {props.hpfHz && <Line x1={gx(props.hpfHz)} y1={0} x2={gx(props.hpfHz)} y2={H} stroke="#60A5FA" strokeWidth={2} strokeDasharray="4 4" />}

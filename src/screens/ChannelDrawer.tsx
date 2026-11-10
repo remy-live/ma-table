@@ -14,7 +14,7 @@ import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
 import {
   BUS_COUNT, busNamePath, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, formatPan, FX_COUNT, fToGainDb, headampGainPath,
-  inDca, insrcLabel, soloPath, insrcPath, insrcPlug, invertPath, MAIN, meterIndex, panPath, panToF, phantomPath, Target, targetId, toggleDca,
+  inDca, insrcLabel, soloPath, hpOnPath, hpfPath, hpfHzToF, fToHpfHz, insrcPath, insrcPlug, invertPath, MAIN, meterIndex, panPath, panToF, phantomPath, Target, targetId, toggleDca,
 } from '../xair/addresses';
 import { fxType, fxTypePath } from '../xair/effects';
 import { SLOT_COLORS } from '../xair/fxSlots';
@@ -39,7 +39,7 @@ type Mode = 'in' | 'link';
 
 /** Les adresses dont le tiroir a besoin pour une voie. */
 export function drawerPaths(ch: number): string[] {
-  const p = [chNamePath(ch), soloPath(ch), headampGainPath(ch), phantomPath(ch), invertPath(ch), panPath(ch), chOnPath(ch), chDcaPath(ch), insrcPath(ch), chLevelPath(ch, MAIN)];
+  const p = [chNamePath(ch), soloPath(ch), hpOnPath(ch), hpfPath(ch), headampGainPath(ch), phantomPath(ch), invertPath(ch), panPath(ch), chOnPath(ch), chDcaPath(ch), insrcPath(ch), chLevelPath(ch, MAIN)];
   for (let b = 1; b <= BUS_COUNT; b++) p.push(chLevelPath(ch, { kind: 'bus', n: b }), busNamePath(b));
   for (let k = 1; k <= FX_COUNT; k++) p.push(chLevelPath(ch, { kind: 'fx', n: k }), fxTypePath(k));
   return p;
@@ -152,6 +152,12 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
   const inv = Number(client.get(invertPath(ch)) ?? 0) === 1;
   const on = Number(client.get(chOnPath(ch)) ?? 1) === 1;
   const solo = Number(client.get(soloPath(ch)) ?? 0) === 1;
+  // coupe-bas : enlève souffle, bruits de pied de micro, boum de scène. Conseillé sur voix et guitares.
+  const hp = Number(client.get(hpOnPath(ch)) ?? 0) === 1;
+  const nm = String(client.get(chNamePath(ch)) ?? '');
+  const isBass = /bass|kick|grosse/i.test(nm);
+  const advised = !hp && /voix|chant|vocal|guit|chœur|choeur|overhead|charley|hat/i.test(nm);
+  const cutHz = /voix|chant|vocal|chœur|choeur/i.test(nm) ? 100 : isBass ? 40 : 80;
   const T = ({ label, active, bg, onPress }: { label: string; active: boolean; bg: string; onPress: () => void }) => (
     <Pressable onPress={onPress} accessibilityRole="switch" accessibilityState={{ checked: active }} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2 }]}>
       <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
@@ -164,6 +170,7 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
       )}
       <T label="Phase Ø" active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
       <T label={on ? 'Couper' : 'Voie coupée'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
+      <T label={hp ? `Coupe-bas ${Math.round(fToHpfHz(Number(client.get(hpfPath(ch)) ?? 0)))} Hz` : advised ? 'Coupe-bas ★ conseillé' : 'Coupe-bas'} active={hp} bg="#2563EB" onPress={() => { if (hp) client.set(hpOnPath(ch), i(0)); else { client.set(hpfPath(ch), f(hpfHzToF(cutHz))); client.set(hpOnPath(ch), i(1)); } }} />
       <T label={solo ? '🎧 Solo' : '🎧 Écouter seule'} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
     </View>
   );

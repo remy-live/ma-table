@@ -5,6 +5,8 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { HELP, showTip } from './tip';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
+import { LinkBadge } from './LinkBadge';
+import { XAirClient } from '../xair/XAirClient';
 
 export type Section = 'table' | 'effets' | 'branchements' | 'scene' | 'reglages';
 
@@ -31,7 +33,7 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter'; colo
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient }) {
   const { theme, vertical } = props;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
@@ -59,6 +61,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         );
       })}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
+      {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (
         <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
           <Icon id="quitter" color={theme.muted} size={vertical ? 24 : 20} />

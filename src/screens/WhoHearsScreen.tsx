@@ -7,7 +7,8 @@ import { f } from '../osc/osc';
 import { DragBubble } from '../ui/DragBubble';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
-import { Target } from '../xair/addresses';
+import { CH_COUNT, meterIndex, Target } from '../xair/addresses';
+import { useLevels } from '../xair/useMeter';
 import { dbToFader } from '../xair/levels';
 import { shift } from '../xair/monitor';
 import { Dest, destinations, levelDb, levelPaths, Src, sources, whoHearsPaths } from '../xair/whoHears';
@@ -18,6 +19,7 @@ import { initials, MIX_COLORS } from './MixPicker';
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 const CELL = 64;
+const ALL_CH = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
 const LABEL_W = 150;
 
 
@@ -29,6 +31,8 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [pick, setPick] = useState<{ s: string; d: string } | null>(null);
   const [areaW, setAreaW] = useState(0);
+  // les bulles battent avec le son qui arrive
+  const lv = useLevels(client, ALL_CH, meterIndex.ch, 150);
   useEffect(() => { if (props.visible) client.loadPaths(whoHearsPaths()); }, [client, props.visible]);
 
   const dests = destinations(client).filter((d) => !isoD || d.id === isoD);
@@ -90,7 +94,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
                     </Pressable>
                   </View>
                   {dests.map((d) => (
-                    <Bubble key={d.id} w={cw} client={client} theme={theme} paths={levelPaths(s, d.t)} color={color} picked={pick?.s === s.id && pick?.d === d.id} a11y={`${d.name} entend ${s.label}`} onPick={() => setPick({ s: s.id, d: d.id })} />
+                    <Bubble key={d.id} pulse={Math.max(0, ...s.channels.map((c) => lv[c] ?? 0))} w={cw} client={client} theme={theme} paths={levelPaths(s, d.t)} color={color} picked={pick?.s === s.id && pick?.d === d.id} a11y={`${d.name} entend ${s.label}`} onPick={() => setPick({ s: s.id, d: d.id })} />
                   ))}
                 </View>
               );
@@ -141,9 +145,9 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
 }
 
 /** Une bulle : appui = la choisir ; glisser à droite = plus fort, à gauche = moins fort. */
-function Bubble({ w, client, theme, paths, color, picked, a11y, onPick }: { w: number; client: XAirClient; theme: Theme; paths: string[]; color: string; picked: boolean; a11y: string; onPick: () => void }) {
+function Bubble({ w, client, theme, paths, color, picked, a11y, onPick, pulse }: { pulse?: number; w: number; client: XAirClient; theme: Theme; paths: string[]; color: string; picked: boolean; a11y: string; onPick: () => void }) {
   return (
-    <DragBubble theme={theme} w={w} h={CELL - 4} db={levelDb(client, paths)} color={color} picked={picked} a11y={a11y} onStart={onPick} onTap={onPick}
+    <DragBubble pulse={pulse} theme={theme} w={w} h={CELL - 4} db={levelDb(client, paths)} color={color} picked={picked} a11y={a11y} onStart={onPick} onTap={onPick}
       onSet={(db) => paths.forEach((p) => client.set(p, f(db === null ? 0 : dbToFader(db))))} />
   );
 }

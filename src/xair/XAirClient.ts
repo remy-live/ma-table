@@ -10,7 +10,7 @@
 //  - Pendant qu'on bouge un fader, on ignore l'écho de la table pour cette
 //    adresse (sinon le fader « tremble » sous le doigt).
 
-import { decode, encode, OscArg, OscValue, s as oscS } from '../osc/osc';
+import { decode, encode, OscArg, OscValue, i as oscI, s as oscS } from '../osc/osc';
 import { ch2 } from './levels';
 import { setModel } from './addresses';
 import { Remote, Transport } from './transport';
@@ -126,6 +126,25 @@ export class XAirClient {
     this.metersOn = this.meterUsers > 0;
   }
 
+  /** Analyseur de spectre de la voie sélectionnée (100 bandes). Renouvelé avec les vumètres. */
+  rta = new Float32Array(100).fill(-90);
+  private rtaListeners = new Set<(db: Float32Array) => void>();
+  private rtaUsers = 0;
+  /** ch = une voie 1..16 ; idx = index brut de sélection (21..26 = retours 1..6). */
+  startRta(ch?: number, idx?: number) {
+    this.rtaUsers++;
+    if (idx !== undefined) this.raw('/-stat/selidx', [oscI(idx)]);
+    else if (ch) this.raw('/-stat/selidx', [oscI(ch - 1)]); // l'analyseur suit la voie sélectionnée (à vérifier sur la table)
+    this.raw('/meters', [oscS('/meters/4')]);
+  }
+  stopRta() {
+    this.rtaUsers = Math.max(0, this.rtaUsers - 1);
+  }
+  onRta(cb: (db: Float32Array) => void): () => void {
+    this.rtaListeners.add(cb);
+    return () => this.rtaListeners.delete(cb);
+  }
+
   onMeters(cb: (db: Float32Array) => void): () => void {
     this.meterListeners.add(cb);
     return () => this.meterListeners.delete(cb);
@@ -171,8 +190,7 @@ export class XAirClient {
     this.undoing = true;
     try {
       for (const [p, v] of step.changes) {
-        const arg: OscArg = typeof v === 'string' ? { t: 's', v } : Number.isInteger(v) && /\/(on|type|insrc|dca|phantom|invert|hpon|color|mode|ratio)$/.test(p) ? { t: 'i', v: Number(v) } : { t: 'f', v: Number(v) };
-        this.set(p, arg);
+        this.set(p, argFor(p, v));
       }
     } finally {
       this.undoing = false;
@@ -297,6 +315,7 @@ export class XAirClient {
     this.pings.sent++;
     this.raw('/xinfo'); // sert aussi de « ping »
     if (this.metersOn) this.raw('/meters', [oscS('/meters/1')]);
+    if (this.rtaUsers > 0) this.raw('/meters', [oscS('/meters/4')]);
     const silent = this.now() - this.lastHeard;
     if (this.status === 'connecté' && silent > LOST_AFTER_MS) this.setStatus('perdu');
     void channels;
@@ -348,6 +367,12 @@ export class XAirClient {
           this.setStatus('connecté');
         });
       }
+      return;
+    }
+    if (m.address === '/meters/4') {
+      // analyseur de spectre (RTA) : 100 bandes de 20 Hz à 20 kHz, en 1/256 dB
+      const blob = m.args[0];
+      if (blob instanceof Uint8Array && parseMeters(blob, this.rta)) this.rtaListeners.forEach((cb) => cb(this.rta));
       return;
     }
     if (m.address === '/meters/1') {
@@ -404,6 +429,11 @@ export function parseMeters(blob: Uint8Array, out: Float32Array): boolean {
   const n = Math.min(count, (blob.length - 4) >> 1, out.length);
   for (let k = 0; k < n; k++) out[k] = dv.getInt16(4 + 2 * k, true) / 256;
   return n > 0;
+}
+
+/** Remet le bon type OSC (entier, réel, texte) sur une valeur gardée en mémoire. */
+export function argFor(p: string, v: OscValue): OscArg {
+  return typeof v === 'string' ? { t: 's', v } : Number.isInteger(v) && /\/(on|type|insrc|dca|phantom|invert|hpon|color|mode|ratio)$/.test(p) ? { t: 'i', v: Number(v) } : { t: 'f', v: Number(v) };
 }
 
 /** Fabrique un blob de vumètres (simulateur, démo, tests). */

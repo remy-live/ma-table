@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, Alert, Linking, StatusBar, View } from 'react-native';
+import { AppState, Alert, Linking, Pressable, StatusBar, Text, View } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { MixerScreen } from './src/screens/MixerScreen';
 import { StageScreen } from './src/screens/StageScreen';
@@ -8,7 +8,11 @@ import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
 import { setImmersive, useBottomInset } from './src/ui/immersive';
 import { TipHost } from './src/ui/tip';
-import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
+import { recordClips } from './src/xair/clip';
+import { loadPrepared, markSent, savePrepared, sendPrepared } from './src/store/prepare';
+import { WhoAmIScreen } from './src/screens/WhoAmIScreen';
+import { Tutorial } from './src/screens/Tutorial';
+import { blankTable, safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
 import { initStorage } from './src/store/persist';
@@ -45,6 +49,10 @@ export default function App() {
   const [locked, setLocked] = useState(false);
   const [monitor, setMonitor] = useState<{ cfg: MonConfig; owner: boolean } | null>(null);
   const [invite, setInvite] = useState<MonConfig | null>(null);
+  const [prep, setPrep] = useState(false);
+  const [tuto, setTuto] = useState(false);
+  // le musicien dit qui il est (choisit ou nomme son retour)
+  const [who, setWho] = useState<{ host: string; current: MonConfig | null } | null>(null);
   const theme = THEMES[themeKey] ?? THEMES.nuit;
 
   useEffect(() => {
@@ -92,6 +100,15 @@ export default function App() {
     return () => sub.remove();
   }, []);
   // Invitation reçue alors qu'on pilote déjà la table : on demande.
+  // les gestes en 30 s : une fois, au premier lancement
+  useEffect(() => { if (client) load<boolean>('tutoVu', false).then((v) => { if (!v) setTuto(true); }); }, [client]);
+  // historique des saturations de la soirée, tenu tant qu'on est connecté
+  useEffect(() => {
+    if (!client) return;
+    client.startMeters();
+    const off = client.onMeters((m) => recordClips(m, Date.now()));
+    return () => { off(); client.stopMeters(); };
+  }, [client]);
   useEffect(() => {
     if (!invite || !client) return;
     const cfg = invite;
@@ -124,16 +141,46 @@ export default function App() {
         <ConnectScreen
           theme={theme}
           invite={invite}
-          onConnected={(c, mon) => {
-            if (mon) {
+          onConnected={(c, mon, musician, prepMode) => {
+            setPrep(!!prepMode);
+            if (prepMode) {
+              // on part de ce qui a déjà été préparé, sinon d'une table vide
+              loadPrepared().then((p) => { if (p) sendPrepared(c, p); else return blankTable(c); }).catch(() => {});
+            } else if (musician) {
+              setWho({ host: c.hostAddress, current: null });
+            } else if (mon) {
               setInvite(null);
               setMonitor({ cfg: mon, owner: false });
             } else {
               // photo de sécurité de la table, sans bloquer l'écran
               setTimeout(() => safetyBackup(c, 'connexion').then((sn) => sn && dbg.info('Sauvegarde automatique faite')).catch(() => {}), 1500);
+              // une préparation faite chez soi attend d'être envoyée ?
+              if (c.hostAddress !== 'demo') setTimeout(() => loadPrepared().then((p) => {
+                if (!p || (p.sent && p.sent > p.savedAt)) return;
+                Alert.alert('Ta préparation', `Tu as préparé ta soirée chez toi (${new Date(p.savedAt).toLocaleDateString('fr-FR')}). L’envoyer à la table ? Les gains et le 48 V ne changent pas.`, [
+                  { text: 'Plus tard', style: 'cancel' },
+                  { text: 'Envoyer', onPress: () => { safetyBackup(c, 'avant préparation').catch(() => {}).finally(() => { sendPrepared(c, p); markSent(); }); } },
+                ]);
+              }), 2500);
             }
             setClient(c);
           }}
+        />
+      </>
+    );
+  }
+
+  if (who && client) {
+    return (
+      <>
+        <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
+        <WhoAmIScreen
+          client={client}
+          theme={theme}
+          host={who.host}
+          current={who.current}
+          onDone={(cfg) => { if (cfg.host && cfg.host !== 'demo') save('monRetour', cfg); setWho(null); setMonitor({ cfg, owner: monitor?.owner ?? false }); }}
+          onCancel={() => { setWho(null); if (!monitor) { client.close(); setClient(null); } }}
         />
       </>
     );
@@ -148,6 +195,7 @@ export default function App() {
           cfg={monitor.cfg}
           theme={theme}
           owner={monitor.owner}
+          onWho={() => setWho({ host: monitor.cfg.host, current: monitor.cfg })}
           onExit={() => {
             if (!monitor.owner) {
               save('monRetour', null);
@@ -178,12 +226,27 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && <NavBar theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {wide && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       {body}
-      {!wide && <NavBar theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {!wide && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
+      {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
+      <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />
       <TipHost theme={theme} />
     </View>
   );
 }
 
+
+/** Bandeau du mode « Préparer chez moi » : tout reste gardé dans l'appli, on termine quand on veut. */
+function PrepBar({ client, theme, bottom, onDone }: { client: XAirClient; theme: (typeof THEMES)[string]; bottom: number; onDone: () => void }) {
+  const [msg, setMsg] = useState('');
+  const keep = async () => { await savePrepared(client); setMsg('Gardé ✓'); setTimeout(() => setMsg(''), 2000); };
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: bottom + 16, flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: theme.panel, borderColor: theme.accent, borderWidth: 2, borderRadius: 18, padding: 8, elevation: 12 }}>
+      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13, paddingHorizontal: 6 }}>🏠 Préparation sans table{msg ? ` · ${msg}` : ''}</Text>
+      <Pressable onPress={keep} style={{ height: 40, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.accent, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontWeight: '800' }}>💾 Garder</Text></Pressable>
+      <Pressable onPress={() => { savePrepared(client).finally(onDone); }} style={{ height: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accent, justifyContent: 'center' }}><Text style={{ color: theme.onAccent, fontWeight: '900' }}>Terminer</Text></Pressable>
+    </View>
+  );
+}

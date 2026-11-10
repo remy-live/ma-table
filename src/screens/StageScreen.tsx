@@ -20,7 +20,9 @@ import { load } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { MonConfig } from '../xair/monitor';
 import { InviteSheet } from './InviteSheet';
-import { ChecklistSheet, JournalSheet, RescueButton } from './ConcertExtras';
+import { ChecklistSheet, ClipHistoryCard, JournalSheet, RescueButton } from './ConcertExtras';
+import { InputSheet } from './InputSheet';
+import { StagePlanSheet } from './StagePlanSheet';
 
 
 function useGroups(client: XAirClient): Group[] {
@@ -45,6 +47,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [invite, setInvite] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [gainCh, setGainCh] = useState<number | null>(null);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [cur, setCur] = useState<Current | null>(null);
   const [sessOpen, setSessOpen] = useState(false);
@@ -134,6 +138,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           </View>
         </View>
 
+        <ClipHistoryCard client={client} theme={theme} onOpen={setGainCh} />
+
         {/* 2. PENDANT */}
         <View style={[styles.card, { backgroundColor: theme.panel, borderColor: mixColor(mix) }]}>
           <Step n={2} title="Pendant : plus fort / moins fort" theme={theme} />
@@ -170,6 +176,10 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>✅ Check-list</Text>
             <Text style={{ color: theme.muted, fontSize: 11 }}>tout est prêt avant de jouer ?</Text>
           </Pressable>
+          <Pressable onPress={() => setPlanOpen(true)} style={[styles.card, styles.tool, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🗺 Plan de scène</Text>
+            <Text style={{ color: theme.muted, fontSize: 11 }}>qui est branché où · à partager</Text>
+          </Pressable>
           <Pressable onPress={() => setJournalOpen(true)} style={[styles.card, styles.tool, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>📓 Journal</Text>
             <Text style={{ color: theme.muted, fontSize: 11 }}>qui a changé quoi, et quand</Text>
@@ -179,6 +189,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
       <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => { setSessOpen(false); reload(); }} />
       <ChecklistSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
       <JournalSheet theme={theme} visible={journalOpen} onClose={() => setJournalOpen(false)} />
+      <InputSheet client={client} ch={gainCh} theme={theme} onClose={() => setGainCh(null)} />
+      <StagePlanSheet client={client} theme={theme} visible={planOpen} onClose={() => setPlanOpen(false)} />
       <InviteSheet client={client} theme={theme} visible={invite} onClose={() => setInvite(false)} onTryHere={(cfg) => { setInvite(false); props.onMonitor(cfg); }} />
     </View>
   );

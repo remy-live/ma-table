@@ -6,6 +6,7 @@ import {
 import { swapChannels } from '../xair/clipboard';
 import { Group } from '../xair/groups';
 import { CopyMixSheet } from './CopyMixSheet';
+import { LarsenSheet } from './LarsenSheet';
 import { CopySettingsSheet } from './CopySettingsSheet';
 import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
@@ -107,6 +108,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [sel, setSel] = useState<number | null>(null);
   const [mode, setMode] = useState<null | 'swap'>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [larsen, setLarsen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copySet, setCopySet] = useState<number | null | 0>(null); // voie de départ (0 = aucune choisie), null = fermé
   const [copyTo, setCopyTo] = useState<number[]>([]);
@@ -268,6 +270,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const headerButtons = (
     <>
         {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
+        {target.kind === 'bus' && (
+          <Pressable onPress={() => setLarsen(true)} onLongPress={() => showTip('Ça siffle ? Repère la note qui siffle dans ce retour et la creuse, sans toucher au public.')} style={[styles.hbtn, { borderColor: '#F87171' }]}>
+            <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12, textAlign: 'center' }}>🔔 Ça{'\n'}siffle ?</Text>
+          </Pressable>
+        )}
         <Pressable onPress={() => setCopyOpen(true)} onLongPress={() => showTip(HELP.copyMix)} accessibilityLabel="Copier ce qu’entend une personne vers une ou plusieurs autres" style={[styles.hbtn, { borderColor: theme.line2 }]}>
           <Text style={{ color: theme.text, fontWeight: '800', fontSize: 12, textAlign: 'center' }}>⧉ Copier{'\n'}un mix</Text>
         </Pressable>
@@ -430,6 +437,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} to={copyTo} onClose={() => { setCopySet(null); setCopyTo([]); }} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
+      {larsen && <LarsenSheet client={client} theme={theme} bus={target.kind === 'bus' ? target.n : null} name={label(target)} onClose={() => setLarsen(false)} />}
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>

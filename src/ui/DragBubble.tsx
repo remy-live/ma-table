@@ -21,6 +21,8 @@ export function DragBubble(props: {
   onTap?: () => void;
   onStart?: () => void;
   onSet: (db: number | null) => void; // null = rien
+  /** niveau du son qui arrive (0..1) : la bulle « bat » avec lui */
+  pulse?: number;
 }) {
   const { theme, w, h } = props;
   const max = props.max ?? 10;
@@ -68,6 +70,7 @@ export function DragBubble(props: {
       accessibilityState={{ selected: !!props.picked }}
       style={{ width: w, height: h, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: props.picked || live !== null ? theme.line : theme.deep, overflow: 'visible', zIndex: live !== null ? 10 : 0 }}
     >
+      {on && (props.pulse ?? 0) > 0.15 && <View pointerEvents="none" style={{ position: 'absolute', width: size + 6 + (props.pulse ?? 0) * 14, height: size + 6 + (props.pulse ?? 0) * 14, borderRadius: 999, borderWidth: 2 + (props.pulse ?? 0) * 3, borderColor: props.color, opacity: 0.2 + (props.pulse ?? 0) * 0.6 }} />}
       {on && <View pointerEvents="none" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: props.color, opacity: 0.55 + Math.max(0, Math.min(1, (shown - MIN) / (max - MIN))) * 0.45, borderWidth: props.picked ? 3 : 0, borderColor: '#FFFFFF' }} />}
       {!on && live !== null && <View pointerEvents="none" style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderStyle: 'dashed', borderColor: props.color }} />}
       {live === null && on && <Text pointerEvents="none" style={{ position: 'absolute', bottom: 2, right: 6, color: props.picked ? theme.text : theme.muted, fontSize: 9, fontWeight: '800' }}>{`${shown > 0 ? '+' : ''}${Math.round(shown)}`}</Text>}
