@@ -20,12 +20,32 @@ import { InputSheet } from './InputSheet';
 import { SmartRenameSheet } from './SmartRenameSheet';
 import { STRIP_WIDTHS, StripWidth } from './SettingsScreen';
 import { ClipBanner } from './ClipBanner';
-import { MixPickerButton, MixPickerSheet } from './MixPicker';
+import { MixChips, MixPickerSheet } from './MixPicker';
 import { InputSourceSheet } from './InputSourceSheet';
-import { insrcPath, insrcPlug } from '../xair/addresses';
+import { insrcPath, insrcPlug, soloPath } from '../xair/addresses';
+import { i as oscI } from '../osc/osc';
+import { useAnyTick } from '../ui/useTick';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
+import { HELP, showTip } from '../ui/tip';
 
 const CHANNELS = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+
+/** Bandeau jaune tant qu'une voie est en solo : on sait qu'on n'entend qu'elle au casque, et on arrête tout d'un appui. */
+function SoloBar({ client, theme }: { client: XAirClient; theme: Theme }) {
+  useAnyTick(client, 150);
+  const on = CHANNELS.filter((ch) => Number(client.get(soloPath(ch)) ?? 0) === 1);
+  if (!on.length) return null;
+  const names = on.map((ch) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`).join(', ');
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: '#FACC15' }}>
+      <Text style={{ fontSize: 18 }}>🎧</Text>
+      <Text numberOfLines={1} style={{ flex: 1, color: '#1A1204', fontWeight: '800', fontSize: 13 }}>Solo : {names} · au casque, tu n’entends que ça (le public n’est pas touché)</Text>
+      <Pressable onPress={() => on.forEach((ch) => client.set(soloPath(ch), oscI(0)))} style={{ height: 36, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#1A1204', justifyContent: 'center' }}>
+        <Text style={{ color: '#FACC15', fontWeight: '800', fontSize: 13 }}>Arrêter les solos</Text>
+      </Pressable>
+    </View>
+  );
+}
 const BUS_COLORS = ['#60A5FA', '#34D399', '#38BDF8', '#A3E635', '#FB923C', '#F87171'];
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
 
@@ -116,7 +136,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     return () => client.stopMeters();
   }, [client]);
   useEffect(() => {
-    client.loadPaths([...CHANNELS.map((ch) => chLevelPath(ch, target)), outPath(target), outOnPath(target)]);
+    client.loadPaths([...CHANNELS.map((ch) => chLevelPath(ch, target)), ...CHANNELS.map(soloPath), outPath(target), outOnPath(target)]);
   }, [client, target]);
 
   const [bodyH, setBodyH] = useState(0);
@@ -248,23 +268,23 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const headerButtons = (
     <>
         {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
-        <Pressable onPress={() => setCopyOpen(true)} accessibilityLabel="Copier ce qu’entend une personne vers une ou plusieurs autres" style={[styles.hbtn, { borderColor: theme.line2 }]}>
+        <Pressable onPress={() => setCopyOpen(true)} onLongPress={() => showTip(HELP.copyMix)} accessibilityLabel="Copier ce qu’entend une personne vers une ou plusieurs autres" style={[styles.hbtn, { borderColor: theme.line2 }]}>
           <Text style={{ color: theme.text, fontWeight: '800', fontSize: 12, textAlign: 'center' }}>⧉ Copier{'\n'}un mix</Text>
         </Pressable>
-        <Pressable onPress={cycleView} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+        <Pressable onPress={cycleView} onLongPress={() => showTip(HELP.view)} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
           <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>{curView.icon}</Text>
           <View>
             <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>VUE</Text>
             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{curView.label}</Text>
           </View>
         </Pressable>
-        <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
+        <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} onLongPress={() => showTip(HELP.undo)} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
         </Pressable>
-        <Pressable disabled={view === 'table'} onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, view === 'table' && { opacity: 0.35 }]}>
+        <Pressable disabled={view === 'table'} onLongPress={() => showTip(HELP.organize)} onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, view === 'table' && { opacity: 0.35 }]}>
           <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
         </Pressable>
-        <Pressable onPress={() => setGroupsOpen(true)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
+        <Pressable onPress={() => setGroupsOpen(true)} onLongPress={() => showTip(HELP.groups)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
           <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Groupes</Text>
         </Pressable>
     </>
@@ -276,7 +296,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <View style={styles.header}>
           <View style={[styles.dot, { backgroundColor: dot, marginRight: 2 }]} accessibilityLabel={`Table ${status}`} />
           <View style={{ flex: 1 }}>
-            <MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} />
+            <MixChips client={client} target={target} theme={theme} onPick={setTarget} onMore={() => setPickerOpen(true)} />
           </View>
           {headerButtons}
         </View>
@@ -285,12 +305,13 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <View style={{ paddingHorizontal: 10, paddingBottom: 6, gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={[styles.dot, { backgroundColor: dot }]} accessibilityLabel={`Table ${status}`} />
-            <View style={{ flex: 1 }}><MixPickerButton client={client} target={target} theme={theme} onPress={() => setPickerOpen(true)} /></View>
+            <View style={{ flex: 1 }}><MixChips client={client} target={target} theme={theme} onPick={setTarget} onMore={() => setPickerOpen(true)} /></View>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>{headerButtons}</ScrollView>
         </View>
       )}
       {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}
+      <SoloBar client={client} theme={theme} />
       <ClipBanner client={client} onOpen={setInputCh} />
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>

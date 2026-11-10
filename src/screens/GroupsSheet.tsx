@@ -7,7 +7,7 @@ import { bottomPad } from '../ui/immersive';
 import { f, i, s } from '../osc/osc';
 import { CH_COUNT, chDcaPath, chNamePath, DCA_COUNT, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, toggleDca } from '../xair/addresses';
 import { faderToDb } from '../xair/levels';
-import { colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
+import { chColor, colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
 import { HSlider } from '../ui/HSlider';
 import { useMeter } from '../xair/useMeter';
 import { meterIndex } from '../xair/addresses';
@@ -30,7 +30,7 @@ export function GroupsSheet({ client, theme, visible, onClose }: { client: XAirC
   const mask = (ch: number) => Number(client.get(chDcaPath(ch)) ?? 0);
   const members = (g: number) => ALL.filter((ch) => inDca(mask(ch), g));
   const chN = (ch: number) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
-  const chC = (ch: number) => colorOf(Number(client.get(`/ch/${String(ch).padStart(2, '0')}/config/color`) ?? 0));
+  const chC = (ch: number) => chColor(client, ch);
   const col = GROUP_COLORS[k - 1];
   const cardW = wide ? Math.floor((width - 40 - 3 * 10) / 4) : 230;
   const fam = (ch: number) => recognize(String(client.get(chNamePath(ch)) ?? ''))?.group ?? null;

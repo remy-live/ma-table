@@ -10,7 +10,7 @@ import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { allTargets, CH_COUNT, chLevelPath, chNamePath, Target, targetId } from '../xair/addresses';
 import { copyMix } from '../xair/groups';
-import { colorOf } from '../xair/smartName';
+import { chColor, colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 import { safetyBackup } from '../store/sessions';
 import { mixInfo } from './MixPicker';
@@ -78,7 +78,7 @@ export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible:
           <ScrollView style={{ maxHeight: 230 }} contentContainerStyle={styles.wrap}>
             {list.map((c) => {
               const on = picked.includes(c);
-              const col = colorOf(Number(client.get(`/ch/${String(c).padStart(2, '0')}/config/color`) ?? 0));
+              const col = chColor(client, c);
               return (
                 <Pressable key={c} onPress={() => setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]))} accessibilityRole="checkbox" accessibilityState={{ checked: on }} style={[styles.ch, { borderColor: on ? col : theme.line, backgroundColor: on ? theme.deep : 'transparent', opacity: on ? 1 : 0.55 }]}>
                   <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>{on ? '✓ ' : ''}{name(c)}</Text>

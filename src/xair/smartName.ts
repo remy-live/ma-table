@@ -12,6 +12,12 @@ export const TABLE_COLORS: Record<number, string> = {
 };
 export const colorOf = (idx: number) => TABLE_COLORS[idx & 7] ?? '#3A424C';
 
+/** Couleurs de secours quand une voie n'a pas de couleur sur la table (une par voie, toujours la même). */
+export const CH_PALETTE = ['#F59E0B', '#34D399', '#60A5FA', '#F472B6', '#2DD4BF', '#A78BFA', '#FB923C', '#A3E635'];
+/** LA couleur d'une voie, la même partout dans l'appli : celle choisie sur la table, sinon une couleur fixe par voie. */
+export const chColorOf = (idx: number, ch: number) => ((idx & 7) ? colorOf(idx) : CH_PALETTE[(ch - 1) % CH_PALETTE.length]);
+export const chColor = (client: { get(p: string): unknown }, ch: number) => chColorOf(Number(client.get(`/ch/${String(ch).padStart(2, '0')}/config/color`) ?? 0), ch);
+
 export interface Recognized {
   label: string; // nom propre
   color: number; // couleur table

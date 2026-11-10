@@ -14,12 +14,12 @@ import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
 import {
   BUS_COUNT, busNamePath, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, formatPan, FX_COUNT, fToGainDb, headampGainPath,
-  inDca, insrcLabel, insrcPath, insrcPlug, invertPath, MAIN, meterIndex, panPath, panToF, phantomPath, Target, targetId, toggleDca,
+  inDca, insrcLabel, soloPath, insrcPath, insrcPlug, invertPath, MAIN, meterIndex, panPath, panToF, phantomPath, Target, targetId, toggleDca,
 } from '../xair/addresses';
 import { fxType, fxTypePath } from '../xair/effects';
 import { SLOT_COLORS } from '../xair/fxSlots';
 import { dbToFader } from '../xair/levels';
-import { colorOf, TABLE_COLORS } from '../xair/smartName';
+import { chColorOf, colorOf, TABLE_COLORS } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
 import { toAllReturns } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
@@ -39,7 +39,7 @@ type Mode = 'in' | 'link';
 
 /** Les adresses dont le tiroir a besoin pour une voie. */
 export function drawerPaths(ch: number): string[] {
-  const p = [chNamePath(ch), headampGainPath(ch), phantomPath(ch), invertPath(ch), panPath(ch), chOnPath(ch), chDcaPath(ch), insrcPath(ch), chLevelPath(ch, MAIN)];
+  const p = [chNamePath(ch), soloPath(ch), headampGainPath(ch), phantomPath(ch), invertPath(ch), panPath(ch), chOnPath(ch), chDcaPath(ch), insrcPath(ch), chLevelPath(ch, MAIN)];
   for (let b = 1; b <= BUS_COUNT; b++) p.push(chLevelPath(ch, { kind: 'bus', n: b }), busNamePath(b));
   for (let k = 1; k <= FX_COUNT; k++) p.push(chLevelPath(ch, { kind: 'fx', n: k }), fxTypePath(k));
   return p;
@@ -58,7 +58,7 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
   const n2 = String(ch).padStart(2, '0');
   const name = String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
   const colIdx = Number(client.get(`/ch/${n2}/config/color`) ?? 0) & 7;
-  const color = colorOf(colIdx);
+  const color = chColorOf(colIdx, ch);
   const insrc = Number(client.get(insrcPath(ch)) ?? ch - 1);
 
   return (
@@ -151,6 +151,7 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
   const p48 = Number(client.get(phantomPath(ch)) ?? 0) === 1;
   const inv = Number(client.get(invertPath(ch)) ?? 0) === 1;
   const on = Number(client.get(chOnPath(ch)) ?? 1) === 1;
+  const solo = Number(client.get(soloPath(ch)) ?? 0) === 1;
   const T = ({ label, active, bg, onPress }: { label: string; active: boolean; bg: string; onPress: () => void }) => (
     <Pressable onPress={onPress} accessibilityRole="switch" accessibilityState={{ checked: active }} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2 }]}>
       <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 13 }}>{label}</Text>
@@ -163,6 +164,7 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
       )}
       <T label="Phase Ø" active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
       <T label={on ? 'Couper' : 'Voie coupée'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
+      <T label={solo ? '🎧 Solo' : '🎧 Écouter seule'} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
     </View>
   );
 }

@@ -4,7 +4,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { f } from '../osc/osc';
 import { chNamePath, fToGainDb, headampGainPath, insrcPath, insrcPlug, meterIndex, phantomPath } from '../xair/addresses';
-import { colorOf } from '../xair/smartName';
+import { chColorOf, colorOf } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
 import { useParam, useParamOpt } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
@@ -16,7 +16,7 @@ export interface TileOrganize { onMove: (k: number) => void; onCopy: () => void;
 
 export function GainTile({ client, ch, theme, size, onOpen, organize }: { client: XAirClient; ch: number; theme: Theme; size: number; onOpen: (ch: number) => void; organize?: TileOrganize }) {
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const col = colorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)));
+  const col = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
   const gain = useParamOpt(client, headampGainPath(ch));
   const p48 = Number(useParamOpt(client, phantomPath(ch)) ?? 0) === 1;
   const insrc = Number(useParam<number>(client, insrcPath(ch), ch - 1));

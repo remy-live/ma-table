@@ -4,7 +4,7 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { readInset } from '../ui/immersive';
 import { Theme } from '../ui/theme';
-import { colorOf } from '../xair/smartName';
+import { chColor, colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 import { ChannelDrawer, DrawerActions } from './ChannelDrawer';
 
@@ -17,7 +17,7 @@ export function InputSheet({ client, ch, theme, onClose, actions }: { client: XA
     onDetail: actions.onDetail && ((c) => { onClose(); actions.onDetail!(c); }),
     onCopy: actions.onCopy && ((c) => { onClose(); actions.onCopy!(c); }),
   };
-  const color = ch !== null ? colorOf(Number(client.get(`/ch/${String(ch).padStart(2, '0')}/config/color`) ?? 0)) : theme.line;
+  const color = ch !== null ? chColor(client, ch) : theme.line;
   return (
     <Modal visible={ch !== null} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>

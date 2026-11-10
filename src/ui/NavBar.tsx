@@ -2,6 +2,7 @@
 // Cinq sections claires + le bouton « Aide-moi » (assistants).
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { HELP, showTip } from './tip';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
 
@@ -41,7 +42,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
   };
   return (
     <View style={[vertical ? styles.rail : styles.bar, { backgroundColor: theme.deep, borderColor: theme.line }]}>
-      <Pressable onPress={props.onHelp} accessibilityLabel="Aide-moi : balance automatique, mode guidé" style={[vertical ? styles.help : styles.helpSmall, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
+      <Pressable onPress={props.onHelp} onLongPress={() => showTip(HELP.aide)} accessibilityLabel="Aide-moi : balance automatique, mode guidé" style={[vertical ? styles.help : styles.helpSmall, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
         <Icon id="aide" color="#6EE7B7" size={vertical ? 26 : 22} />
         <Text style={{ color: '#A7F3D0', fontSize: vertical ? 11 : 10, fontWeight: '800' }}>Aide-moi</Text>
       </Pressable>
@@ -50,7 +51,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         const dim = props.locked && id !== 'scene';
         const c = on ? theme.accent : dim ? theme.line2 : theme.muted;
         return (
-          <Pressable key={id} onPress={() => go(id)} accessibilityRole="tab" accessibilityState={{ selected: on, disabled: dim }} accessibilityLabel={label} style={[vertical ? styles.item : styles.itemSmall, on && { backgroundColor: theme.panel }]}>
+          <Pressable key={id} onPress={() => go(id)} onLongPress={() => showTip((HELP as Record<string, string>)[id === 'scene' ? 'concert' : id] ?? label)} accessibilityRole="tab" accessibilityState={{ selected: on, disabled: dim }} accessibilityLabel={label} style={[vertical ? styles.item : styles.itemSmall, on && { backgroundColor: theme.panel }]}>
             {on && vertical && <View style={[styles.mark, { backgroundColor: theme.accent }]} />}
             <Icon id={id} color={c} size={vertical ? 26 : 22} />
             <Text numberOfLines={1} style={{ color: c, fontSize: vertical ? 11 : 9, fontWeight: on ? '800' : '600' }}>{label}</Text>
@@ -59,7 +60,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
       })}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.onQuit && (
-        <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
+        <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
           <Icon id="quitter" color={theme.muted} size={vertical ? 24 : 20} />
           <Text numberOfLines={1} style={{ color: theme.muted, fontSize: vertical ? 11 : 9, fontWeight: '600' }}>Quitter</Text>
         </Pressable>

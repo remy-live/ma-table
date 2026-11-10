@@ -15,7 +15,7 @@ import { applyRecipe, RECIPES } from '../xair/effects';
 import { readGroups } from '../xair/groups';
 import { applyNeed, currentNeed, hasPreamp, INSTRUMENTS, Need, NEEDS } from '../xair/guide';
 import { saveCurrentSession } from '../store/sessions';
-import { applySmartName, colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
+import { applySmartName, chColor, colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 import { GroupsSheet } from './GroupsSheet';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
@@ -120,7 +120,7 @@ function StepPlugged({ client, theme }: { client: XAirClient; theme: Theme }) {
   const [pick, setPick] = useState<number>(1);
   const wide = useWindowDimensions().width >= 900;
   const nameOf = (c: number) => String(client.get(chNamePath(c)) ?? '');
-  const colOf = (c: number) => colorOf(Number(client.get(`/ch/${String(c).padStart(2, '0')}/config/color`) ?? 0));
+  const colOf = (c: number) => chColor(client, c);
   const choose = (ch: number, label: string) => {
     if (label === 'Rien') client.set(chNamePath(ch), s(''));
     else {
@@ -197,7 +197,7 @@ function StepGroups({ client, theme }: { client: XAirClient; theme: Theme }) {
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>{String(client.get(dcaNamePath(k)) ?? '') || `Groupe ${k}`}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                 {(g?.members ?? []).map((ch) => (
-                  <View key={ch} style={{ height: 28, paddingHorizontal: 8, borderRadius: 14, borderWidth: 2, borderColor: colorOf(Number(client.get(`/ch/${String(ch).padStart(2, '0')}/config/color`) ?? 0)), justifyContent: 'center' }}>
+                  <View key={ch} style={{ height: 28, paddingHorizontal: 8, borderRadius: 14, borderWidth: 2, borderColor: chColor(client, ch), justifyContent: 'center' }}>
                     <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{iconFor(String(client.get(chNamePath(ch)) ?? ''))} {String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`}</Text>
                   </View>
                 ))}

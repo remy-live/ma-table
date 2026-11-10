@@ -1,5 +1,6 @@
 // Interrupteur « une enceinte / deux enceintes » pour la façade.
 import React, { useEffect, useState } from 'react';
+import { HELP, showTip } from './tip';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { goMono, goStereo, hasSavedPans, isMono, monoPaths } from '../xair/mono';
 import { XAirClient } from '../xair/XAirClient';
@@ -20,7 +21,7 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
   if (compact) {
     // un seul bouton : montre l'état, un appui bascule
     return (
-      <Pressable onPress={mono ? toStereo : toMono} accessibilityLabel={mono ? 'Une enceinte (mono). Passer à deux enceintes' : 'Deux enceintes (stéréo). Passer à une enceinte'} style={[styles.one, { borderColor: mono ? theme.accent : theme.line2, backgroundColor: mono ? 'rgba(245,158,11,0.15)' : 'transparent' }]}>
+      <Pressable onPress={mono ? toStereo : toMono} onLongPress={() => showTip(HELP.mono)} accessibilityLabel={mono ? 'Une enceinte (mono). Passer à deux enceintes' : 'Deux enceintes (stéréo). Passer à une enceinte'} style={[styles.one, { borderColor: mono ? theme.accent : theme.line2, backgroundColor: mono ? 'rgba(245,158,11,0.15)' : 'transparent' }]}>
         <Text style={{ fontSize: 13 }}>{mono ? '🔈' : '🔈🔈'}</Text>
         <Text style={{ color: theme.text, fontWeight: '800', fontSize: 11 }}>{mono ? '1 enceinte' : '2 enceintes'}</Text>
       </Pressable>

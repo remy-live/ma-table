@@ -61,6 +61,7 @@ export class XAirClient {
   private infoWaiters: ((i: TableInfo) => void)[] = [];
   private extra = new Set<string>();
   private metersOn = false;
+  private meterUsers = 0;
   private meterListeners = new Set<(db: Float32Array) => void>();
   /** Dernières valeurs de /meters/1, en dB. */
   meters = new Float32Array(40).fill(-90);
@@ -114,12 +115,15 @@ export class XAirClient {
 
   /** Vumètres : la table envoie /meters/1 toutes les ~50 ms tant qu'on renouvelle l'abonnement. */
   startMeters() {
+    this.meterUsers++;
     this.metersOn = true;
     this.raw('/meters', [oscS('/meters/1')]);
   }
 
   stopMeters() {
-    this.metersOn = false;
+    // plusieurs écrans peuvent demander les vumètres : on n'arrête que quand plus personne n'en veut
+    this.meterUsers = Math.max(0, this.meterUsers - 1);
+    this.metersOn = this.meterUsers > 0;
   }
 
   onMeters(cb: (db: Float32Array) => void): () => void {

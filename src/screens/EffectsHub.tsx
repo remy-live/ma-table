@@ -8,6 +8,7 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { f } from '../osc/osc';
 import { FxVisual } from '../ui/FxVisual';
 import { DragBubble } from '../ui/DragBubble';
+import { chColor } from '../xair/smartName';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, FX_COUNT } from '../xair/addresses';
 import { fxParPath, fxType, fxTypePath, knobsFor } from '../xair/effects';
@@ -183,7 +184,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
               </View>
               {named.map((ch) => (
                 <View key={ch} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                  <View style={[styles.rowHead, { height: rowH, backgroundColor: theme.panel, borderColor: theme.line }]}>
+                  <View style={[styles.rowHead, { height: rowH, backgroundColor: theme.panel, borderColor: theme.line, borderLeftWidth: 6, borderLeftColor: chColor(client, ch) }]}>
                     <Text numberOfLines={1} style={{ color: theme.text, fontSize: rowH < 34 ? 12 : 13, fontWeight: '800' }}>{chName(client, ch)}</Text>
                     {rowH >= 40 && <Text style={{ color: theme.muted, fontSize: 10 }}>voie {ch}</Text>}
                   </View>

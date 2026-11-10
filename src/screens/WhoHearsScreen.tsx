@@ -12,9 +12,10 @@ import { dbToFader } from '../xair/levels';
 import { shift } from '../xair/monitor';
 import { Dest, destinations, levelDb, levelPaths, Src, sources, whoHearsPaths } from '../xair/whoHears';
 import { XAirClient } from '../xair/XAirClient';
+import { chColor } from '../xair/smartName';
+import { SLOT_COLORS } from '../xair/fxSlots';
 import { initials, MIX_COLORS } from './MixPicker';
 
-const PALETTE = ['#F472B6', '#2DD4BF', '#60A5FA', '#F59E0B', '#A3E635', '#FB923C', '#38BDF8', '#E879F9', '#FCD34D', '#94A3B8'];
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 const CELL = 64;
 const LABEL_W = 150;
@@ -34,13 +35,14 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
   // les colonnes s'élargissent pour remplir l'écran
   const cw = areaW > 0 ? Math.max(CELL, Math.min(130, Math.floor((areaW - 24 - LABEL_W - dests.length * 4) / Math.max(1, dests.length)))) : CELL;
   const allSrc = sources(client);
-  const colorOf = (s: Src) => (s.kind === 'fx' ? '#C084FC' : s.kind === 'group' ? '#F59E0B' : PALETTE[allSrc.indexOf(s) % PALETTE.length]);
+  // la même couleur que partout ailleurs : la couleur de la voie, de l'effet, du groupe
+  const colorOf = (s: Src) => (s.kind === 'fx' ? SLOT_COLORS[(s.fx ?? 1) - 1] : s.kind === 'group' ? '#F59E0B' : chColor(client, s.channels[0]));
   const destColor = (d: Dest) => (d.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(d.t as { n: number }).n] ?? '#9AA3AD');
   const rows: { s: Src; indent: boolean; color: string }[] = [];
   for (const s of allSrc) {
     if (isoS && isoS !== s.id && !(s.kind === 'group' && s.members!.some((m) => m.id === isoS))) continue;
     rows.push({ s, indent: false, color: colorOf(s) });
-    if (s.kind === 'group' && open[s.id]) for (const m of s.members!) if (!isoS || isoS === m.id || isoS === s.id) rows.push({ s: m, indent: true, color: '#FCD34D' });
+    if (s.kind === 'group' && open[s.id]) for (const m of s.members!) if (!isoS || isoS === m.id || isoS === s.id) rows.push({ s: m, indent: true, color: colorOf(m) });
   }
   const pickSrc = pick ? [...allSrc, ...allSrc.flatMap((s) => s.members ?? [])].find((s) => s.id === pick.s) : null;
   const pickDest = pick ? destinations(client).find((d) => d.id === pick.d) : null;

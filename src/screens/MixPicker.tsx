@@ -3,6 +3,7 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../ui/theme';
+import { HELP, showTip } from '../ui/tip';
 import { BUS_COUNT, busNamePath, FX_COUNT, Target, targetId } from '../xair/addresses';
 import { fxType, fxTypePath } from '../xair/effects';
 import { XAirClient } from '../xair/XAirClient';
@@ -52,6 +53,47 @@ export function MixPickerButton(props: { client: XAirClient; target: Target; the
       </View>
       <Text style={{ color: theme.muted, fontSize: 16 }}>▾</Text>
     </Pressable>
+  );
+}
+
+/** Une pastille par personne, toujours visible : un appui change de mix.
+ *  La pastille choisie s'ouvre et donne le nom complet. « FX » ouvre les effets. */
+export function MixChips(props: { client: XAirClient; target: Target; theme: Theme; onPick: (t: Target) => void; onMore: () => void }) {
+  const { client, theme } = props;
+  const people: Target[] = [{ kind: 'main' }, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)];
+  const cur = targetId(props.target);
+  const fxOn = props.target.kind === 'fx';
+  const curInfo = fxOn ? mixInfo(client, props.target) : null;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
+      {people.map((t) => {
+        const m = mixInfo(client, t);
+        const on = targetId(t) === cur;
+        return (
+          <Pressable key={targetId(t)} onPress={() => props.onPick(t)} onLongPress={() => showTip(`${m.name} (${m.sub}). ${HELP.mix}`)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={`Les faders règlent ce qu’entend ${m.name}`}
+            style={[styles.chip, on ? { borderColor: m.color, backgroundColor: theme.panel, paddingRight: 14 } : { borderColor: 'transparent', paddingRight: 4 }]}>
+            <View style={[styles.avatar, on ? null : { opacity: 0.85 }, { backgroundColor: m.color }]}><Text style={styles.avatarText}>{m.ini}</Text></View>
+            {on && (
+              <View style={{ maxWidth: 170 }}>
+                <Text numberOfLines={1} style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{m.name}</Text>
+                <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10 }}>{m.sub}</Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+      <Pressable onPress={props.onMore} onLongPress={() => showTip(HELP.fxChip)} accessibilityRole="button" accessibilityLabel="Régler les envois vers les effets" style={[styles.chip, fxOn && curInfo ? { borderColor: curInfo.color, backgroundColor: theme.panel, paddingRight: 14 } : { borderColor: theme.line2, paddingRight: 10, paddingLeft: 10 }]}>
+        {fxOn && curInfo ? (
+          <>
+            <View style={[styles.avatar, { backgroundColor: curInfo.color }]}><Text style={styles.avatarText}>{curInfo.ini}</Text></View>
+            <View style={{ maxWidth: 160 }}>
+              <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>ENVOIS VERS L’EFFET</Text>
+              <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{curInfo.name} ▾</Text>
+            </View>
+          </>
+        ) : <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '800' }}>FX ▾</Text>}
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -107,6 +149,7 @@ export function MixPickerSheet(props: { client: XAirClient; target: Target; them
 
 const styles = StyleSheet.create({
   btn: { height: 54, borderRadius: 16, borderWidth: 2, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingRight: 12, flex: 1 },
+  chip: { height: 54, borderRadius: 27, borderWidth: 2, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 6 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#0B0D10', fontSize: 12, fontWeight: '800' },
   back: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },

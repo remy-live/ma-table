@@ -42,3 +42,10 @@ export function useParamOpt(client: XAirClient, path: string): OscValue | undefi
   }, [client, path]);
   return value;
 }
+
+/** Solo : 1 = la voie est écoutée seule au casque. */
+export function useSolo(client: XAirClient, path: string) {
+  const on = Number(useParam<number>(client, path, 0)) === 1;
+  const toggle = useCallback(() => client.set(path, i(on ? 0 : 1)), [client, path, on]);
+  return [on, toggle] as const;
+}

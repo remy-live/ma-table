@@ -11,7 +11,7 @@ import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
 import { CATEGORIES, Category, copySettings } from '../xair/clipboard';
 import { readGroups } from '../xair/groups';
-import { colorOf, recognize } from '../xair/smartName';
+import { chColor, colorOf, recognize } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 
 const ALL = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
@@ -25,7 +25,7 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
   useEffect(() => { if (props.visible) { setSrcs(props.from ? [props.from] : []); setDsts((props.to ?? []).filter((c) => c !== props.from)); } }, [props.visible, props.from]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
-  const col = (c: number) => colorOf(Number(client.get(`/ch/${String(c).padStart(2, '0')}/config/color`) ?? 0));
+  const col = (c: number) => chColor(client, c);
 
   // Sélections rapides : les groupes de la table et les familles reconnues dans les noms (Voix, Batterie, Guitares…)
   const packs: { label: string; chans: number[] }[] = [];

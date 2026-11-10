@@ -39,3 +39,28 @@ export function useMeter(client: XAirClient, indices: number[], frameMs = 66): M
 
   return st;
 }
+
+/** Niveau (0..1) de plusieurs voies d'un coup, ~8 images/s : sert à faire « s'allumer » les prises. */
+export function useLevels(client: XAirClient, chans: number[], meterIndexOf: (ch: number) => number, frameMs = 120): Record<number, number> {
+  const [lv, setLv] = useState<Record<number, number>>({});
+  const key = chans.join(',');
+  useEffect(() => {
+    client.startMeters();
+    const shown: Record<number, number> = {};
+    let last = 0;
+    const off = client.onMeters((m) => {
+      for (const ch of chans) {
+        const t = dbToMeter(m[meterIndexOf(ch)] ?? -90);
+        const s = shown[ch] ?? 0;
+        shown[ch] = t > s ? t : s * 0.8 + t * 0.2;
+      }
+      const now = Date.now();
+      if (now - last < frameMs) return;
+      last = now;
+      setLv({ ...shown });
+    });
+    return () => { off(); client.stopMeters(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, key, frameMs]);
+  return lv;
+}

@@ -8,14 +8,15 @@ import { s as oscS } from '../osc/osc';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { Theme } from '../ui/theme';
 import { Shell } from '../ui/Shell';
-import { busNamePath, chNamePath, MODEL } from '../xair/addresses';
+import { busNamePath, chNamePath, meterIndex, MODEL } from '../xair/addresses';
+import { useLevels } from '../xair/useMeter';
 import { colorOf } from '../xair/smartName';
 import { connect, disconnect, likeMain, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
 import { Btn, ScreenHeader, Segmented } from '../ui/kit';
-import { TableWiring } from './TableWiring';
+import { ManyDrawer } from './TableWiring';
 import { ChannelDrawer } from './ChannelDrawer';
 import { useAnyTick } from '../ui/useTick';
 import { MonoSwitch } from '../ui/MonoSwitch';
@@ -23,8 +24,8 @@ import { readGroups } from '../xair/groups';
 import { GROUP_COLORS } from './GroupsSheet';
 import { load, save } from '../store/persist';
 
-type View3 = 'table' | 'arriere' | 'colonnes' | 'bulles';
-type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | null;
+type View3 = 'arriere' | 'colonnes' | 'bulles';
+type Sel = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'many'; ns: number[] } | null;
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 
@@ -33,12 +34,14 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const { client, theme } = props;
   const { width } = useWindowDimensions();
   const tick = useAnyTick(client);
-  const [view, setView] = useState<View3>(width > 700 ? 'table' : 'colonnes');
-  // 3 vues : la table cliquable, les câbles (face arrière sur tablette, colonnes sur téléphone), les bulles
+  const [view, setView] = useState<View3>(width > 700 ? 'arriere' : 'colonnes');
+  // 2 vues : les câbles (face arrière sur tablette, colonnes sur téléphone) et les bulles.
+  // La table dessinée (régler + relier) est dans Table › Vue Table.
   const cables: View3 = width > 700 ? 'arriere' : 'colonnes';
-  const VIEWS: readonly (readonly [View3, string])[] = width > 700 ? [['table', 'Table'], [cables, 'Câbles'], ['bulles', 'Bulles']] : [[cables, 'Câbles'], ['bulles', 'Bulles']];
-  useEffect(() => { load<string>('vueBranchements', 'table').then((v) => setView(v === 'bulles' ? 'bulles' : v === 'arriere' || v === 'colonnes' || width <= 700 ? cables : 'table')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const VIEWS: readonly (readonly [View3, string])[] = [[cables, 'Câbles'], ['bulles', 'Bulles']];
+  useEffect(() => { load<string>('vueBranchements', 'arriere').then((v) => setView(v === 'bulles' ? 'bulles' : cables)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
+  const [multi, setMulti] = useState(false);
   const [showAll, setShowAll] = useState(true);
   const [toast, setToast] = useState('');
   const [ren, setRen] = useState<{ path: string; v: string } | null>(null);
@@ -58,14 +61,28 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   const groupPlugs = selGroup ? P.filter((p) => p.chans.some((c) => selGroup.members.includes(c))) : [];
   const groupLinked = (o: Outlet) => groupPlugs.length > 0 && groupPlugs.every((p) => W.some((w) => w.plug === p.n && w.out === o.id));
   const groupSome = (o: Outlet) => groupPlugs.some((p) => W.some((w) => w.plug === p.n && w.out === o.id));
-  const touches = (w: { plug: number; out: string }) => !!sel && ((sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && groupPlugs.some((p) => p.n === w.plug)));
+  const touches = (w: { plug: number; out: string }) => !!sel && ((sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && groupPlugs.some((p) => p.n === w.plug)) || (sel.kind === 'many' && sel.ns.includes(w.plug)));
   const visibleWires = W.filter((w) => (sel ? touches(w) : showAll));
 
   // Un appui montre les liaisons ; pour relier, on glisse du doigt.
-  const tapPlug = (p: Plug) => setSel(sel && sel.kind === 'plug' && sel.n === p.n ? null : { kind: 'plug', n: p.n });
+  const tapPlug = (p: Plug) => {
+    if (multi) {
+      const cur = sel?.kind === 'many' ? sel.ns : sel?.kind === 'plug' ? [sel.n] : [];
+      const ns = cur.includes(p.n) ? cur.filter((x) => x !== p.n) : [...cur, p.n].sort((a, b) => a - b);
+      setSel(ns.length ? { kind: 'many', ns } : null);
+      return;
+    }
+    setSel(sel && sel.kind === 'plug' && sel.n === p.n ? null : { kind: 'plug', n: p.n });
+  };
   const tapOut = (o: Outlet) => setSel(sel && sel.kind === 'out' && sel.id === o.id ? null : { kind: 'out', id: o.id });
 
   const linkDrag = (plugN: number, outId: string) => {
+    // une prise de la sélection emmène toutes les autres
+    if (sel?.kind === 'many' && sel.ns.includes(plugN)) {
+      const o = O.find((x) => x.id === outId)!;
+      sel.ns.forEach((n) => { const q = P[n - 1]; if (q?.chans.length && !W.some((w) => w.plug === n && w.out === o.id)) connect(client, q, o.t); });
+      return;
+    }
     const p = P[plugN - 1];
     const o = O.find((x) => x.id === outId)!;
     if (!p.chans.length) { say(`Rien n’écoute la prise ${p.n} : donne-lui une voie (Changer l’entrée)`); return; }
@@ -81,15 +98,19 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   return (
     <Shell embedded={props.embedded} visible={props.visible} onClose={props.onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
-        <ScreenHeader theme={theme} title="Branchements" sub={view === 'bulles' ? 'Une bulle = un son dans une oreille' : view === 'table' ? 'Touche une prise, puis règle ou relie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+        <ScreenHeader theme={theme} title="Branchements" sub={view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+          {view !== 'bulles' && (
+            <Pressable onPress={() => { const m = !multi; setMulti(m); if (m && sel?.kind === 'plug') setSel({ kind: 'many', ns: [sel.n] }); if (!m && sel?.kind === 'many') setSel(null); }} accessibilityRole="switch" accessibilityState={{ checked: multi }}
+              style={[styles.small, { height: 44, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : 'transparent' }]}>
+              <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Plusieurs${sel?.kind === 'many' ? ` (${sel.ns.length})` : ''}` : '☐ Plusieurs'}</Text>
+            </Pressable>
+          )}
           <Segmented theme={theme} value={view} onChange={(v) => { setView(v); setSel(null); save('vueBranchements', v); }} options={VIEWS} />
           {!props.embedded && <Btn theme={theme} kind="primary" label="Terminé" onPress={props.onClose} />}
         </ScreenHeader>
 
         {view === 'bulles' ? (
           <WhoHearsScreen client={client} theme={theme} visible embedded onClose={props.onClose} />
-        ) : view === 'table' ? (
-          <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} />
         ) : (
           <>
             <View style={{ flex: 1 }}>
@@ -101,7 +122,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
             </View>
 
             {/* BAS : sélection */}
-            <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : selGroup ? GROUP_COLORS[selGroup.k - 1] : theme.line, backgroundColor: theme.panel }]}>
+            <View style={[styles.bottom, { borderColor: selPlug ? plugColor(selPlug) : selOut ? outColor(selOut) : selGroup ? GROUP_COLORS[selGroup.k - 1] : sel?.kind === 'many' ? theme.text : theme.line, backgroundColor: theme.panel }]}>
               {!sel && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ color: theme.muted, fontSize: 12, flex: 1 }} numberOfLines={2}>Touche une <Text style={{ color: theme.accent, fontWeight: '800' }}>prise</Text> ou une <Text style={{ color: '#60A5FA', fontWeight: '800' }}>sortie</Text> pour voir ses fils, la renommer et régler les niveaux.</Text>
@@ -129,38 +150,20 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                   <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
                 </View>
               ))}
-              {selGroup && (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={[styles.num, { borderColor: GROUP_COLORS[selGroup.k - 1], width: 'auto', paddingHorizontal: 10, borderRadius: 12 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>GROUPE</Text></View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{selGroup.name} · {groupPlugs.length} prises</Text>
-                      <Text style={{ color: theme.muted, fontSize: 11 }}>{groupPlugs.map((p) => p.n).join(' · ')} · glisse la capsule vers une sortie, ou touche une sortie ci-dessous</Text>
-                    </View>
-                    <Pressable onPress={() => setSel(null)} accessibilityLabel="Fermer" style={styles.close}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
-                  </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    {O.map((o) => {
-                      const all = groupLinked(o);
-                      const some = groupSome(o);
-                      const c = outColor(o);
-                      return (
-                        <View key={o.id} style={[styles.wire, { backgroundColor: theme.deep, borderColor: all ? c : theme.line, borderStyle: all ? 'solid' : 'dashed' }]}>
-                          <Pressable onPress={() => { if (all) groupPlugs.forEach((p) => disconnect(client, p, o.t)); else groupPlugs.forEach((p) => { if (!W.some((w) => w.plug === p.n && w.out === o.id)) connect(client, p, o.t); }); say(all ? `${selGroup.name} retiré de ${o.label}` : `${selGroup.name} → ${o.label} (${o.name})`); }} style={{ height: 36, paddingHorizontal: 10, borderRadius: 18, borderWidth: 1, borderColor: c, backgroundColor: all ? c : 'transparent', justifyContent: 'center', minWidth: 120 }}>
-                            <Text numberOfLines={1} style={{ color: all ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{all ? '✓ ' : some ? '◐ ' : '+ '}{o.name}</Text>
-                          </Pressable>
-                          {(all || some) && (
-                            <>
-                              <Pressable onPress={() => nudge(client, groupPlugs.flatMap((p) => wirePaths(p, o.t)).filter((pa) => Number(client.get(pa) ?? 0) > 0), -2)} accessibilityLabel="Moins" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>−</Text></Pressable>
-                              <Pressable onPress={() => nudge(client, groupPlugs.flatMap((p) => wirePaths(p, o.t)).filter((pa) => Number(client.get(pa) ?? 0) > 0), 2)} accessibilityLabel="Plus" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>+</Text></Pressable>
-                            </>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </View>
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>✓ tout le groupe y va · ◐ une partie seulement · − / + bougent toutes les prises du groupe ensemble</Text>
-                </>
+              {(selGroup || sel?.kind === 'many') && (
+                <View style={{ height: 232 }}>
+                  <ManyDrawer
+                    client={client}
+                    theme={theme}
+                    wide={width > 700}
+                    plugs={selGroup ? groupPlugs : sel?.kind === 'many' ? sel.ns.map((n) => P[n - 1]).filter(Boolean) : []}
+                    O={O}
+                    outColor={outColor}
+                    title={selGroup ? selGroup.name : sel?.kind === 'many' ? `${sel.ns.length} prise${sel.ns.length > 1 ? 's' : ''} choisie${sel.ns.length > 1 ? 's' : ''}` : ''}
+                    color={selGroup ? GROUP_COLORS[selGroup.k - 1] : theme.text}
+                    extra={<Btn theme={theme} small kind="ghost" label="Fermer" onPress={() => setSel(null)} />}
+                  />
+                </View>
               )}
               {selOut && (
                 <>
@@ -273,7 +276,10 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   const anchorOf = (n: number) => { const g = groupOfPlug(n); return g && g.folded ? g.anchor : n; };
   const groupsRef = useRef(gInfo);
   groupsRef.current = gInfo;
-  const isSelPlug = (n: number) => sel?.kind === 'plug' && sel.n === n;
+  // les prises s'allument quand un son arrive
+  const lv = useLevels(props.client, P.flatMap((p) => p.chans), meterIndex.ch);
+  const live = (n: number) => Math.max(0, ...(P[n - 1]?.chans ?? []).map((c) => lv[c] ?? 0));
+  const isSelPlug = (n: number) => (sel?.kind === 'plug' && sel.n === n) || (sel?.kind === 'many' && sel.ns.includes(n));
   const isSelOut = (id: string) => sel?.kind === 'out' && sel.id === id;
   const linkedPlug = (n: number) => sel?.kind === 'out' && props.W.some((w) => w.plug === n && w.out === sel.id);
   const linkedOut = (id: string) => sel?.kind === 'plug' && props.W.some((w) => w.out === id && w.plug === sel.n);
@@ -399,8 +405,10 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
               }
               if (g && g.folded) {
                 const gc = GROUP_COLORS[g.k - 1];
+                const gl = Math.max(...g.plugs.map(live));
                 return (
                   <G key={p.n}>
+                    {gl >= 0.15 && <Rect x={x - 56 - gl * 6} y={y - 30 - gl * 6} width={112 + gl * 12} height={60 + gl * 12} rx={30 + gl * 6} fill="none" stroke={gc} strokeWidth={2 + gl * 5} opacity={0.15 + gl * 0.65} />}
                     <Rect x={x - 52} y={y - 26} width={104} height={52} rx={26} fill="#1E2227" stroke={gc} strokeWidth={3} />
                     <SvgText x={x} y={y - 3} textAnchor="middle" fontSize={13} fontWeight="800" fill={gc}>{g.name.slice(0, 11)}</SvgText>
                     <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill="#E8EAED">{`${g.plugs.length} prises`}</SvgText>
@@ -417,6 +425,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
                       <SvgText x={x} y={y - 47} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{`▾ replier ${g.name.slice(0, 9)}`}</SvgText>
                     </G>
                   )}
+                  {live(p.n) >= 0.15 && <Circle cx={x} cy={y} r={(p.usb ? 15 : 21) + 3 + live(p.n) * 9} fill="none" stroke={props.plugColor(p)} strokeWidth={2 + live(p.n) * 6} opacity={0.15 + live(p.n) * 0.65} />}
                   <Circle cx={x} cy={y} r={p.usb ? 15 : 21} fill="#1E2227" stroke={g ? GROUP_COLORS[g.k - 1] : '#3A414B'} strokeWidth={2} />
                   <Circle cx={x} cy={y} r={p.usb ? 6 : 13} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
                   <SvgText x={x + 24} y={y - 14} fontSize={12} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
@@ -450,8 +459,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
               const c = props.plugColor(P[w.plug - 1]);
               return (
                 <G key={w.plug + w.out}>
-                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke="#0B0D10" strokeWidth={wireWidth(w.db) + 3} strokeLinecap="round" opacity={!sel || (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.6 : 0} />
-                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke={c} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={!sel ? 0.55 : (sel.kind === 'plug' && sel.n === w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && !!groupOfPlug(w.plug) && groupOfPlug(w.plug)!.k === sel.k) ? 0.95 : 0.12} />
+                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke="#0B0D10" strokeWidth={wireWidth(w.db) + 3} strokeLinecap="round" opacity={!sel || isSelPlug(w.plug) || (sel.kind === 'out' && sel.id === w.out) ? 0.6 : 0} />
+                  <Path d={`M${a.x} ${a.y} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 80}, ${b.x} ${b.y}`} fill="none" stroke={c} strokeWidth={wireWidth(w.db)} strokeLinecap="round" opacity={!sel ? 0.55 : isSelPlug(w.plug) || (sel.kind === 'out' && sel.id === w.out) || (sel.kind === 'group' && !!groupOfPlug(w.plug) && groupOfPlug(w.plug)!.k === sel.k) ? 0.95 : 0.12} />
                   <Circle cx={b.x} cy={b.y} r={4} fill={c} />
                 </G>
               );
@@ -503,7 +512,7 @@ function Columns(props: { theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: numbe
   const [w, setW] = useState(0);
   const yPlug = (n: number) => used.findIndex((p) => p.n === n) * ROW + ROW / 2;
   const yOut = (id: string) => O.findIndex((o) => o.id === id) * rightRow + rightRow / 2;
-  const isSelPlug = (n: number) => sel?.kind === 'plug' && sel.n === n;
+  const isSelPlug = (n: number) => (sel?.kind === 'plug' && sel.n === n) || (sel?.kind === 'many' && sel.ns.includes(n));
   const isSelOut = (id: string) => sel?.kind === 'out' && sel.id === id;
   const L = 120;
   const R = 120;

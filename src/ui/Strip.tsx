@@ -4,20 +4,21 @@
 import React, { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  chDcaPath, chLevelPath, chNamePath, chOnPath, dcaFaderPath, dcaOnPath, fToGainDb, fToPan, headampGainPath,
+  chDcaPath, chLevelPath, chNamePath, chOnPath, soloPath, dcaFaderPath, dcaOnPath, fToGainDb, fToPan, headampGainPath,
   inDca, invertPath, meterIndex, outOnPath, outPath, panPath, phantomPath, Target,
   insrcPath, insrcPlug, sourceKind,
 } from '../xair/addresses';
 import { Group, moveMembers, snapshot } from '../xair/groups';
 import { dbToFader, faderToDb, formatDb } from '../xair/levels';
-import { colorOf } from '../xair/smartName';
+import { chColorOf, colorOf } from '../xair/smartName';
 import { useMeter } from '../xair/useMeter';
-import { useFader, useMute, useParam, useParamOpt } from '../xair/useParam';
+import { useFader, useMute, useParam, useParamOpt, useSolo } from '../xair/useParam';
 import { XAirClient } from '../xair/XAirClient';
 import { Fader } from './Fader';
 import { Knob } from './Knob';
 import { tick } from './haptics';
 import { f } from '../osc/osc';
+import { HELP, showTip } from './tip';
 import { Theme } from './theme';
 import { SLOT_COLORS } from '../xair/fxSlots';
 
@@ -66,8 +67,9 @@ export function Strip(p: StripProps) {
   const { client, ch, target, theme } = p;
   const [level, setLevel] = useFader(client, chLevelPath(ch, target));
   const [muted, toggleMute] = useMute(client, chOnPath(ch));
+  const [solo, toggleSolo] = useSolo(client, soloPath(ch));
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const scribble = colorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)));
+  const scribble = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
   const gain = useParamOpt(client, headampGainPath(ch));
   const p48 = Number(useParamOpt(client, phantomPath(ch)) ?? 0) === 1;
   const inv = Number(useParam<number>(client, invertPath(ch), 0)) === 1;
@@ -107,6 +109,7 @@ export function Strip(p: StripProps) {
       {p.view !== 'compact' && (<>
       <Pressable
         onPress={() => p.onOpenInput(ch)}
+        onLongPress={() => showTip(HELP.plug)}
         accessibilityRole="button"
         accessibilityLabel={`Prise ${insrcPlug(insrc)} · ${kind}`}
         style={[styles.head, { backgroundColor: theme.deep, borderColor: theme.line, borderWidth: 1, height: 34 }]}
@@ -144,7 +147,7 @@ export function Strip(p: StripProps) {
 
       <Pressable
         onPress={() => p.onRename(ch)}
-        onLongPress={() => p.onRename(ch)}
+        onLongPress={() => showTip(HELP.name)}
         accessibilityRole="button"
         accessibilityLabel={`Renommer ${name}`}
         style={[styles.name, { backgroundColor: theme.deep, borderBottomColor: scribble }]}
@@ -154,7 +157,10 @@ export function Strip(p: StripProps) {
         </Text>
       </Pressable>
 
-      <MuteButton muted={muted} onPress={toggleMute} theme={theme} narrow={narrow} />
+      <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'stretch' }}>
+        <MuteButton muted={muted} onPress={toggleMute} theme={theme} narrow={narrow} half />
+        <SoloButton on={solo} onPress={toggleSolo} theme={theme} narrow={narrow} name={name} />
+      </View>
       <AutoFader
         narrow={narrow}
         value={level}
@@ -169,7 +175,7 @@ export function Strip(p: StripProps) {
 
       <View style={{ flexDirection: narrow ? 'column' : 'row', gap: 4, width: '100%', alignItems: 'stretch' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} narrow={narrow} />
-        <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[narrow ? styles.smallN : styles.small, narrow && { height: 40 }, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: narrow ? 3 : 6 }]}>
+        <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} onLongPress={() => showTip(HELP.fx)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[narrow ? styles.smallN : styles.small, narrow && { height: 40 }, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: narrow ? 3 : 6 }]}>
           {fxVals.map((v, k) => {
             const on = Number(v ?? 0) > 0;
             const d = faderToDb(Number(v ?? 0));
@@ -329,6 +335,7 @@ function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: T
   return (
     <Pressable
       onPress={props.onPress}
+      onLongPress={() => showTip(props.label === 'EQ' ? HELP.eq : props.a11y)}
       accessibilityRole="button"
       accessibilityLabel={props.a11y}
       style={[props.narrow ? styles.smallN : styles.small, { borderColor: on ? props.onColor : theme.line, backgroundColor: theme.deep }]}
@@ -338,16 +345,27 @@ function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: T
   );
 }
 
-function MuteButton({ muted, onPress, theme, narrow }: { muted: boolean; onPress: () => void; theme: Theme; narrow?: boolean }) {
+/** Solo : écouter cette voie seule au casque, sans rien couper pour le public. */
+function SoloButton({ on, onPress, theme, narrow, name }: { on: boolean; onPress: () => void; theme: Theme; narrow?: boolean; name: string }) {
+  return (
+    <Pressable onPress={onPress} onLongPress={() => showTip(HELP.solo)} accessibilityRole="switch" accessibilityState={{ checked: on }} accessibilityLabel={on ? `Arrêter le solo de ${name}` : `Écouter ${name} seul au casque`}
+      style={[styles.mute, { flex: 1, width: undefined }, on ? { backgroundColor: '#FACC15' } : { borderColor: theme.line, borderWidth: 1 }]}>
+      <Text style={{ color: on ? '#1A1204' : theme.muted, fontWeight: '800', fontSize: narrow ? 10 : 11 }}>{narrow ? 'S' : 'SOLO'}</Text>
+    </Pressable>
+  );
+}
+
+function MuteButton({ muted, onPress, theme, narrow, half }: { muted: boolean; onPress: () => void; theme: Theme; narrow?: boolean; half?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={() => showTip(HELP.mute)}
       accessibilityRole="button"
       accessibilityState={{ selected: muted }}
       accessibilityLabel={muted ? 'Réactiver' : 'Couper'}
-      style={[styles.mute, narrow && { width: '100%' }, muted ? { backgroundColor: theme.mute } : { borderColor: theme.line, borderWidth: 1 }]}
+      style={[styles.mute, half ? { flex: 1, width: undefined } : narrow && { width: '100%' }, muted ? { backgroundColor: theme.mute } : { borderColor: theme.line, borderWidth: 1 }]}
     >
-      <Text style={{ color: muted ? theme.onMute : theme.muted, fontWeight: '800', fontSize: 11 }}>MUTE</Text>
+      <Text style={{ color: muted ? theme.onMute : theme.muted, fontWeight: '800', fontSize: 11 }}>{half && narrow ? 'M' : 'MUTE'}</Text>
     </Pressable>
   );
 }

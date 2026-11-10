@@ -54,6 +54,8 @@ export function outOnPath(t: Target): string {
 export const busNamePath = (n: number) => `/bus/${n}/config/name`;
 export const chNamePath = (ch: number) => `/ch/${ch2(ch)}/config/name`;
 export const chOnPath = (ch: number) => `/ch/${ch2(ch)}/mix/on`;
+/** Solo (écoute au casque / sortie « phones ») d'une voie : 1 = en solo. */
+export const soloPath = (ch: number) => `/-stat/solosw/${ch2(ch)}`;
 
 // Groupes DCA
 export const chDcaPath = (ch: number) => `/ch/${ch2(ch)}/grp/dca`;

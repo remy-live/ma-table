@@ -7,6 +7,7 @@ import { MonitorScreen } from './src/screens/MonitorScreen';
 import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
 import { setImmersive, useBottomInset } from './src/ui/immersive';
+import { TipHost } from './src/ui/tip';
 import { safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
 import { keepAwake } from './src/ui/keepAwake';
@@ -181,6 +182,7 @@ export default function App() {
       {body}
       {!wide && <NavBar theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
+      <TipHost theme={theme} />
     </View>
   );
 }

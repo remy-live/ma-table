@@ -9,7 +9,8 @@ import { f } from '../osc/osc';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
-import { chLevelPath, FX_COUNT, MODEL, Target, targetId } from '../xair/addresses';
+import { chLevelPath, FX_COUNT, meterIndex, MODEL, Target, targetId } from '../xair/addresses';
+import { useLevels } from '../xair/useMeter';
 import { fxType, fxTypePath } from '../xair/effects';
 import { SLOT_COLORS } from '../xair/fxSlots';
 import { readGroups } from '../xair/groups';
@@ -66,6 +67,14 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const groupOf = (n: number) => gInfo.find((g) => g.plugs.includes(n));
   const folded = (n: number) => { const g = groupOf(n); return g && g.folded ? g : null; };
   const anchorOf = (n: number) => folded(n)?.anchor ?? n;
+  // les prises s'allument quand un son arrive
+  const lv = useLevels(client, P.flatMap((p) => p.chans), meterIndex.ch);
+  const live = (n: number) => Math.max(0, ...(P[n - 1]?.chans ?? []).map((c) => lv[c] ?? 0));
+  const glow = (x: number, y: number, n: number, c: string, r: number) => {
+    const l = live(n);
+    if (l < 0.15) return null;
+    return <Circle cx={x} cy={y} r={r + 3 + l * 9} fill="none" stroke={c} strokeWidth={2 + l * 6} opacity={0.15 + l * 0.65} />;
+  };
   const selected = (n: number) => (sel?.k === 'in' && sel.n === n) || (!!many && many.ns.includes(n));
 
   // Qu'y a-t-il sous le doigt ? (repère du dessin)
@@ -184,8 +193,10 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               if (g && g.folded && g.anchor !== p.n) return <G key={p.n} opacity={0.2}><Circle cx={x} cy={y} r={20} fill="#1E2227" stroke={gc} strokeWidth={2} /></G>;
               if (g && g.folded) {
                 const on = many?.g === g.k;
+                const gl = Math.max(...g.plugs.map(live));
                 return (
                   <G key={p.n}>
+                    {gl >= 0.15 && <Rect x={x - 50 - gl * 6} y={y - 30 - gl * 6} width={100 + gl * 12} height={60 + gl * 12} rx={30 + gl * 6} fill="none" stroke={gc} strokeWidth={2 + gl * 5} opacity={0.15 + gl * 0.65} />}
                     <Rect x={x - 46} y={y - 26} width={92} height={52} rx={26} fill={on ? gc : '#1E2227'} stroke={on ? '#FFFFFF' : gc} strokeWidth={on ? 4 : 3} />
                     <SvgText x={x} y={y - 3} textAnchor="middle" fontSize={13} fontWeight="800" fill={on ? '#0B0D10' : gc}>{g.name.slice(0, 11)}</SvgText>
                     <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill={on ? '#0B0D10' : '#E8EAED'}>{`${g.plugs.length} prises`}</SvgText>
@@ -207,6 +218,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
                   ) : (
                     <SvgText x={x} y={y - 30} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{String(p.n)}</SvgText>
                   )}
+                  {glow(x, y, p.n, c, p.usb ? 16 : 24)}
                   <Circle cx={x} cy={y} r={p.usb ? 16 : 24} fill="#1E2227" stroke={on || hitOut ? '#FFFFFF' : p.chans.length ? c : '#3A414B'} strokeWidth={on || hitOut ? 5 : 3} />
                   <Circle cx={x} cy={y} r={p.usb ? 6 : 12} fill={hitOut || (many && on) ? c : '#0B0D10'} />
                   {g && <Circle cx={x} cy={y} r={29} fill="none" stroke={gc} strokeWidth={1.5} strokeDasharray="4 4" />}
@@ -311,7 +323,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
 /** Plusieurs prises à la fois (sélection ou groupe) : un bouton rond par sortie et par effet.
  *  Appui sur le nom : relier toutes (ou les délier si toutes y sont). Tourner : monte ou baisse
  *  toutes les prises reliées du même nombre de dB, l'équilibre entre elles est gardé. */
-function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title, color, extra }: { client: XAirClient; theme: Theme; wide: boolean; plugs: Plug[]; O: Outlet[]; outColor: (o: Outlet) => string; title: string; color: string; extra?: React.ReactNode }) {
+export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title, color, extra }: { client: XAirClient; theme: Theme; wide: boolean; plugs: Plug[]; O: Outlet[]; outColor: (o: Outlet) => string; title: string; color: string; extra?: React.ReactNode }) {
   const chans = ps.flatMap((p) => p.chans);
   const targets: { t: Target; label: string; kicker?: string; color: string }[] = [
     ...O.map((o) => ({ t: o.t, label: o.name, color: outColor(o) })),

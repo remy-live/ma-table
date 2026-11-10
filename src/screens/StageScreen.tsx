@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { f, i } from '../osc/osc';
-import { colorOf } from '../xair/smartName';
+import { chColorOf, colorOf } from '../xair/smartName';
 import { GROUP_COLORS } from './GroupsSheet';
 import { Btn, Card, ScreenHeader, SEM, Segmented } from '../ui/kit';
 import { Current, current, safetyBackup, saveCurrentSession } from '../store/sessions';
@@ -207,7 +207,7 @@ function ChTile(props: { client: XAirClient; ch: number; mix: Target; theme: The
   const { client, ch, mix, theme } = props;
   const v = Number(useParam<number>(client, chLevelPath(ch, mix), 0));
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
-  const col = colorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)));
+  const col = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
   const d = faderToDb(v);
   return (
     <View style={[styles.tile, { width: props.wide ? '24%' : '48.6%', backgroundColor: theme.deep, borderColor: col }]}>
