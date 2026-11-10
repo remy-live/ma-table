@@ -1,6 +1,6 @@
 // « Les faders règlent ce qu'entend : … » — le choix de la personne (ou, en
 // avancé, de l'effet) avec des visages, à la place de la rangée de pastilles.
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../ui/theme';
 import { HELP, showTip } from '../ui/tip';
@@ -58,29 +58,42 @@ export function MixPickerButton(props: { client: XAirClient; target: Target; the
 
 /** Une pastille par personne, toujours visible : un appui change de mix.
  *  La pastille choisie s'ouvre et donne le nom complet. « FX » ouvre les effets. */
-export function MixChips(props: { client: XAirClient; target: Target; theme: Theme; onPick: (t: Target) => void; onMore?: () => void }) {
+export function MixChips(props: { client: XAirClient; target: Target; theme: Theme; onPick: (t: Target) => void; onMore?: () => void; mainSub?: string; onActiveMain?: () => void }) {
   const { client, theme } = props;
   const people: Target[] = [{ kind: 'main' }, ...Array.from({ length: BUS_COUNT }, (_, k) => ({ kind: 'bus', n: k + 1 }) as Target)];
   const cur = targetId(props.target);
+  // pas assez de place pour tout montrer ? on cache le nom de la personne choisie
+  // (sa pastille reste entourée) plutôt que de couper les dernières pastilles.
+  const [boxW, setBoxW] = useState(0);
+  const [fullW, setFullW] = useState(0);
+  const tight = boxW > 0 && fullW > boxW + 1;
   return (
+    <View onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}>
+    {/* mesure, invisible : la largeur qu'il faudrait avec le nom affiché */}
+    <View style={{ position: 'absolute', opacity: 0, flexDirection: 'row', gap: 2 }} pointerEvents="none" onLayout={(e) => setFullW(e.nativeEvent.layout.width)}>
+      {people.map((t) => targetId(t) === cur ? (
+        <View key={targetId(t)} style={[styles.chip, { paddingRight: 12 }]}><View style={styles.avatar} /><View style={{ maxWidth: 130 }}><Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800' }}>{mixInfo(client, t).name}</Text></View></View>
+      ) : <View key={targetId(t)} style={[styles.chip, { paddingLeft: 2, paddingRight: 2 }]}><View style={styles.avatar} /></View>)}
+    </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 2, alignItems: 'center' }}>
       {people.map((t) => {
         const m = mixInfo(client, t);
         const on = targetId(t) === cur;
         return (
-          <Pressable key={targetId(t)} onPress={() => props.onPick(t)} onLongPress={() => showTip(`${m.name} (${m.sub}). ${HELP.mix}`)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={`Les faders règlent ce qu’entend ${m.name}`}
-            style={[styles.chip, on ? { borderColor: m.color, backgroundColor: theme.panel, paddingRight: 12 } : { borderColor: 'transparent', paddingRight: 2, paddingLeft: 2 }]}>
+          <Pressable key={targetId(t)} onPress={() => (on && t.kind === 'main' && props.onActiveMain ? props.onActiveMain() : props.onPick(t))} onLongPress={() => showTip(`${m.name} (${m.sub}). ${HELP.mix}`)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={`Les faders règlent ce qu’entend ${m.name}`}
+            style={[styles.chip, on ? { borderColor: m.color, backgroundColor: theme.panel, paddingRight: tight ? 4 : 12 } : { borderColor: 'transparent', paddingRight: 2, paddingLeft: 2 }]}>
             <View style={[styles.avatar, on ? null : { opacity: 0.85 }, { backgroundColor: m.color }]}><Text style={styles.avatarText}>{m.ini}</Text></View>
-            {on && (
+            {on && !tight && (
               <View style={{ maxWidth: 130 }}>
                 <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{m.name}</Text>
-                <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10 }}>{m.sub.split(' · ').pop()}</Text>
+                <Text numberOfLines={1} style={{ color: t.kind === 'main' && props.mainSub ? theme.accent : theme.muted, fontSize: 10, fontWeight: t.kind === 'main' && props.mainSub ? '800' : '400' }}>{t.kind === 'main' && props.mainSub ? props.mainSub : m.sub.split(' · ').pop()}</Text>
               </View>
             )}
           </Pressable>
         );
       })}
     </ScrollView>
+    </View>
   );
 }
 

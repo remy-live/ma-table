@@ -64,6 +64,10 @@ export function GainTile({ client, ch, theme, size, onOpen, organize, picked, on
       ) : (
         <Text style={{ color: zone, fontSize: 10, fontWeight: '800' }}>{m.clip ? 'SATURE' : m.db > -6 ? 'fort' : m.db > -24 ? 'bon' : m.db > -90 ? 'faible' : '—'}</Text>
       )}
+      {picked !== undefined && onPick && (
+        <Pressable onPress={() => onPick(ch)} accessibilityRole="checkbox" accessibilityState={{ checked: picked }} accessibilityLabel={`Choisir ${name}`}
+          style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, borderRadius: 16, borderWidth: picked ? 3 : 0, borderColor: col, backgroundColor: picked ? 'rgba(245,158,11,0.08)' : 'rgba(0,0,0,0.001)' }} />
+      )}
     </View>
   );
 }

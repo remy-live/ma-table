@@ -125,6 +125,14 @@ export function sourceDb(client: XAirClient, s: MonSource): number {
  * Une source coupée (−∞) reste coupée, sauf `wake` : on la rallume à −30 dB
  * (utile quand le musicien touche + sur une source qu'il n'entend pas du tout).
  */
+/** Amène le plus fort des envois à `target` dB (au doigt), en gardant l'équilibre. Sous −38 dB : coupé. */
+export function setTo(client: XAirClient, paths: string[], target: number) {
+  const cur = Math.max(...paths.map((p) => faderToDb(Number(client.get(p) ?? 0))));
+  if (target < -38) { paths.forEach((p) => client.set(p, f(0))); return; }
+  if (!isFinite(cur)) { paths.forEach((p) => client.set(p, f(dbToFader(Math.min(10, target))))); return; }
+  shift(client, paths, target - cur);
+}
+
 export function shift(client: XAirClient, paths: string[], db: number, wake = false) {
   for (const p of paths) {
     const cur = Number(client.get(p) ?? 0);

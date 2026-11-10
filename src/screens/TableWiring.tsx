@@ -38,7 +38,10 @@ const Y_OUT = 262;
 // bouton « Plusieurs », dans le coin libre à droite de la 2e rangée (repère du dessin)
 const MULTI = { x: 812, y: 126, w: 170, h: 46 };
 
-export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions; multiCtl?: { on: boolean; set: (v: boolean) => void } }) {
+/** Sélection pilotée de l'extérieur (la Table) : les voies choisies restent choisies d'une vue à l'autre. */
+export interface MultiCtl { on: boolean; set: (v: boolean) => void; picked?: number[]; setPicked?: (chs: number[]) => void }
+
+export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions; multiCtl?: MultiCtl }) {
   const { client, theme, P, O } = props;
   const mono = useMono(client);
   const { width, height } = useWindowDimensions();
@@ -114,9 +117,20 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   };
   useEffect(() => {
     if (!props.multiCtl) return;
+    const pk = props.multiCtl.picked;
+    if (multi && pk) { const ns = P.filter((p) => p.chans.some((c) => pk.includes(c))).map((p) => p.n); setSel(ns.length ? { k: 'many', ns } : null); return; }
     if (multi && sel?.k === 'in') setSel({ k: 'many', ns: [sel.n] });
     if (!multi && sel?.k === 'many' && sel.g === undefined) setSel(null);
   }, [multi]); // eslint-disable-line react-hooks/exhaustive-deps
+  // la sélection faite ici repart vers la Table (les voies des prises choisies)
+  useEffect(() => {
+    const mc = props.multiCtl;
+    if (!mc?.setPicked || !multi) return;
+    const ns = sel?.k === 'many' && sel.g === undefined ? sel.ns : [];
+    const chs = [...new Set(ns.flatMap((n) => P[n - 1]?.chans ?? []))].sort((a, b) => a - b);
+    const cur = (mc.picked ?? []).slice().sort((a, b) => a - b);
+    if (chs.join(',') !== cur.join(',')) mc.setPicked(chs);
+  }, [sel, multi]); // eslint-disable-line react-hooks/exhaustive-deps
   const latest = useRef({ effScale, P, O, linked, hit, carried, sel, multi, gInfo });
   latest.current = { effScale, P, O, linked, hit, carried, sel, multi, gInfo };
   const linkAll = (ns: number[], o: Outlet) => {
@@ -438,7 +452,7 @@ const styles = StyleSheet.create({
 });
 
 /** Même vue, autonome : utilisée comme 4e vue de l'écran Table. */
-export function TableWiringStandalone({ client, theme, actions, multiCtl }: { client: XAirClient; theme: Theme; actions?: DrawerActions; multiCtl?: { on: boolean; set: (v: boolean) => void } }) {
+export function TableWiringStandalone({ client, theme, actions, multiCtl }: { client: XAirClient; theme: Theme; actions?: DrawerActions; multiCtl?: MultiCtl }) {
   useAnyTick(client);
   useMono(client); // 1 ou 2 enceintes : les sorties de façade changent
   useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);

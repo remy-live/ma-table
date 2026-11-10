@@ -11,6 +11,7 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { load, save } from '../store/persist';
 import { GroupStrip, OutStrip, Strip, StripView } from '../ui/Strip';
 import { GainTile } from '../ui/GainTile';
+import { useMono } from '../ui/useMono';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { TableWiringStandalone } from './TableWiring';
 import { Theme } from '../ui/theme';
@@ -115,6 +116,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [mode, setMode] = useState<null | 'swap'>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [larsen, setLarsen] = useState(false);
+  const [rangerOpen, setRangerOpen] = useState(false);
+  const [monoOpen, setMonoOpen] = useState(false);
+  const mono = useMono(client);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copySet, setCopySet] = useState<number | null | 0>(null); // voie de départ (0 = aucune choisie), null = fermé
   const [copyTo, setCopyTo] = useState<number[]>([]);
@@ -158,8 +162,9 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     { id: 'gains', label: 'Gains', icon: '◎' },
     { id: 'table', label: 'Table', icon: '▦' },
   ].filter((v) => wide || v.id !== 'table') as { id: StripView; label: string; icon: string }[];
-  const cycleView = () => {
-    const n = VIEWS[(VIEWS.findIndex((v) => v.id === view) + 1) % VIEWS.length].id;
+  const pickView = (n: StripView) => {
+    if (n === view) return;
+    if (n === 'table') { setOrganize(false); setSel(null); setMode(null); }
     setView(n);
     save('vueTable', n);
     say(n === 'full' ? 'Vue complète' : n === 'compact' ? 'Vue compacte : faders plus grands' : n === 'gains' ? 'Vue gains : un bouton par entrée, pour la balance' : 'Vue table : touche une prise pour la régler ou la relier');
@@ -305,59 +310,98 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   };
 
   const dot = status === 'connecté' ? theme.ok : status === 'perdu' ? theme.mute : theme.accent;
-  const headerButtons = (
+  const busy = picking || organize; // un mode « ranger » est en cours
+  const viewBar = (
+    <View style={[styles.viewBar, { borderColor: theme.line2 }]} accessibilityRole="tablist">
+      {VIEWS.map((v) => {
+        const on = v.id === view;
+        return (
+          <Pressable key={v.id} onPress={() => pickView(v.id)} onLongPress={() => showTip(HELP.view)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={`Vue ${v.label}`}
+            style={[styles.viewBtn, !wide && { minWidth: 44, paddingHorizontal: 2 }, on && { backgroundColor: theme.accent }]}>
+            <Text style={{ color: on ? theme.onAccent : theme.text, fontSize: 17, fontWeight: '900' }}>{v.icon}</Text>
+            <Text numberOfLines={1} style={{ color: on ? theme.onAccent : theme.muted, fontSize: 9, fontWeight: '800' }}>{v.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+  const mixTools = (
     <>
-        {target.kind === 'main' && <MonoSwitch client={client} theme={theme} compact />}
-        {target.kind === 'bus' && (
-          <Pressable onPress={() => setLarsen(true)} onLongPress={() => showTip('Ça siffle ? Repère la note qui siffle dans ce retour et la creuse, sans toucher au public.')} style={[styles.hbtn, { borderColor: '#F87171' }]}>
-            <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 12, textAlign: 'center' }}>🔔 Ça{'\n'}siffle ?</Text>
-          </Pressable>
-        )}
-        <Pressable onPress={() => setCopyOpen(true)} onLongPress={() => showTip(HELP.copyMix)} accessibilityLabel="Copier ce qu’entend une personne vers une ou plusieurs autres" style={[styles.hbtn, { borderColor: theme.line2 }]}>
-          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 12, textAlign: 'center' }}>⧉ Copier{'\n'}un mix</Text>
+      <Pressable onPress={() => setCopyOpen(true)} onLongPress={() => showTip(HELP.copyMix)} accessibilityLabel="Copier ce qu’entend cette personne vers une ou plusieurs autres" style={[styles.iconBtn, !wide && { width: 46 }, { borderColor: theme.line2 }]}>
+        <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>⧉</Text>
+        <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>Copier</Text>
+      </Pressable>
+      {target.kind === 'bus' && (
+        <Pressable onPress={() => setLarsen(true)} onLongPress={() => showTip('Ça siffle ? Repère la note qui siffle dans ce retour et la creuse, sans toucher au public.')} accessibilityLabel="Ça siffle ?" style={[styles.iconBtn, { borderColor: '#F87171' }]}>
+          <Text style={{ fontSize: 16 }}>🔔</Text>
+          <Text style={{ color: '#FCA5A5', fontSize: 9, fontWeight: '800' }}>Siffle ?</Text>
         </Pressable>
-        <Pressable onPress={cycleView} onLongPress={() => showTip(HELP.view)} accessibilityLabel={`Vue ${curView.label}, toucher pour changer`} style={[styles.hbtn, { borderColor: theme.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-          <Text style={{ color: theme.accent, fontSize: 18, fontWeight: '900' }}>{curView.icon}</Text>
-          <View>
-            <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>VUE</Text>
-            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{curView.label}</Text>
-          </View>
-        </Pressable>
-        <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} onLongPress={() => showTip(HELP.undo)} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: 54, alignItems: 'center' }]}>
-          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
-        </Pressable>
-        {(
-          <Pressable onPress={() => (picking ? endPick() : startPick())} onLongPress={() => showTip('Sélectionner : coche des voies (touche leur nom) pour en faire un groupe ou les ajouter à un groupe. Raccourci : un appui long sur un nom.')} accessibilityState={{ selected: picking }} style={[styles.hbtn, picking ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
-            <Text style={{ color: picking ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{picking ? (view === 'table' ? '✓ Terminé' : `✓ Terminé · ${picked.length}`) : '☑ Sélectionner'}</Text>
-          </Pressable>
-        )}
-        <Pressable disabled={view === 'table'} onLongPress={() => showTip(HELP.organize)} onPress={() => { setOrganize((o) => !o); setSel(null); setMode(null); }} accessibilityState={{ selected: organize }} style={[styles.hbtn, organize ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, view === 'table' && { opacity: 0.35 }]}>
-          <Text style={{ color: organize ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{organize ? 'Terminé' : 'Organiser'}</Text>
-        </Pressable>
-        <Pressable onPress={() => setGroupsOpen(true)} onLongPress={() => showTip(HELP.groups)} style={[styles.hbtn, { borderColor: '#6B4E14', backgroundColor: '#1C1A14' }]}>
-          <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Groupes</Text>
-        </Pressable>
+      )}
     </>
   );
+  const rightTools = (
+    <>
+      {viewBar}
+      <Pressable onPress={() => (busy ? (picking ? endPick() : (setOrganize(false), setSel(null), setMode(null))) : setRangerOpen((o) => !o))} onLongPress={() => showTip('Ranger : choisir des voies pour en faire un groupe, déplacer ou échanger des voies, gérer les groupes.')}
+        accessibilityState={{ expanded: rangerOpen }} style={[styles.hbtn, busy || rangerOpen ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }, { minWidth: wide ? 104 : 78, paddingHorizontal: wide ? 10 : 6, alignItems: 'center' }]}>
+        <Text style={{ color: busy || rangerOpen ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '900' }}>{picking ? (view === 'table' ? '✓ Terminé' : `✓ Terminé · ${picked.length}`) : organize ? '✓ Terminé' : wide ? '✎ Ranger ▾' : '✎ Ranger'}</Text>
+      </Pressable>
+      <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} onLongPress={() => showTip(HELP.undo)} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { borderColor: theme.line2, opacity: undoN ? 1 : 0.4, minWidth: wide ? 54 : 44, paddingHorizontal: 4, alignItems: 'center' }]}>
+        <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>↶</Text>
+      </Pressable>
+    </>
+  );
+  const rangerItem = (icon: string, label: string, sub: string, onPress: () => void, disabled?: boolean) => (
+    <Pressable onPress={() => { setRangerOpen(false); onPress(); }} disabled={disabled} style={[styles.rangerItem, { borderColor: theme.line2, backgroundColor: theme.deep }, disabled && { opacity: 0.35 }]}>
+      <Text style={{ fontSize: 20, color: theme.accent, fontWeight: '900', width: 26, textAlign: 'center' }}>{icon}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{label}</Text>
+        <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
+      </View>
+    </Pressable>
+  );
+  const rangerMenu = rangerOpen && (
+    <Pressable style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 90 }} onPress={() => setRangerOpen(false)}>
+      <View style={[styles.rangerMenu, { backgroundColor: theme.panel, borderColor: theme.accent, top: wide ? 64 : 120 }, !wide && { right: 10, left: 10, width: undefined }]}>
+        {rangerItem('☑', 'Sélectionner', 'coche des voies pour en faire un groupe', () => startPick())}
+        {rangerItem('⇄', 'Organiser', 'déplacer, échanger, copier, renommer', () => { setOrganize(true); setSel(null); setMode(null); }, view === 'table')}
+        {rangerItem('▦', 'Groupes', 'voir, renommer, défaire les groupes', () => setGroupsOpen(true))}
+      </View>
+    </Pressable>
+  );
+  const monoPop = monoOpen && (
+    <Pressable style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 90 }} onPress={() => setMonoOpen(false)}>
+      <View style={[styles.monoPop, { backgroundColor: theme.panel, borderColor: theme.line2, top: wide ? 64 : 58 }, !wide && { left: 10 }]}>
+        <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800' }}>LE PUBLIC · combien d’enceintes ?</Text>
+        <MonoSwitch client={client} theme={theme} />
+      </View>
+    </Pressable>
+  );
+  const chips = <MixChips client={client} target={target} theme={theme} onPick={setTarget} onMore={() => setPickerOpen(true)} mainSub={mono ? '🔈 1 enceinte ▾' : '🔈🔈 2 enceintes ▾'} onActiveMain={() => setMonoOpen((o) => !o)} />;
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
       {wide ? (
         <View style={styles.header}>
           <View style={[styles.dot, { backgroundColor: dot, marginRight: 2 }]} accessibilityLabel={`Table ${status}`} />
-          <View style={{ flex: 1 }}>
-            <MixChips client={client} target={target} theme={theme} onPick={setTarget} onMore={() => setPickerOpen(true)} />
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexShrink: 1 }}>{chips}</View>
+            {mixTools}
           </View>
-          {headerButtons}
+          {rightTools}
         </View>
       ) : (
-        // téléphone : « qui écoute » sur une ligne, les boutons sur une ligne qui défile
+        // téléphone : « qui écoute » sur une ligne, les outils sur une autre
         <View style={{ paddingHorizontal: 10, paddingBottom: 6, gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={[styles.dot, { backgroundColor: dot }]} accessibilityLabel={`Table ${status}`} />
-            <View style={{ flex: 1 }}><MixChips client={client} target={target} theme={theme} onPick={setTarget} onMore={() => setPickerOpen(true)} /></View>
+            <View style={{ flex: 1 }}>{chips}</View>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>{headerButtons}</ScrollView>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {mixTools}
+            <View style={{ flex: 1 }} />
+            {rightTools}
+          </View>
         </View>
       )}
       {status === 'perdu' && <Text style={{ color: theme.mute, fontSize: 12, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 4 }}>Liaison perdue — la table garde son mix, reconnexion en cours…</Text>}
@@ -370,7 +414,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       )}
 
       <View style={styles.body} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
-        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} actions={drawerActions} multiCtl={{ on: picking, set: (v) => (v ? startPick() : endPick()) }} />}
+        {bodyH > 0 && view === 'table' && <TableWiringStandalone client={client} theme={theme} actions={drawerActions} multiCtl={{ on: picking, set: (v) => (v ? startPick() : endPick()), picked, setPicked }} />}
         {bodyH > 0 && view === 'gains' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 12, paddingBottom: 12, justifyContent: 'center' }}>
             {order.map((ch) => <GainTile key={ch} client={client} ch={ch} theme={theme} size={gainSize} onOpen={setInputCh} picked={picking ? picked.includes(ch) : undefined} onPick={(c) => (picking ? togglePick(c) : startPick(c))} group={groups.find((g) => g.members.includes(ch))} organize={organize ? { onMove: (k) => moveBy(ch, k), onCopy: () => setCopySet(ch), onRename: () => setRenameCh(ch) } : undefined} />)}
@@ -421,6 +465,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                     onOpenDetail={setDetailCh}
                     onOpenFx={(c) => (props.onOpenEffects ? props.onOpenEffects(c) : setDetailCh(c))}
                   />
+                  {/* en sélection : toute la piste se touche pour la cocher (les faders ne bougent pas) */}
+                  {picking && (
+                    <Pressable onPress={() => togglePick(it.ch)} accessibilityRole="checkbox" accessibilityState={{ checked: picked.includes(it.ch) }} accessibilityLabel={`Choisir ${name(it.ch)}`}
+                      style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 5, borderRadius: 14, borderWidth: picked.includes(it.ch) ? 3 : 0, borderColor: theme.accent, backgroundColor: picked.includes(it.ch) ? 'rgba(245,158,11,0.10)' : 'rgba(0,0,0,0.001)' }} />
+                  )}
                   {organize && !(mode !== null && it.ch !== sel) && (
                     <OrganizeOverlay
                       theme={theme}
@@ -484,6 +533,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       {!wide && <ChannelScreen client={client} ch={detailCh} theme={theme} onClose={() => setDetailCh(null)} />}
       <InputSheet client={client} ch={inputCh} theme={theme} onClose={() => setInputCh(null)} actions={drawerActions} />
       <SmartRenameSheet client={client} ch={renameCh} theme={theme} onClose={() => setRenameCh(null)} />
+      {rangerMenu}
+      {monoPop}
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} to={copyTo} onClose={() => { setCopySet(null); setCopyTo([]); }} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
@@ -509,10 +560,16 @@ function BarBtn(props: { label: string; onPress: () => void; theme: Theme; prima
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: 40 },
-  header: { height: 62, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  header: { height: 62, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700' },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  hbtn: { height: 54, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, justifyContent: 'center' },
+  viewBar: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, gap: 2, height: 54 },
+  viewBtn: { minWidth: 58, paddingHorizontal: 6, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 54, height: 54, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  rangerMenu: { position: 'absolute', right: 74, width: 320, borderWidth: 2, borderRadius: 18, padding: 8, gap: 6, elevation: 20, zIndex: 100 },
+  rangerItem: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, padding: 10, minHeight: 58 },
+  monoPop: { position: 'absolute', left: 110, borderWidth: 1, borderRadius: 16, padding: 10, gap: 8, elevation: 20, zIndex: 100 },
+  hbtn: { height: 54, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, justifyContent: 'center' },
   targets: { gap: 6, paddingHorizontal: 16, paddingBottom: 8 },
   target: { height: 42, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tdot: { width: 8, height: 8, borderRadius: 4 },

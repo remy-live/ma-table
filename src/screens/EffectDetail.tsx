@@ -1,6 +1,7 @@
 // Un effet = un écran. Visualisation, 3 gros boutons, comparaison A/B/C,
 // Mes effets, retour, qui l'utilise, recettes. Bandeau « partagé » au
 // premier réglage, avec « Donner son propre effet ».
+import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
@@ -179,9 +180,7 @@ export function EffectDetail({ client, theme, slot, names, onNames, onClose, onO
                     <View key={c} style={styles.user}>
                       <Text numberOfLines={1} style={{ width: 90, color: theme.text, fontWeight: '800' }}>{chName(client, c)}</Text>
                       <Pressable onPress={() => bump(c, -2)} style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
-                      <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
-                        <View style={{ width: `${Math.max(4, Math.min(100, ((d + 40) / 40) * 100))}%`, height: 12, backgroundColor: color }} />
-                      </View>
+                      <DragBar frac={v > 0 && isFinite(d) ? Math.max(0.04, (d + 40) / 40) : 0} onFrac={(x) => client.set(sendPath(c, k), f(x < 0.03 ? 0 : dbToFader(x * 40 - 40)))} color={color} bg={theme.meterBg} label={`Effet pour ${chName(client, c)}`} valueText={isFinite(d) ? `${Math.round(d)} dB` : 'rien'} />
                       <Pressable onPress={() => bump(c, 2)} style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
                       <Text style={{ width: 52, textAlign: 'right', color: theme.muted, fontSize: 11 }}>{isFinite(d) ? `${Math.round(d)} dB` : '—'}</Text>
                       <Pressable onPress={() => client.set(sendPath(c, k), f(0))} style={[styles.pm, { borderColor: '#7F1D1D' }]} accessibilityLabel={`Retirer ${chName(client, c)}`}><Text style={{ color: '#FCA5A5', fontWeight: '800' }}>✕</Text></Pressable>

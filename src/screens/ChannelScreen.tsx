@@ -1,6 +1,7 @@
 // La voie, visuelle : le trajet du son en blocs (Entrée › Coupe-bas › Gate ›
 // EQ › Comp › Effets), un égaliseur dessiné avec 4 points, des effets en
 // tuiles avec « Retirer », et en bas qui entend cette voie.
+import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
@@ -207,10 +208,16 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Pressable onPress={() => setBandG(band, b.db - 1)} accessibilityLabel="Baisser la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>−</Text></Pressable>
-              <Text style={{ flex: 1, textAlign: 'center', color: theme.text, fontSize: 15, fontWeight: '800' }}>{`${b.db > 0 ? '+' : ''}${b.db.toFixed(1)} dB`}</Text>
+              <View style={{ flex: 1, alignItems: 'stretch' }}>
+                <Text style={{ textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{`${b.db > 0 ? '+' : ''}${b.db.toFixed(1)} dB`}</Text>
+                <View style={{ flexDirection: 'row' }}><DragBar center frac={(b.db + 15) / 30} onFrac={(x) => setBandG(band, Math.round((x * 30 - 15) * 2) / 2)} color={BAND_COLORS[band]} bg={theme.deep} barH={8} style={{ height: 30 }} label="Gain de la bande" valueText={`${b.db.toFixed(1)} dB`} /></View>
+              </View>
               <Pressable onPress={() => setBandG(band, b.db + 1)} accessibilityLabel="Monter la bande" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={[styles.pmText, { color: theme.text }]}>+</Text></Pressable>
               <Pressable onPress={() => setBandF(band, b.hz / 1.2)} accessibilityLabel="Plus grave" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>◀</Text></Pressable>
-              <Text style={{ width: 64, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '700' }}>{formatHz(b.hz)}</Text>
+              <View style={{ width: 110 }}>
+                <Text style={{ textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '700' }}>{formatHz(b.hz)}</Text>
+                <View style={{ flexDirection: 'row' }}><DragBar frac={Math.log(b.hz / 20) / Math.log(1000)} onFrac={(x) => setBandF(band, 20 * Math.pow(1000, x))} color={BAND_COLORS[band]} bg={theme.deep} barH={8} style={{ height: 30 }} label="Fréquence de la bande" valueText={formatHz(b.hz)} /></View>
+              </View>
               <Pressable onPress={() => setBandF(band, b.hz * 1.2)} accessibilityLabel="Plus aigu" style={[styles.pm, { borderColor: theme.line2, backgroundColor: theme.deep }]}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>▶</Text></Pressable>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -283,9 +290,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
                         <Text style={{ color: theme.muted, fontSize: 10 }}>{t.family.toLowerCase()}</Text>
                       </View>
                     </View>
-                    <View style={{ height: 10, borderRadius: 5, backgroundColor: theme.panel, overflow: 'hidden' }}>
-                      <View style={{ width: `${on ? Math.max(4, Math.round(((db + 40) / 40) * 100)) : 0}%`, height: 10, backgroundColor: c }} />
-                    </View>
+                    <View style={{ flexDirection: 'row' }}><DragBar frac={on ? Math.max(0.04, (db + 40) / 40) : 0} onFrac={(x) => client.set(path, f(x < 0.03 ? 0 : dbToFader(x * 40 - 40)))} color={c} bg={theme.panel} barH={10} label={`Quantité de ${t.fr}`} valueText={on ? `${formatDb(v)} dB` : 'aucun'} /></View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.max(-40, db - 2)) : 0))} accessibilityLabel={`Moins de ${t.fr}`} style={[styles.pm, { width: 40, height: 40, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
                       <Text style={{ flex: 1, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{on ? `${formatDb(v)} dB` : 'aucun'}</Text>
@@ -318,9 +323,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide }: { client: XAir
               <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
                 <View style={[styles.avatar, { backgroundColor: m.color }]}><Text style={{ color: '#0B0D10', fontSize: 10, fontWeight: '800' }}>{m.ini}</Text></View>
                 <Text numberOfLines={1} style={{ width: 86, color: theme.text, fontSize: 13, fontWeight: '700' }}>{m.name}</Text>
-                <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
-                  <View style={{ width: `${on ? Math.max(3, Math.round(((db + 40) / 50) * 100)) : 0}%`, height: 12, backgroundColor: m.color }} />
-                </View>
+                <DragBar frac={on ? Math.max(0.03, (db + 40) / 50) : 0} onFrac={(x) => client.set(path, f(x < 0.03 ? 0 : dbToFader(x * 50 - 40)))} color={m.color} bg={theme.meterBg} label={`Niveau pour ${m.name}`} valueText={on ? formatDb(destLv[k]) : 'rien'} />
                 <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.max(-40, db - 2)) : 0))} accessibilityLabel={`Moins pour ${m.name}`} style={[styles.pm, { width: 38, height: 38, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>−</Text></Pressable>
                 <Text style={{ width: 48, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '800' }}>{on ? formatDb(destLv[k]) : 'rien'}</Text>
                 <Pressable onPress={() => client.set(path, f(on ? dbToFader(Math.min(10, db + 2)) : dbToFader(-10)))} accessibilityLabel={`Plus pour ${m.name}`} style={[styles.pm, { width: 38, height: 38, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>+</Text></Pressable>

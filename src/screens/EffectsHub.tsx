@@ -3,6 +3,7 @@
 //  - Par voie : chaque voie et ses 4 doses
 //  - Tableau : voies × effets en bulles
 // Toucher un effet ouvre son écran unique (EffectDetail).
+import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { f } from '../osc/osc';
@@ -45,6 +46,8 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
   const lv = useLevels(client, Array.from({ length: CH_COUNT }, (_, k) => k + 1), meterIndex.ch, 150);
   const named = useMemo(() => Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? '') || users(client, 1).includes(c) || users(client, 2).includes(c) || users(client, 3).includes(c) || users(client, 4).includes(c)), [client, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const rowH = gridH > 0 ? Math.max(26, Math.min(52, Math.floor((gridH - 4 - 98 - rowGap - 34) / Math.max(1, named.length)) - rowGap)) : 52;
+  // au doigt : 0 = rien, 1 = 0 dB (comme la barre)
+  const setSend = (c: number, k: number, x: number) => client.set(sendPath(c, k), f(x < 0.03 ? 0 : dbToFader(x * 40 - 40)));
   const bump = (c: number, k: number, d: number) => {
     const v = Number(client.get(sendPath(c, k)) ?? 0);
     const db = faderToDb(v);
@@ -92,7 +95,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
                       <View key={ch} style={styles.user}>
                         <Text numberOfLines={1} style={{ width: 70, color: theme.text, fontSize: 12, fontWeight: '700' }}>{chName(client, ch)}</Text>
                         <Pressable onPress={() => bump(ch, k, -2)} accessibilityLabel="Moins" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>−</Text></Pressable>
-                        <View style={{ flex: 1, height: 10, borderRadius: 5, backgroundColor: theme.meterBg, overflow: 'hidden' }}><View style={{ width: `${pct(v)}%`, height: 10, backgroundColor: c }} /></View>
+                        <DragBar frac={pct(v) / 100} onFrac={(x) => setSend(ch, k, x)} color={c} bg={theme.meterBg} barH={10} label={`Effet pour ${chName(client, ch)}`} valueText={dbText(v)} />
                         <Pressable onPress={() => bump(ch, k, 2)} accessibilityLabel="Plus" style={[styles.pm, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>+</Text></Pressable>
                         <Pressable onPress={() => client.set(sendPath(ch, k), f(0))} accessibilityLabel="Retirer" style={[styles.pm, { borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 11 }}>✕</Text></Pressable>
                       </View>
@@ -159,7 +162,7 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
                   </Pressable>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Pressable onPress={() => bump(selCh, k, -2)} style={[styles.pm, { borderColor: theme.line2, width: 38, height: 38 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 16 }}>−</Text></Pressable>
-                    <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: theme.panel, overflow: 'hidden' }}><View style={{ width: `${pct(v)}%`, height: 12, backgroundColor: c }} /></View>
+                    <DragBar frac={pct(v) / 100} onFrac={(x) => setSend(selCh, k, x)} color={c} bg={theme.panel} label={`Quantité d’effet ${k}`} valueText={dbText(v)} />
                     <Pressable onPress={() => bump(selCh, k, 2)} style={[styles.pm, { borderColor: theme.line2, width: 38, height: 38 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 16 }}>+</Text></Pressable>
                     <Text style={{ width: 48, textAlign: 'right', color: theme.text, fontSize: 11, fontWeight: '800' }}>{dbText(v)}</Text>
                   </View>

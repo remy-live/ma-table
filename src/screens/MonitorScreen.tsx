@@ -1,6 +1,7 @@
 // Mode « Mon retour » : l'écran du musicien. Il ne règle QUE son bus.
 // Gros boutons « Plus de moi » / « Plus des autres », groupes dépliables,
 // protège-oreilles, et sa balance à lui (gardée avec le numéro du bus).
+import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
@@ -11,7 +12,7 @@ import { Theme } from '../ui/theme';
 import { formatDb } from '../xair/levels';
 import {
   busFaderPath, busMeter, captureMonitor, limiterOn, MonBalance, MonConfig, monitorChanges, monitorGroups, monitorPaths,
-  monitorSources, MonSource, pathsOf, plusDeMoi, plusDesAutres, restoreMonitor, setLimiter, shift, sourceDb,
+  monitorSources, MonSource, pathsOf, plusDeMoi, plusDesAutres, restoreMonitor, setLimiter, setTo, shift, sourceDb,
 } from '../xair/monitor';
 import { useMeter } from '../xair/useMeter';
 import { useParam } from '../xair/useParam';
@@ -197,7 +198,8 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
               chev={isOpen ? '▴' : `▾ ${g.sources.length}`}
               onTap={() => setOpen((o) => ({ ...o, [g.k]: !isOpen }))}
               onDown={() => shift(client, all, -2)}
-              onUp={() => shift(client, all, 2, true)} />,
+              onUp={() => shift(client, all, 2, true)}
+              onSet={(t) => setTo(client, all, t)} />,
           );
           if (isOpen) g.sources.forEach((s) => items.push(<SourceRow key={'gs' + s.id} client={client} s={s} theme={theme} color="#FCD34D" indent h={fit.h} two={fit.two} />));
         });
@@ -267,11 +269,12 @@ function SourceRow(props: { client: XAirClient; s: MonSource; theme: Theme; colo
       two={props.two}
       onDown={() => shift(client, s.paths, -2)}
       onUp={() => shift(client, s.paths, 2, true)}
+      onSet={(t) => setTo(client, s.paths, t)}
     />
   );
 }
 
-function Row(props: { theme: Theme; name: string; color: string; db: number; chev?: string; me?: boolean; bold?: boolean; indent?: boolean; onTap?: () => void; onDown: () => void; onUp: () => void; h?: number; two?: boolean }) {
+function Row(props: { theme: Theme; name: string; color: string; db: number; chev?: string; me?: boolean; bold?: boolean; indent?: boolean; onTap?: () => void; onDown: () => void; onUp: () => void; onSet?: (db: number) => void; h?: number; two?: boolean }) {
   const { theme, db } = props;
   const h = props.h ?? 56;
   const bs = props.two ? Math.max(30, Math.min(38, h - 6)) : Math.max(34, Math.min(48, h - 6)); // taille des boutons − / +
@@ -293,9 +296,13 @@ function Row(props: { theme: Theme; name: string; color: string; db: number; che
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          {props.onSet ? (
+            <DragBar frac={pct / 100} onFrac={(x) => props.onSet?.(x < 0.03 ? -99 : x * 40 - 30)} color={props.color} bg={theme.meterBg} barH={props.two ? 6 : 8} style={{ height: Math.max(22, Math.min(34, h / 2 - 4)) }} label={`Niveau de ${props.name}`} valueText={dbT} />
+          ) : (
           <View style={{ flex: 1, height: props.two ? 6 : 8, borderRadius: 4, backgroundColor: theme.meterBg, overflow: 'hidden' }}>
             <View style={{ height: props.two ? 6 : 8, width: `${pct}%`, backgroundColor: props.color, borderRadius: 4 }} />
           </View>
+          )}
           {props.two && <Text style={{ color: theme.muted, fontSize: 9.5, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{dbT}</Text>}
         </View>
       </Pressable>
