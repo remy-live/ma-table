@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { f } from '../osc/osc';
 import { FxVisual } from '../ui/FxVisual';
+import { DragBubble } from '../ui/DragBubble';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, FX_COUNT } from '../xair/addresses';
 import { fxParPath, fxType, fxTypePath, knobsFor } from '../xair/effects';
@@ -189,19 +190,17 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
                   {SLOTS.map((k) => {
                     const v = Number(client.get(sendPath(ch, k)) ?? 0);
                     const on = v > 0;
-                    const size = on ? Math.round(Math.min(rowH - 6, 12 + (pct(v) / 100) * 30)) : 0;
                     return (
-                      <Pressable key={k} onPress={() => { const d = faderToDb(v); client.set(sendPath(ch, k), f(!on ? dbToFader(-16) : d >= -4 ? 0 : dbToFader(Math.min(0, d + 4)))); }} accessibilityLabel={`${chName(client, ch)} dans ${fxLabel(client, names, k)} : ${dbText(v)}`} style={[styles.cell, { height: rowH, backgroundColor: on ? theme.panel : theme.deep }]}>
-                        {on && <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: SLOT_COLORS[k - 1] }} />}
-                        <Text style={{ position: 'absolute', right: 8, bottom: rowH < 34 ? 1 : 4, color: theme.muted, fontSize: 10, fontWeight: '800' }}>{on ? dbText(v) : ''}</Text>
-                      </Pressable>
+                      <DragBubble key={k} theme={theme} w={190} h={rowH} max={0} db={on ? faderToDb(v) : -Infinity} color={SLOT_COLORS[k - 1]} a11y={`${chName(client, ch)} dans ${fxLabel(client, names, k)}`}
+                        onTap={() => { const d = faderToDb(v); client.set(sendPath(ch, k), f(!on ? dbToFader(-16) : d >= -4 ? 0 : dbToFader(Math.min(0, d + 4)))); }}
+                        onSet={(db) => client.set(sendPath(ch, k), f(db === null ? 0 : dbToFader(db)))} />
                     );
                   })}
                 </View>
               ))}
             </View>
           </ScrollView>
-          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 10 }}>Une ligne par voie, une colonne par effet · grosse bulle = beaucoup d’effet · touche une case : +4 dB, encore = retirer.</Text>
+          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 10 }}>Une ligne par voie, une colonne par effet · grosse bulle = beaucoup d’effet · glisse une case vers la droite pour en mettre plus, vers la gauche pour moins · un appui : +4 dB.</Text>
         </ScrollView>
       )}
 

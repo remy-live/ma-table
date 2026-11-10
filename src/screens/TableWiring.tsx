@@ -9,32 +9,43 @@ import { f } from '../osc/osc';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
-import { chLevelPath, MODEL } from '../xair/addresses';
-import { dbToFader } from '../xair/levels';
+import { chLevelPath, FX_COUNT, MODEL, Target, targetId } from '../xair/addresses';
+import { fxType, fxTypePath } from '../xair/effects';
+import { SLOT_COLORS } from '../xair/fxSlots';
+import { readGroups } from '../xair/groups';
+import { Btn } from '../ui/kit';
+import { GROUP_COLORS } from './GroupsSheet';
+import { dbToFader, faderToDb } from '../xair/levels';
 import { colorOf } from '../xair/smartName';
 import { Outlet, outlets, Plug, plugs, wires, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { ChannelDrawer, DrawerActions, LevelKnob } from './ChannelDrawer';
 import { MIX_COLORS } from './MixPicker';
 
-type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | null;
+type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | { k: 'many'; ns: number[]; g?: number } | null;
+type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'fold'; k: number };
 const W = 1000;
 const H = 300;
 const xIn = (n: number) => (n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
 const yIn = (n: number) => (n <= 8 ? 66 : 158);
 const xOut = (k: number) => (k < 6 ? 60 + k * 100 : 880);
 const Y_OUT = 262;
+// bouton « Plusieurs », dans le coin libre à droite de la 2e rangée (repère du dessin)
+const MULTI = { x: 812, y: 126, w: 170, h: 46 };
 
 export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions }) {
   const { client, theme, P, O } = props;
   const { width, height } = useWindowDimensions();
   const wide = width >= 900;
   const [sel, setSel] = useState<Sel>({ k: 'in', n: 1 });
+  const [multi, setMulti] = useState(false);
+  const [open, setOpen] = useState<number[]>([]);
   const [size, setSize] = useState({ w: 0 });
   const scale = size.w ? size.w / W : 0;
   const linked = (n: number, id: string) => props.W.some((w) => w.plug === n && w.out === id);
   const plug = sel?.k === 'in' ? P[sel.n - 1] : null;
   const out = sel?.k === 'out' ? O.find((o) => o.id === sel.id) ?? null : null;
+  const many = sel?.k === 'many' ? sel : null;
   const level = (p: Plug, o: Outlet) => (p.chans.length ? Number(client.get(chLevelPath(p.chans[0], o.t)) ?? 0) : 0);
   const setLevel = (p: Plug, o: Outlet, v: number) => p.chans.forEach((c) => client.set(chLevelPath(c, o.t), f(v)));
   const toggle = (p: Plug, o: Outlet) => {
@@ -46,16 +57,58 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const pw = W * effScale;
   const ph = H * effScale;
 
-  // Glisser d'une prise vers une sortie (ou l'inverse) = relier, comme dans Branchements.
-  type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string };
+  // Groupes (DCA) : repliés en une capsule, comme dans Câbles ; un appui sur « déplier » les ouvre.
+  const plugOfCh = (c: number) => P.find((p) => p.chans.includes(c))?.n ?? null;
+  const gInfo = readGroups(client).filter((g) => g.members.length > 1).map((g) => {
+    const ps = g.members.map(plugOfCh).filter((n): n is number => n !== null).sort((a, b) => a - b);
+    return { k: g.k, name: g.name, plugs: ps, anchor: ps[0], folded: !open.includes(g.k) && ps.length > 1 };
+  }).filter((g) => g.plugs.length > 1);
+  const groupOf = (n: number) => gInfo.find((g) => g.plugs.includes(n));
+  const folded = (n: number) => { const g = groupOf(n); return g && g.folded ? g : null; };
+  const anchorOf = (n: number) => folded(n)?.anchor ?? n;
+  const selected = (n: number) => (sel?.k === 'in' && sel.n === n) || (!!many && many.ns.includes(n));
+
+  // Qu'y a-t-il sous le doigt ? (repère du dessin)
   const hit = (x: number, y: number): End | null => {
-    for (const p of P) if (Math.hypot(x - xIn(p.n), y - yIn(p.n)) < 36) return { kind: 'plug', n: p.n };
+    for (const g of gInfo) {
+      const ax = xIn(g.anchor), ay = yIn(g.anchor);
+      if (Math.abs(x - ax) < 48 && y > ay - 56 && y < ay - 28) return { kind: 'fold', k: g.k };
+      if (g.folded && Math.abs(x - ax) < 48 && Math.abs(y - ay) < 28) return { kind: 'group', k: g.k };
+    }
+    for (const p of P) {
+      if (Math.hypot(x - xIn(p.n), y - yIn(p.n)) >= 36) continue;
+      const g = folded(p.n);
+      return g ? { kind: 'group', k: g.k } : { kind: 'plug', n: p.n };
+    }
     for (let k = 0; k < O.length; k++) if (x > xOut(k) - 30 && x < xOut(k) + 80 && Math.abs(y - Y_OUT) < 30) return { kind: 'out', id: O[k].id };
     return null;
   };
   const [drag, setDrag] = useState<{ from: End; x: number; y: number; moved: boolean } | null>(null);
-  const latest = useRef({ effScale, P, O, toggle: (_p: Plug, _o: Outlet) => {}, linked });
-  latest.current = { effScale, P, O, toggle: (p: Plug, o: Outlet) => setLevel(p, o, dbToFader(-10)), linked };
+  // Les prises emmenées par un glissement : le groupe, ou toute la sélection si on part d'une prise choisie.
+  const carried = (e: End): number[] => {
+    if (e.kind === 'group') return gInfo.find((g) => g.k === e.k)?.plugs ?? [];
+    if (e.kind === 'plug') return many && many.ns.includes(e.n) ? many.ns : [e.n];
+    return [];
+  };
+  const latest = useRef({ effScale, P, O, linked, hit, carried, sel, multi, gInfo });
+  latest.current = { effScale, P, O, linked, hit, carried, sel, multi, gInfo };
+  const linkAll = (ns: number[], o: Outlet) => {
+    const L = latest.current;
+    const free = ns.filter((n) => !L.P[n - 1]?.chans.length);
+    ns.forEach((n) => { const p = L.P[n - 1]; if (p?.chans.length && !L.linked(n, o.id)) setLevel(p, o, dbToFader(-10)); });
+    if (free.length === ns.length) Alert.alert('Prise libre', `Rien n’écoute la prise ${free[0]}. Donne-lui une voie depuis la Table (Changer l’entrée).`);
+  };
+  const tapEnd = (e: End) => {
+    const L = latest.current;
+    if (e.kind === 'fold') { setOpen((o) => (o.includes(e.k) ? o.filter((k) => k !== e.k) : [...o, e.k])); return; }
+    if (e.kind === 'out') { setSel({ k: 'out', id: e.id }); return; }
+    if (e.kind === 'group') { const g = L.gInfo.find((x) => x.k === e.k); if (g) setSel({ k: 'many', ns: g.plugs, g: g.k }); return; }
+    if (L.multi) {
+      const cur = L.sel?.k === 'many' && L.sel.g === undefined ? L.sel.ns : L.sel?.k === 'in' ? [L.sel.n] : [];
+      const ns = cur.includes(e.n) ? cur.filter((x) => x !== e.n) : [...cur, e.n].sort((a, b) => a - b);
+      setSel(ns.length ? { k: 'many', ns } : null);
+    } else setSel({ k: 'in', n: e.n });
+  };
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -63,33 +116,29 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         const sc = latest.current.effScale || 1;
-        const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+        const t = latest.current.hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
         setDrag(t ? { from: t, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, moved: false } : null);
       },
       onPanResponderMove: (e, g) => {
         const moved = Math.abs(g.dx) + Math.abs(g.dy) > 8;
-        setDrag((d) => (d ? { ...d, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, moved: d.moved || moved } : d));
+        setDrag((d) => (d && d.from.kind !== 'fold' ? { ...d, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, moved: d.moved || moved } : d));
       },
       onPanResponderRelease: (e) => {
-        const sc = latest.current.effScale || 1;
-        const t = hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
+        const L = latest.current;
+        const sc = L.effScale || 1;
+        const t = L.hit(e.nativeEvent.locationX / sc, e.nativeEvent.locationY / sc);
         setDrag((d) => {
           if (!d) return null;
-          const L = latest.current;
-          if (!d.moved || !t) {
-            setSel(d.from.kind === 'plug' ? { k: 'in', n: d.from.n } : { k: 'out', id: d.from.id });
-            return null;
-          }
-          const pair = d.from.kind === 'plug' && t.kind === 'out' ? { n: d.from.n, id: t.id } : d.from.kind === 'out' && t.kind === 'plug' ? { n: t.n, id: d.from.id } : null;
-          if (pair) {
-            const p = L.P[pair.n - 1];
-            const o = L.O.find((x) => x.id === pair.id);
-            if (p && o) {
-              if (!p.chans.length) Alert.alert('Prise libre', `Rien n’écoute la prise ${p.n}. Donne-lui une voie depuis la Table (Changer l’entrée).`);
-              else if (!L.linked(p.n, o.id)) L.toggle(p, o);
-              setSel({ k: 'in', n: p.n });
-            }
-          } else setSel(t.kind === 'plug' ? { k: 'in', n: t.n } : { k: 'out', id: t.id });
+          if (!d.moved || !t) { setTimeout(() => tapEnd(d.from), 0); return null; }
+          const o = d.from.kind === 'out' ? L.O.find((x) => x.id === (d.from as { id: string }).id) : t.kind === 'out' ? L.O.find((x) => x.id === t.id) : null;
+          const ns = d.from.kind === 'out' ? L.carried(t) : t.kind === 'out' ? L.carried(d.from) : [];
+          if (o && ns.length) {
+            setTimeout(() => {
+              linkAll(ns, o);
+              const g = d.from.kind === 'group' ? d.from.k : t.kind === 'group' ? t.k : undefined;
+              setSel(ns.length > 1 ? { k: 'many', ns, g } : { k: 'in', n: ns[0] });
+            }, 0);
+          } else setTimeout(() => tapEnd(t), 0);
           return null;
         });
       },
@@ -98,8 +147,12 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   ).current;
   const sc0 = effScale || 1;
   const hov = drag && drag.moved ? hit(drag.x / sc0, drag.y / sc0) : null;
-  const xyOf = (e: End) => (e.kind === 'plug' ? { x: xIn(e.n), y: yIn(e.n) } : { x: xOut(O.findIndex((o) => o.id === e.id)), y: Y_OUT });
-  const hovOk = !!hov && !!drag && hov.kind !== drag.from.kind;
+  const xyOf = (e: End) => (e.kind === 'out' ? { x: xOut(O.findIndex((o) => o.id === e.id)), y: Y_OUT } : e.kind === 'plug' ? { x: xIn(e.n), y: yIn(e.n) } : (() => { const g = gInfo.find((x) => x.k === e.k)!; return { x: xIn(g.anchor), y: yIn(g.anchor) }; })());
+  const hovOk = !!hov && !!drag && hov.kind !== 'fold' && (hov.kind === 'out') !== (drag.from.kind === 'out');
+  const dragColor = (e: End) => (e.kind === 'out' ? props.outColor(O.find((o) => o.id === e.id)!) : e.kind === 'plug' ? props.plugColor(P[e.n - 1]) : GROUP_COLORS[e.k - 1]);
+  const manyPlugs = many ? many.ns.map((n) => P[n - 1]).filter(Boolean) : [];
+  const manyGroup = many?.g !== undefined ? gInfo.find((g) => g.k === many.g) ?? null : null;
+  const drawerColor = plug ? props.plugColor(plug) : out ? props.outColor(out) : manyGroup ? GROUP_COLORS[manyGroup.k - 1] : many ? '#FFFFFF' : theme.line;
 
   return (
     <View style={{ flex: 1, paddingHorizontal: 10, gap: 8 }}>
@@ -110,42 +163,70 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
           <Svg width={pw} height={ph} viewBox={`0 0 ${W} ${H}`} pointerEvents="none">
             <Rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
             <SvgText x={W - 30} y={36} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
-            <SvgText x={W / 2} y={22} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">ENTRÉES · touche une prise, glisse-la vers une sortie pour la relier</SvgText>
+            <SvgText x={W - 30} y={70} textAnchor="end" fontSize={11} fontFamily="System" fill="#9AA3AD">ENTRÉES · touche une prise</SvgText>
+            <SvgText x={W - 30} y={86} textAnchor="end" fontSize={11} fontFamily="System" fill="#9AA3AD">glisse-la vers une sortie pour la relier</SvgText>
             <SvgText x={W / 2} y={Y_OUT - 36} textAnchor="middle" fontSize={11} fontFamily="System" fill="#9AA3AD">SORTIES · touche qui écoute</SvgText>
             {/* fils */}
             {props.W.map((w) => {
-              const p = P[w.plug - 1];
               const oi = O.findIndex((o) => o.id === w.out);
               if (oi < 0) return null;
-              const show = !sel || (sel.k === 'in' && sel.n === w.plug) || (sel.k === 'out' && sel.id === w.out);
-              const a = { x: xIn(w.plug), y: yIn(w.plug) };
+              const show = !sel || selected(w.plug) || (sel.k === 'out' && sel.id === w.out);
+              const n0 = anchorOf(w.plug);
+              const a = { x: xIn(n0), y: yIn(n0) };
               const b = { x: xOut(oi), y: Y_OUT - 20 };
-              return <Path key={w.plug + w.out} d={`M${a.x} ${a.y + 20} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 60}, ${b.x} ${b.y}`} fill="none" stroke={props.plugColor(p)} strokeWidth={3 + Math.max(0, (w.db + 40) / 10)} strokeLinecap="round" opacity={show ? 0.9 : 0.07} />;
+              return <Path key={w.plug + w.out} d={`M${a.x} ${a.y + 20} C ${a.x} ${a.y + 70}, ${b.x} ${b.y - 60}, ${b.x} ${b.y}`} fill="none" stroke={props.plugColor(P[w.plug - 1])} strokeWidth={3 + Math.max(0, (w.db + 40) / 10)} strokeLinecap="round" opacity={show ? 0.9 : 0.07} />;
             })}
             {/* prises */}
             {P.map((p) => {
-              const on = sel?.k === 'in' && sel.n === p.n;
-              const hit = out ? linked(p.n, out.id) : false;
+              const x = xIn(p.n), y = yIn(p.n);
+              const g = groupOf(p.n);
+              const gc = g ? GROUP_COLORS[g.k - 1] : '';
+              if (g && g.folded && g.anchor !== p.n) return <G key={p.n} opacity={0.2}><Circle cx={x} cy={y} r={20} fill="#1E2227" stroke={gc} strokeWidth={2} /></G>;
+              if (g && g.folded) {
+                const on = many?.g === g.k;
+                return (
+                  <G key={p.n}>
+                    <Rect x={x - 46} y={y - 26} width={92} height={52} rx={26} fill={on ? gc : '#1E2227'} stroke={on ? '#FFFFFF' : gc} strokeWidth={on ? 4 : 3} />
+                    <SvgText x={x} y={y - 3} textAnchor="middle" fontSize={13} fontWeight="800" fill={on ? '#0B0D10' : gc}>{g.name.slice(0, 11)}</SvgText>
+                    <SvgText x={x} y={y + 13} textAnchor="middle" fontSize={10} fill={on ? '#0B0D10' : '#E8EAED'}>{`${g.plugs.length} prises`}</SvgText>
+                    <Rect x={x - 44} y={y - 54} width={88} height={22} rx={11} fill="#15181C" stroke={gc} strokeWidth={1.5} />
+                    <SvgText x={x} y={y - 39} textAnchor="middle" fontSize={10} fontWeight="800" fill={gc}>▸ déplier</SvgText>
+                  </G>
+                );
+              }
+              const on = selected(p.n);
+              const hitOut = out ? linked(p.n, out.id) : false;
               const c = props.plugColor(p);
               return (
                 <G key={p.n}>
-                  <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 16 : 24} fill="#1E2227" stroke={on ? '#FFFFFF' : hit ? '#FFFFFF' : p.chans.length ? c : '#3A414B'} strokeWidth={on || hit ? 5 : 3} />
-                  <Circle cx={xIn(p.n)} cy={yIn(p.n)} r={p.usb ? 6 : 12} fill={hit ? c : '#0B0D10'} />
-                  <SvgText x={xIn(p.n)} y={yIn(p.n) - 30} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{p.n}</SvgText>
-                  <Rect x={xIn(p.n) - 34} y={yIn(p.n) + 28} width={68} height={16} rx={5} fill={p.name ? c : 'transparent'} />
-                  <SvgText x={xIn(p.n)} y={yIn(p.n) + 40} textAnchor="middle" fontSize={10} fontWeight="800" fill={p.name ? '#0B0D10' : '#5B636D'}>{(p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')).slice(0, 11)}</SvgText>
+                  {g && g.anchor === p.n ? (
+                    <G>
+                      <Rect x={x - 44} y={y - 54} width={88} height={22} rx={11} fill={gc} />
+                      <SvgText x={x} y={y - 39} textAnchor="middle" fontSize={10} fontWeight="800" fill="#0B0D10">{`▾ ${p.n} · replier`}</SvgText>
+                    </G>
+                  ) : (
+                    <SvgText x={x} y={y - 30} textAnchor="middle" fontSize={13} fontWeight="800" fill="#E8EAED">{String(p.n)}</SvgText>
+                  )}
+                  <Circle cx={x} cy={y} r={p.usb ? 16 : 24} fill="#1E2227" stroke={on || hitOut ? '#FFFFFF' : p.chans.length ? c : '#3A414B'} strokeWidth={on || hitOut ? 5 : 3} />
+                  <Circle cx={x} cy={y} r={p.usb ? 6 : 12} fill={hitOut || (many && on) ? c : '#0B0D10'} />
+                  {g && <Circle cx={x} cy={y} r={29} fill="none" stroke={gc} strokeWidth={1.5} strokeDasharray="4 4" />}
+                  <Rect x={x - 34} y={y + 28} width={68} height={16} rx={5} fill={p.name ? c : 'transparent'} />
+                  <SvgText x={x} y={y + 40} textAnchor="middle" fontSize={10} fontWeight="800" fill={p.name ? '#0B0D10' : '#5B636D'}>{(p.name || (p.chans.length ? `voie ${p.chans[0]}` : 'libre')).slice(0, 11)}</SvgText>
                 </G>
               );
             })}
             {/* sorties */}
             {O.map((o, k) => {
               const on = sel?.k === 'out' && sel.id === o.id;
-              const hit = plug ? linked(plug.n, o.id) : false;
+              const ins = plug ? [plug.n] : many ? many.ns : [];
+              const nIn = ins.filter((n) => linked(n, o.id)).length;
+              const hitIn = ins.length > 0 && nIn === ins.length;
+              const part = nIn > 0 && !hitIn;
               const c = props.outColor(o);
               return (
                 <G key={o.id}>
-                  <Circle cx={xOut(k)} cy={Y_OUT} r={20} fill="#1E2227" stroke={on || hit ? '#FFFFFF' : c} strokeWidth={on || hit ? 5 : 3} />
-                  <Circle cx={xOut(k)} cy={Y_OUT} r={9} fill={hit ? c : '#0B0D10'} />
+                  <Circle cx={xOut(k)} cy={Y_OUT} r={20} fill="#1E2227" stroke={on || hitIn ? '#FFFFFF' : c} strokeWidth={on || hitIn ? 5 : 3} strokeDasharray={part ? '6 4' : undefined} />
+                  <Circle cx={xOut(k)} cy={Y_OUT} r={9} fill={hitIn || part ? c : '#0B0D10'} />
                   <SvgText x={xOut(k) + 28} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.label.replace('MAIN L/R', 'MAIN')}</SvgText>
                   <SvgText x={xOut(k) + 28} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
                 </G>
@@ -156,11 +237,13 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               const a = xyOf(drag.from);
               const fx = drag.x / sc0;
               const fy = drag.y / sc0;
-              const c = drag.from.kind === 'plug' ? props.plugColor(P[drag.from.n - 1]) : props.outColor(O.find((o) => o.id === (drag.from as { id: string }).id)!);
-              const h = hov ? xyOf(hov) : null;
+              const c = dragColor(drag.from);
+              const h = hov && hov.kind !== 'fold' ? xyOf(hov) : null;
+              const extra = carried(drag.from).filter((n) => n !== (drag.from.kind === 'plug' ? drag.from.n : -1) && !folded(n));
               return (
                 <G>
                   {h && <Circle cx={h.x} cy={h.y} r={32} fill={hovOk ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.10)'} stroke={hovOk ? '#34D399' : '#9AA3AD'} strokeWidth={4} />}
+                  {extra.map((n) => <Path key={'x' + n} d={`M${xIn(n)} ${yIn(n)} Q ${(xIn(n) + fx) / 2} ${Math.max(yIn(n), fy) + 30}, ${fx} ${fy}`} fill="none" stroke={props.plugColor(P[n - 1])} strokeWidth={4} strokeLinecap="round" strokeDasharray="8 8" opacity={0.8} />)}
                   <Path d={`M${a.x} ${a.y} Q ${(a.x + fx) / 2} ${Math.max(a.y, fy) + 30}, ${fx} ${fy}`} fill="none" stroke={c} strokeWidth={6} strokeLinecap="round" strokeDasharray={hovOk ? undefined : '10 8'} />
                   <Circle cx={fx} cy={fy} r={10} fill={c} />
                 </G>
@@ -168,15 +251,41 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             })()}
           </Svg>
           <View style={StyleSheet.absoluteFill} {...pan.panHandlers} />
+          <Pressable
+            onPress={() => {
+              if (multi) { setMulti(false); if (many && many.g === undefined) setSel(many.ns.length ? { k: 'in', n: many.ns[0] } : null); }
+              else { setMulti(true); if (plug) setSel({ k: 'many', ns: [plug.n] }); }
+            }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: multi }}
+            style={{ position: 'absolute', left: MULTI.x * sc0, top: MULTI.y * sc0, width: MULTI.w * sc0, height: Math.max(36, MULTI.h * sc0), borderRadius: 12, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : theme.deep, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: multi ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{multi ? `✓ Plusieurs${many && many.g === undefined ? ` (${many.ns.length})` : ''}` : '☐ Plusieurs'}</Text>
+          </Pressable>
           </View>
         )}
       </View>
 
       {/* le tiroir */}
-      <View style={[styles.drawer, { backgroundColor: theme.panel, borderColor: plug ? props.plugColor(plug) : out ? props.outColor(out) : theme.line }]}>
+      <View style={[styles.drawer, { backgroundColor: theme.panel, borderColor: drawerColor }]}>
         {plug && (plug.chans.length
           ? <ChannelDrawer client={client} theme={theme} ch={plug.chans[0]} actions={props.actions} />
           : <Text style={{ color: theme.muted, fontSize: 14, padding: 12 }}>Prise {plug.n} : rien ne l’écoute. Donne-lui une voie depuis la Table (touche une tranche › Branchée sur › Changer).</Text>)}
+        {many && (
+          <ManyDrawer
+            client={client}
+            theme={theme}
+            wide={wide}
+            plugs={manyPlugs}
+            O={O}
+            outColor={props.outColor}
+            title={manyGroup ? manyGroup.name : `${manyPlugs.length} prise${manyPlugs.length > 1 ? 's' : ''} choisie${manyPlugs.length > 1 ? 's' : ''}`}
+            color={manyGroup ? GROUP_COLORS[manyGroup.k - 1] : theme.text}
+            extra={manyGroup
+              ? <Btn theme={theme} small kind="outline" label="▸ Déplier les prises" onPress={() => setOpen((o) => [...o, manyGroup.k])} />
+              : <Btn theme={theme} small kind="ghost" label="Vider" onPress={() => setSel(null)} />}
+          />
+        )}
         {out && (
           <>
             <View style={styles.row}>
@@ -193,8 +302,62 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             </ScrollView>
           </>
         )}
-        {!sel && <Text style={{ color: theme.muted, textAlign: 'center', padding: 20 }}>Touche une prise ou une sortie sur la table.</Text>}
+        {!sel && <Text style={{ color: theme.muted, textAlign: 'center', padding: 20 }}>{multi ? 'Touche les prises à prendre ensemble, puis relie-les en bas ou glisse-les vers une sortie.' : 'Touche une prise ou une sortie sur la table.'}</Text>}
       </View>
+    </View>
+  );
+}
+
+/** Plusieurs prises à la fois (sélection ou groupe) : un bouton rond par sortie et par effet.
+ *  Appui sur le nom : relier toutes (ou les délier si toutes y sont). Tourner : monte ou baisse
+ *  toutes les prises reliées du même nombre de dB, l'équilibre entre elles est gardé. */
+function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title, color, extra }: { client: XAirClient; theme: Theme; wide: boolean; plugs: Plug[]; O: Outlet[]; outColor: (o: Outlet) => string; title: string; color: string; extra?: React.ReactNode }) {
+  const chans = ps.flatMap((p) => p.chans);
+  const targets: { t: Target; label: string; kicker?: string; color: string }[] = [
+    ...O.map((o) => ({ t: o.t, label: o.name, color: outColor(o) })),
+    ...Array.from({ length: FX_COUNT }, (_, k) => ({ t: { kind: 'fx', n: k + 1 } as Target, label: fxType(Number(client.get(fxTypePath(k + 1)) ?? 0)).fr, kicker: `FX${k + 1}`, color: SLOT_COLORS[k] })),
+  ];
+  return (
+    <View style={{ flex: 1, gap: 8 }}>
+      <View style={styles.row}>
+        <View style={[styles.tag, { borderColor: color }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{ps.length}</Text></View>
+        <View style={{ flex: 1, minWidth: 120 }}>
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: 19, fontWeight: '800' }}>{title}</Text>
+          <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 12 }}>{ps.map((p) => p.name || `prise ${p.n}`).join(' · ')}</Text>
+        </View>
+        {extra}
+      </View>
+      <ScrollView contentContainerStyle={{ gap: 6 }}>
+        <View style={[styles.knobs, !wide && { flexWrap: 'wrap' }]}>
+          {targets.map(({ t, label, kicker, color: c }, idx) => {
+            const vals = chans.map((ch) => Number(client.get(chLevelPath(ch, t)) ?? 0));
+            const nOn = vals.filter((v) => v > 0).length;
+            const top = Math.max(0, ...vals);
+            const all = chans.length > 0 && nOn === chans.length;
+            return (
+              <React.Fragment key={targetId(t)}>
+                {wide && idx === O.length && <View style={[styles.sep, { backgroundColor: theme.line2 }]} />}
+                <LevelKnob
+                  theme={theme}
+                  wide={wide}
+                  value={top}
+                  label={label}
+                  kicker={kicker ?? (nOn > 0 && !all ? `${nOn}/${chans.length}` : undefined)}
+                  color={c}
+                  onToggle={() => chans.forEach((ch, k) => { if (all) client.set(chLevelPath(ch, t), f(0)); else if (vals[k] <= 0) client.set(chLevelPath(ch, t), f(dbToFader(kicker ? -14 : -10))); })}
+                  onSet={(v) => {
+                    if (nOn === 0) { chans.forEach((ch) => client.set(chLevelPath(ch, t), f(v))); return; }
+                    if (v <= 0) { chans.forEach((ch) => client.set(chLevelPath(ch, t), f(0))); return; }
+                    const delta = faderToDb(v) - faderToDb(top);
+                    chans.forEach((ch, k) => { if (vals[k] > 0) client.set(chLevelPath(ch, t), f(dbToFader(Math.min(10, faderToDb(vals[k]) + delta)))); });
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
+        </View>
+        <Text style={{ color: theme.muted, fontSize: 12 }}>Touche un nom pour relier ou délier toutes ces prises · tourne pour les monter ou baisser ensemble (l’équilibre entre elles est gardé)</Text>
+      </ScrollView>
     </View>
   );
 }
@@ -208,6 +371,8 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, rowGap: 10 },
   input: { height: 44, borderWidth: 2, borderRadius: 10, paddingHorizontal: 10, fontSize: 16, fontWeight: '800' },
   sw: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
+  knobs: { flexDirection: 'row', gap: 6, alignItems: 'stretch' },
+  sep: { width: 2, borderRadius: 1, marginHorizontal: 2 },
   tg: { height: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
 });
 
