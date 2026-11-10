@@ -1,8 +1,8 @@
 // Interrupteur « une enceinte / deux enceintes » pour la façade.
 import React, { useEffect, useState } from 'react';
 import { HELP, showTip } from './tip';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { goMono, goStereo, hasSavedPans, isMono, monoPaths } from '../xair/mono';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { goMono, goStereo, hasSavedPans, isMono, monoPaths, onMonoChange } from '../xair/mono';
 import { XAirClient } from '../xair/XAirClient';
 import { useAnyTick } from './useTick';
 import { Theme } from './theme';
@@ -11,12 +11,14 @@ export function MonoSwitch({ client, theme, compact }: { client: XAirClient; the
   useAnyTick(client, 200);
   const [saved, setSaved] = useState(false);
   useEffect(() => { client.loadPaths(monoPaths()); hasSavedPans().then(setSaved); }, [client]);
+  const [, bump] = useState(0);
+  useEffect(() => onMonoChange(() => bump((x) => x + 1)), []);
   const mono = isMono(client);
   const toMono = async () => { await goMono(client); setSaved(await hasSavedPans()); };
   const toStereo = async () => {
-    if (!saved) { Alert.alert('Déjà au centre', 'Tous les panoramiques sont au centre et aucun réglage stéréo n’a été gardé. Règle les panoramiques dans chaque voie (tiroir Entrée).'); return; }
     const n = await goStereo(client);
-    if (!n) Alert.alert('Rien à remettre', 'Aucun panoramique gardé.');
+    // passe en 2 enceintes dans tous les cas ; sans réglage gardé, les sons restent au centre
+    showTip(n > 0 ? `Deux enceintes : ${n} panoramique${n > 1 ? 's' : ''} remis comme avant.` : saved ? 'Deux enceintes.' : 'Deux enceintes. Les sons sont au centre : écarte-les gauche / droite dans chaque voie si tu veux de la stéréo.');
   };
   if (compact) {
     // un seul bouton : montre l'état, un appui bascule

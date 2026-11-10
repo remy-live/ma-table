@@ -61,3 +61,38 @@ test('scène : cadres, faisceau, déplacement en bloc, synchro avec la table', (
   assert.equal(r.added, 1);
   assert.ok(r.st.cables.some((c) => 'plug' in c.b && c.b.plug === 9));
 });
+
+test('scène liée : une voie effacée sur la table quitte le plan, un bloc retiré ne revient pas', async () => {
+  const S = await import('../src/store/stage');
+  const st0 = S.fromChannels([{ plug: 1, name: 'Voix' }, { plug: 2, name: 'Guitare' }], []);
+  // la voie 2 n'a plus de nom sur la table
+  const a = S.syncWithTable(st0, [{ plug: 1, name: 'Voix' }]);
+  assert.equal(a.removed, 1);
+  assert.equal(a.st.objs.some((o) => o.plug === 2), false);
+  // on retire Voix du plan : elle ne revient pas à la synchro suivante
+  const voix = a.st.objs.find((o) => o.plug === 1)!;
+  const b = S.removeFromPlan(a.st, voix.id);
+  const c = S.syncWithTable(b, [{ plug: 1, name: 'Voix' }]);
+  assert.equal(c.added, 0);
+  assert.equal(c.st.objs.some((o) => o.plug === 1), false);
+});
+
+test('lien fort : un cadre de 2 voies devient un groupe, un groupe de la table devient un cadre', async () => {
+  const S = await import('../src/store/stage');
+  let st = S.fromChannels([{ plug: 1, name: 'Voix' }, { plug: 5, name: 'Kick' }, { plug: 6, name: 'Caisse claire' }], []);
+  // groupe de la table : Kick + Caisse claire dans le DCA 2 « Batterie »
+  st = S.groupsToStage(st, [{ k: 2, name: 'Batterie', plugs: [5, 6] }]);
+  const z = S.zonesOf(st).find((q) => q.dca === 2)!;
+  assert.ok(z);
+  assert.deepEqual(S.zonePlugs(st, z.id), [5, 6]);
+  // la caisse claire sort du groupe sur la table : elle sort du cadre
+  st = S.groupsToStage(st, [{ k: 2, name: 'Batterie', plugs: [5] }]);
+  assert.deepEqual(S.zonePlugs(st, z.id), [5]);
+  // sens scène › table : le cadre garde son groupe 2 et dit ses voies
+  const r = S.stageToGroups(st, [2]);
+  assert.deepEqual(r.groups.find((g) => g.k === 2)?.plugs, [5]);
+  // un cadre vide disparaît
+  const kick = st.objs.find((o) => o.plug === 5)!;
+  const st2 = S.removeFromPlan(st, kick.id);
+  assert.equal(S.zonesOf(st2).some((q) => q.id === z.id), false);
+});

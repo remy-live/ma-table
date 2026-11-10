@@ -8,6 +8,7 @@ import { MonConfig, parseInvite } from './src/xair/monitor';
 import { save } from './src/store/persist';
 import { setImmersive, useBottomInset } from './src/ui/immersive';
 import { TipHost } from './src/ui/tip';
+import { AlertHost } from './src/ui/AlertHost';
 import { recordClips } from './src/xair/clip';
 import { loadPrepared, markSent, savePrepared, sendPrepared } from './src/store/prepare';
 import { WhoAmIScreen } from './src/screens/WhoAmIScreen';
@@ -233,6 +234,7 @@ export default function App() {
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
       <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />
       <TipHost theme={theme} />
+      <AlertHost theme={theme} />
     </View>
   );
 }

@@ -2,6 +2,7 @@
 //  1. Face arrière (la XR18 vue de derrière, prises numérotées, fils)
 //  2. Deux colonnes (prises à gauche, personnes à droite — pour le téléphone)
 //  3. Bulles (le tableau « Qui entend quoi »)
+import { useMono } from '../ui/useMono';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { s as oscS } from '../osc/osc';
@@ -267,6 +268,7 @@ function WireList(props: { theme: Theme; client: XAirClient; empty: string; item
 // Relier au doigt : on appuie sur une prise, on glisse jusqu'à une sortie (ou l'inverse).
 // Les fils qui arrivent sur une même sortie sont écartés pour rester lisibles.
 function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; sel: Sel; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; onPlug: (p: Plug) => void; onOut: (o: Outlet) => void; onLink: (plug: number, out: string) => void; onCut: (plug: number, out: string) => void; onEmpty: () => void; onGroup: (k: number) => void }) {
+  const mono = useMono(props.client);
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
@@ -458,11 +460,29 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
               const { x, y } = outletXY(o.id);
               return (
                 <G key={o.id}>
-                  <SvgText x={x} y={y - 26} textAnchor="middle" fontSize={10} fontWeight="800" fill="#E8EAED">{o.label}</SvgText>
-                  <Circle cx={x} cy={y} r={19} fill="#1E2227" stroke="#3A414B" strokeWidth={2} />
-                  <Circle cx={x} cy={y} r={12} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
-                  <Rect x={x - 34} y={y + 22} width={68} height={14} rx={5} fill={props.outColor(o)} />
-                  <SvgText x={x} y={y + 32} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{o.name.slice(0, 12)}</SvgText>
+                  {o.id === 'main' ? (
+                    <>
+                      {/* la façade a deux sorties : MAIN L et MAIN R (le même mélange en « 1 enceinte ») */}
+                      <SvgText x={x} y={y - 26} textAnchor="middle" fontSize={10} fontWeight="800" fill="#E8EAED">{mono ? 'MAIN L + R · mono' : 'MAIN L · R'}</SvgText>
+                      {[-23, 23].map((dx) => (
+                        <G key={dx}>
+                          <Circle cx={x + dx} cy={y} r={17} fill="#1E2227" stroke="#3A414B" strokeWidth={2} />
+                          <Circle cx={x + dx} cy={y} r={10} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
+                          <SvgText x={x + dx} y={y + 4} textAnchor="middle" fontSize={9} fontWeight="900" fill="#9AA3AD">{dx < 0 ? 'L' : 'R'}</SvgText>
+                        </G>
+                      ))}
+                      <Rect x={x - 40} y={y + 22} width={80} height={14} rx={5} fill={props.outColor(o)} />
+                      <SvgText x={x} y={y + 32} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{o.name.slice(0, 12)}</SvgText>
+                    </>
+                  ) : (
+                    <>
+                      <SvgText x={x} y={y - 26} textAnchor="middle" fontSize={10} fontWeight="800" fill="#E8EAED">{o.label}</SvgText>
+                      <Circle cx={x} cy={y} r={19} fill="#1E2227" stroke="#3A414B" strokeWidth={2} />
+                      <Circle cx={x} cy={y} r={12} fill="#0B0D10" stroke="#4A525C" strokeWidth={1.5} />
+                      <Rect x={x - 34} y={y + 22} width={68} height={14} rx={5} fill={props.outColor(o)} />
+                      <SvgText x={x} y={y + 32} textAnchor="middle" fontSize={9} fontWeight="800" fill="#0B0D10">{o.name.slice(0, 12)}</SvgText>
+                    </>
+                  )}
                 </G>
               );
             })}

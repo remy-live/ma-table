@@ -17,11 +17,17 @@ export type Kind =
   | 'retour' | 'casque' | 'enceinte' | 'musicien';
 export type CableType = 'jack' | 'xlr';
 export interface StageObj { id: string; kind: Kind; x: number; y: number; name: string; zone?: string; plug?: number }
-export interface Zone { id: string; name: string; color: string; x: number; y: number; w: number; h: number; bundled?: boolean; drums?: boolean }
+/** dca : en lien fort, le groupe (DCA 1..4) de la table qui correspond à ce cadre. */
+export interface Zone { id: string; name: string; color: string; x: number; y: number; w: number; h: number; bundled?: boolean; drums?: boolean; dca?: number }
 /** Bout d'un câble : un bloc, une entrée de la table (1..18) ou une sortie ('aux1'..'aux6', 'mainL', 'mainR'). */
 export type End = { o: string } | { plug: number } | { out: string };
 export interface StageCable { id: string; a: End; b: End; type: CableType }
-export interface Stage { objs: StageObj[]; cables: StageCable[]; zones?: Zone[]; free?: boolean }
+/**
+ * free : plan libre (ne touche jamais la table) · sinon lié (la table arrive sur le plan)
+ * strong : lien fort, ce qu'on règle sur la scène agit aussi sur la table
+ * ignored : prises retirées du plan à la main, qui ne reviennent pas toutes seules
+ */
+export interface Stage { objs: StageObj[]; cables: StageCable[]; zones?: Zone[]; free?: boolean; strong?: boolean; ignored?: number[] }
 
 export const EMPTY: Stage = { objs: [], cables: [], zones: [] };
 
@@ -296,11 +302,16 @@ export function fromChannels(chans: Chan[], buses: { n: number; name: string }[]
 
 /** Plan lié à la table : chaque voie nommée qui n'a pas encore de câble vers sa prise
  *  reçoit son bloc et son câble ; les blocs liés à une prise prennent le nom de la voie. */
-export function syncWithTable(st: Stage, chans: Chan[]): { st: Stage; added: number } {
-  let out: Stage = { ...st, objs: st.objs.map((o) => { if (o.plug === undefined) return o; const c = chans.find((x) => x.plug === o.plug); return c && c.name && o.name !== c.name && !/^Micro /.test(o.name) ? { ...o, name: c.name } : o; }) };
+export function syncWithTable(st: Stage, chans: Chan[]): { st: Stage; added: number; removed: number } {
+  // une voie dont le nom a été effacé sur la table : son bloc quitte le plan
+  const gone = st.objs.filter((o) => o.plug !== undefined && !chans.some((c) => c.plug === o.plug && c.name));
+  let out: Stage = st;
+  for (const o of gone) out = removeObj(out, o.id);
+  out = { ...out, objs: out.objs.map((o) => { if (o.plug === undefined) return o; const c = chans.find((x) => x.plug === o.plug); return c && c.name && o.name !== c.name && !/^Micro /.test(o.name) && family(o.kind) !== 'gear' ? { ...o, name: c.name } : o; }) };
   const cabled = new Set(out.cables.flatMap((c) => [c.a, c.b]).filter((e): e is { plug: number } => 'plug' in e).map((e) => e.plug));
-  const missing = chans.filter((c) => c.name && !cabled.has(c.plug));
-  if (!missing.length) return { st: out, added: 0 };
+  const ign = new Set(out.ignored ?? []);
+  const missing = chans.filter((c) => c.name && !cabled.has(c.plug) && !ign.has(c.plug));
+  if (!missing.length) return { st: pruneZones(out), added: 0, removed: gone.length };
   // un cadre « À placer » au bord de scène pour les nouveaux venus
   let z = zonesOf(out).find((q) => q.name === 'À placer');
   if (!z) { z = { id: newId('z'), name: 'À placer', color: '#94A3B8', x: 0.02, y: 0.78, w: 0.96, h: 0.2 }; out = { ...out, zones: [...zonesOf(out), z] }; }
@@ -309,7 +320,7 @@ export function syncWithTable(st: Stage, chans: Chan[]): { st: Stage; added: num
     const o: StageObj = { id: newId('o'), kind, name: c.name, x: z!.x + 0.04 + k * 0.08, y: z!.y + 0.1, zone: z!.id, plug: c.plug };
     out = addCable({ ...out, objs: [...out.objs, o] }, { o: o.id }, { plug: c.plug }, kind === 'ordi' || ['guitare', 'basse', 'clavier', 'synthe', 'acoustique'].includes(kind) ? 'jack' : 'xlr');
   });
-  return { st: out, added: missing.length };
+  return { st: pruneZones(out), added: missing.length, removed: gone.length };
 }
 
 // ---------- cadres qui s'adaptent ----------
@@ -334,7 +345,7 @@ export function dropAndFit(st: Stage, oid: string): Stage {
   let out = dropInZone(st, oid);
   const after = out.objs.find((o) => o.id === oid)?.zone;
   for (const z of new Set([before, after].filter(Boolean) as string[])) out = fitZone(out, z);
-  return out;
+  return before && before !== after ? pruneZones(out, [before]) : out;
 }
 /** Un cadre dessiné au doigt : il prend les blocs qu'il entoure. */
 export function zoneFromRect(st: Stage, r: { x: number; y: number; w: number; h: number }, name = 'Musicien'): { st: Stage; id: string } {
@@ -394,4 +405,110 @@ export function addConfig(st: Stage, key: string, x?: number, y?: number): { st:
   let out: Stage = { ...st, objs: [...st.objs, ...objs], zones: [...zonesOf(st), z] };
   for (const [a, b, t] of c.links) out = addCable(out, { o: ids[a] }, { o: ids[b] }, t);
   return { st: fitZone(out, zid), zone: zid };
+}
+
+/** Retirer un bloc du plan pour de bon : sa prise ne revient plus toute seule. */
+export function removeFromPlan(st: Stage, oid: string): Stage {
+  const plug = st.objs.find((o) => o.id === oid)?.plug;
+  const out = pruneZones(removeObj(st, oid));
+  return plug === undefined ? out : { ...out, ignored: [...new Set([...(out.ignored ?? []), plug])] };
+}
+/** La prise de la table à laquelle un bloc est câblé (la première trouvée). */
+export function plugOf(st: Stage, oid: string): number | undefined {
+  for (const c of st.cables) {
+    if ('o' in c.a && c.a.o === oid && 'plug' in c.b) return c.b.plug;
+    if ('o' in c.b && c.b.o === oid && 'plug' in c.a) return c.a.plug;
+  }
+  return undefined;
+}
+/** Le nom à donner à la voie : pour une DI ou un micro, celui de l'instrument branché dessus. */
+export function sourceName(st: Stage, oid: string): string {
+  const o = st.objs.find((q) => q.id === oid);
+  if (!o) return '';
+  if (family(o.kind) !== 'gear') return o.name;
+  for (const c of st.cables) {
+    const other = 'o' in c.a && c.a.o === oid ? c.b : 'o' in c.b && c.b.o === oid ? c.a : null;
+    const q = other && 'o' in other ? st.objs.find((x) => x.id === other.o) : undefined;
+    if (q && family(q.kind) !== 'gear' && family(q.kind) !== 'monitor') return q.name;
+  }
+  return o.name;
+}
+
+// ---------- cadres et groupes de la table ----------
+
+/** Enlève les cadres devenus vides (seulement ceux donnés, ou tous). */
+export function pruneZones(st: Stage, only?: string[]): Stage {
+  const empty = zonesOf(st).filter((z) => (!only || only.includes(z.id)) && !st.objs.some((o) => o.zone === z.id));
+  return empty.length ? { ...st, zones: zonesOf(st).filter((z) => !empty.includes(z)) } : st;
+}
+
+/** Les prises de la table branchées dans un cadre (directement ou via une DI / un micro). */
+export function zonePlugs(st: Stage, zid: string): number[] {
+  const out = new Set<number>();
+  for (const o of membersOf(st, zid)) { const p = o.plug ?? plugOf(st, o.id); if (p !== undefined) out.add(p); }
+  return [...out].sort((a, b) => a - b);
+}
+
+export interface TableGroup { k: number; name: string; plugs: number[] }
+
+/**
+ * Lien fort, sens scène › table : chaque cadre d'au moins deux voies reçoit un groupe
+ * (DCA) libre. Rend la scène (cadres numérotés) et ce que doit devenir chaque groupe.
+ */
+export function stageToGroups(st: Stage, tableUsed: number[], count = 4): { st: Stage; groups: TableGroup[] } {
+  let zones = zonesOf(st);
+  const owned = new Set(zones.map((z) => z.dca).filter(Boolean) as number[]);
+  zones = zones.map((z) => {
+    if (z.dca || z.name === 'À placer' || zonePlugs(st, z.id).length < 2) return z;
+    for (let k = 1; k <= count; k++) if (!owned.has(k) && !tableUsed.includes(k)) { owned.add(k); return { ...z, dca: k }; }
+    return z;
+  });
+  const out = zones.some((z, n) => z !== zonesOf(st)[n]) ? { ...st, zones } : st;
+  const groups = zonesOf(out).filter((z) => z.dca).map((z) => ({ k: z.dca!, name: z.name, plugs: zonePlugs(out, z.id) }));
+  return { st: out, groups };
+}
+
+/**
+ * Sens table › scène : chaque groupe de la table devient (ou reste) un cadre qui
+ * contient ses voies ; une voie sortie du groupe sort du cadre.
+ */
+export function groupsToStage(st: Stage, groups: TableGroup[]): Stage {
+  let out = st;
+  for (const g of groups) {
+    if (!g.plugs.length) continue;
+    const objs = (plugs: number[]) => out.objs.filter((o) => o.plug !== undefined && plugs.includes(o.plug));
+    let z = zonesOf(out).find((q) => q.dca === g.k) ?? zonesOf(out).find((q) => !q.dca && q.name.toLowerCase() === g.name.toLowerCase());
+    if (!z) {
+      // un cadre là où sont déjà ses voies, sinon au bord de scène
+      const m = objs(g.plugs);
+      if (!m.length) continue;
+      z = { id: newId('z'), name: g.name, color: /batt|drum/i.test(g.name) ? '#F59E0B' : ZONE_COLORS[zonesOf(out).length % ZONE_COLORS.length], x: 0, y: 0, w: 0.2, h: 0.3, dca: g.k, drums: /batt|drum/i.test(g.name) || undefined };
+      out = { ...out, zones: [...zonesOf(out), z] };
+    } else if (z.dca !== g.k || z.name !== g.name) {
+      const id = z.id;
+      out = { ...out, zones: zonesOf(out).map((q) => (q.id === id ? { ...q, dca: g.k, name: g.name } : q)) };
+      z = zonesOf(out).find((q) => q.id === id)!;
+    }
+    const zid = z.id;
+    const zr = z;
+    // un bloc branché bouge avec ce qui est câblé à lui sans prise propre (la basse derrière sa DI)
+    const buddies = (oid: string) => touching(out, { o: oid }).map((c) => ('o' in c.a && c.a.o !== oid ? c.a.o : 'o' in c.b && c.b.o !== oid ? c.b.o : '')).filter((id) => { const q = out.objs.find((x) => x.id === id); return q && q.plug === undefined && family(q.kind) !== 'monitor'; });
+    const moves = new Map<string, { zone: string | undefined; dx: number; dy: number }>();
+    let n = out.objs.filter((q) => q.zone === zid).length;
+    for (const o of out.objs) {
+      if (o.plug === undefined) continue;
+      const inG = g.plugs.includes(o.plug);
+      let to: { zone: string | undefined; x: number; y: number } | null = null;
+      if (inG && o.zone !== zid) { to = { zone: zid, x: Math.min(0.95, zr.x + 0.05 + (n % 4) * 0.09), y: Math.min(0.9, zr.y + 0.15 + Math.floor(n / 4) * 0.2) }; n++; }
+      else if (!inG && o.zone === zid) to = { zone: undefined, x: o.x, y: Math.min(1, zr.y + zr.h + 0.1) };
+      if (!to) continue;
+      const dx = to.x - o.x;
+      const dy = to.y - o.y;
+      moves.set(o.id, { zone: to.zone, dx, dy });
+      for (const b of buddies(o.id)) if (!moves.has(b)) moves.set(b, { zone: to.zone, dx, dy });
+    }
+    out = { ...out, objs: out.objs.map((o) => { const m = moves.get(o.id); return m ? { ...o, zone: m.zone, x: Math.max(0, Math.min(1, o.x + m.dx)), y: Math.max(0, Math.min(1, o.y + m.dy)) } : o; }) };
+    out = fitZone(out, zid);
+  }
+  return pruneZones(out);
 }

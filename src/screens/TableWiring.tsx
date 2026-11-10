@@ -2,6 +2,7 @@
 // Touche une prise : tu règles l'entrée (gain, nom, couleur, 48 V) ou tu la
 // relies aux sorties (un curseur par sortie). Touche une sortie : ce qu'elle
 // entend. Tout tient sur l'écran, sans défiler.
+import { useMono } from '../ui/useMono';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
@@ -36,6 +37,7 @@ const MULTI = { x: 812, y: 126, w: 170, h: 46 };
 
 export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outlet[]; W: { plug: number; out: string; db: number }[]; plugColor: (p: Plug) => string; outColor: (o: Outlet) => string; actions?: DrawerActions }) {
   const { client, theme, P, O } = props;
+  const mono = useMono(client);
   const { width, height } = useWindowDimensions();
   const wide = width >= 900;
   const [sel, setSel] = useState<Sel>({ k: 'in', n: 1 });
@@ -246,10 +248,15 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
               const c = props.outColor(o);
               return (
                 <G key={o.id}>
-                  <Circle cx={xOut(k)} cy={Y_OUT} r={20} fill="#1E2227" stroke={on || hitIn ? '#FFFFFF' : c} strokeWidth={on || hitIn ? 5 : 3} strokeDasharray={part ? '6 4' : undefined} />
-                  <Circle cx={xOut(k)} cy={Y_OUT} r={9} fill={hitIn || part ? c : '#0B0D10'} />
-                  <SvgText x={xOut(k) + 28} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.label.replace('MAIN L/R', 'MAIN')}</SvgText>
-                  <SvgText x={xOut(k) + 28} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
+                  {(o.id === 'main' ? [-20, 20] : [0]).map((dx) => (
+                    <G key={dx}>
+                      <Circle cx={xOut(k) + dx} cy={Y_OUT} r={o.id === 'main' ? 17 : 20} fill="#1E2227" stroke={on || hitIn ? '#FFFFFF' : c} strokeWidth={on || hitIn ? 5 : 3} strokeDasharray={part ? '6 4' : undefined} />
+                      <Circle cx={xOut(k) + dx} cy={Y_OUT} r={o.id === 'main' ? 7 : 9} fill={hitIn || part ? c : '#0B0D10'} />
+                      {o.id === 'main' && <SvgText x={xOut(k) + dx} y={Y_OUT - 21} textAnchor="middle" fontSize={10} fontWeight="900" fill={c}>{dx < 0 ? 'L' : 'R'}</SvgText>}
+                    </G>
+                  ))}
+                  <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.id === 'main' ? (mono ? 'MAIN mono' : 'MAIN L·R') : o.label}</SvgText>
+                  <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
                 </G>
               );
             })}
