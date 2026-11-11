@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { QrScanner } from '../ui/QrScanner';
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
-import { WLAN, WLAN_PATHS } from '../xair/addresses';
+import { WLAN, WLAN_PATHS, XAIR_MODELS } from '../xair/addresses';
 import { BUILD_VERSION } from '../version';
 import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBars } from '../xair/wifiScan';
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
-import { DemoTransport } from '../xair/demoTransport';
+import { DemoTransport, getDemoModel, setDemoModel } from '../xair/demoTransport';
 import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
 import { load, save } from '../store/persist';
 import * as dbg from '../debug/log';
@@ -124,6 +124,8 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     connect(cfg.host, false, cfg);
   };
 
+  const [demoM, setDemoM] = useState(getDemoModel());
+  useEffect(() => { load<string>('demoModele', 'XR18').then((m) => { setDemoModel(m); setDemoM(m); }); }, []);
   const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }) => {
     setBusy(true);
     setError('');
@@ -333,6 +335,15 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🏠 Préparer chez moi, sans table</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Noms, couleurs, groupes, qui entend quoi… puis tout est envoyé à la table en arrivant (sauf les gains et le 48 V).</Text>
           </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Table imitée par la démo :</Text>
+            {XAIR_MODELS.filter((m) => m !== 'MR18').map((m) => (
+              <Pressable key={m} onPress={() => { setDemoModel(m); setDemoM(m); save('demoModele', m); }} accessibilityRole="radio" accessibilityState={{ selected: demoM === m }}
+                style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', borderWidth: 2, borderColor: demoM === m ? theme.accent : theme.line2, backgroundColor: demoM === m ? theme.accent : 'transparent' }}>
+                <Text style={{ color: demoM === m ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{m}</Text>
+              </Pressable>
+            ))}
+          </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable onPress={() => connect('demo', true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo sans table</Text>

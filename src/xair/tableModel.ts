@@ -8,7 +8,11 @@ const NAMES = ['Voix', 'Guitare acou', 'Guitare élec', 'Basse', 'Kick', 'Caisse
 export class TableModel {
   state = new Map<string, OscArg>();
 
-  constructor(demo = true) {
+  /** préamplis micro : 16 (XR18), 8 (XR16), 4 (XR12) */
+  preamps = 16;
+
+  constructor(demo = true, preamps = 16) {
+    this.preamps = preamps;
     this.state.set('/lr/mix/fader', f(0.75));
     this.state.set('/lr/mix/on', i(1));
     for (let c = 1; c <= 16; c++) {
@@ -32,7 +36,7 @@ export class TableModel {
   defaultFor(path: string): OscArg | null {
     const ha = /^\/headamp\/(\d\d)\/(gain|phantom)$/.exec(path);
     if (ha) {
-      if (Number(ha[1]) > 8) return null; // XR16 : préamplis micro sur les entrées 1 à 8 seulement
+      if (Number(ha[1]) > this.preamps) return null; // XR16 : 1 à 8, XR12 : 1 à 4
       return ha[2] === 'gain' ? f(0.5) : i(0);
     }
     if (path.endsWith('/preamp/invert')) return i(0);

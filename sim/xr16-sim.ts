@@ -19,7 +19,7 @@ export interface SimOptions {
 export async function startSimulator(opts: SimOptions = {}) {
   const port = opts.port ?? 10024;
   const name = opts.name ?? 'XR16-SIMU';
-  const model = new TableModel(true);
+  const model = new TableModel(true, 8); // XR16 : 8 préamplis
   const state = model.state;
 
   // Abonnés /xremote : adresse -> heure de fin d'abonnement.

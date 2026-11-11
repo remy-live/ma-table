@@ -10,7 +10,10 @@ import { ch2 } from './levels';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-export const BUS_COUNT = 6;
+// Nombre de retours qui sortent vraiment sur une prise AUX : XR18/MR18 → 6,
+// XR16 → 4, XR12 → 2 (les 6 bus existent en interne mais sans prise). Réglé
+// par setModel à la connexion : on le lit toujours au moment de s'en servir.
+export let BUS_COUNT = 6;
 export const FX_COUNT = 4;
 export const DCA_COUNT = 4;
 export const CH_COUNT = 16;
@@ -66,11 +69,24 @@ export const dcaNamePath = (k: number) => `/dca/${k}/config/name`;
 // Entrée d'une voie
 // Préamplis micro (gain + 48 V) : XR18 / MR18 → entrées 1 à 16, XR16 → 1 à 8, XR12 → 1 à 4.
 // Le modèle vient de /xinfo à la connexion.
-export const MODEL = { name: 'XR16', preamps: 8 };
+export const MODEL = { name: 'XR18', preamps: 16, inputs: 18, outs: 6, usbMulti: true };
+/** Les tables X Air connues, pour le mode démo et l'aide. */
+export const XAIR_MODELS = ['XR18', 'MR18', 'XR16', 'XR12'] as const;
+/**
+ * Ce qui change d'un modèle à l'autre (le reste du protocole est identique) :
+ *  - XR18 / MR18 / X18 : 16 préamplis, prises 1-16 + LINE 17/18, 6 AUX, carte son 18 voies
+ *  - XR16 : 8 préamplis + 8 jacks (16 prises), 4 AUX, USB stéréo seulement
+ *  - XR12 : 4 préamplis + 8 jacks (12 prises), 2 AUX, USB stéréo seulement
+ */
 export function setModel(model: string) {
   const m = model.toUpperCase();
-  MODEL.name = model;
-  MODEL.preamps = /18/.test(m) ? 16 : /12/.test(m) ? 4 : 8;
+  const k = /12/.test(m) ? 12 : /16/.test(m) ? 16 : 18;
+  MODEL.name = model || 'XR18';
+  MODEL.preamps = k === 18 ? 16 : k === 16 ? 8 : 4;
+  MODEL.inputs = k;
+  MODEL.outs = k === 18 ? 6 : k === 16 ? 4 : 2;
+  MODEL.usbMulti = k === 18;
+  BUS_COUNT = MODEL.outs;
 }
 export const headampGainPath = (ch: number) => `/headamp/${ch2(ch)}/gain`;
 export const phantomPath = (ch: number) => `/headamp/${ch2(ch)}/phantom`;

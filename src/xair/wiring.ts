@@ -2,7 +2,7 @@
 // MAIN). Sur la X Air, un fil = le niveau d'envoi de la voie qui écoute cette
 // prise vers ce bus (ou son fader façade). Enlever un fil = niveau à zéro.
 import { f } from '../osc/osc';
-import { BUS_COUNT, busNamePath, CH_COUNT, chLevelPath, chNamePath, insrcPath, insrcPlug, MAIN, panPath, Target, targetId } from './addresses';
+import { BUS_COUNT, busNamePath, CH_COUNT, MODEL, chLevelPath, chNamePath, insrcPath, insrcPlug, MAIN, panPath, Target, targetId } from './addresses';
 import { isMono } from './mono';
 import { dbToFader, faderToDb } from './levels';
 import { chColor } from './smartName';
@@ -61,12 +61,13 @@ export interface Wire {
   paths: string[];
 }
 
-/** Les 18 prises, avec la ou les voies qui les écoutent. */
+/** Les prises de la table (18 sur la XR18), avec la ou les voies qui les écoutent. */
 export function plugs(client: XAirClient): Plug[] {
   const out: Plug[] = [];
-  for (let n = 1; n <= 18; n++) {
+  // XR18 : 1-16 + LINE 17/18 ; XR16 : 1-16 ; XR12 : 1-12
+  for (let n = 1; n <= MODEL.inputs; n++) {
     const chans = Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => insrcPlug(Number(client.get(insrcPath(c)) ?? c - 1)) === n);
-    out.push({ n, chans, name: chans.length ? String(client.get(chNamePath(chans[0])) ?? '') : '', usb: n > 16 });
+    out.push({ n, chans, name: chans.length ? String(client.get(chNamePath(chans[0])) ?? '') : '', usb: MODEL.usbMulti && n > 16 });
   }
   return out;
 }

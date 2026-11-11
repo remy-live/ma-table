@@ -94,7 +94,7 @@ test('Mode guidé : besoins par personne et conseil de gain', () =>
 test('Qui entend quoi : groupes, voies, effets, parts', () =>
   withTable(10173, whoHearsPaths(), async (c) => {
     const d = destinations(c);
-    assert.equal(d.length, 7);
+    assert.equal(d.length, 5); // XR16 : façade + 4 retours
     assert.equal(d[1].name, 'Bassiste');
     const src = sources(c);
     const g = src.find((x) => x.kind === 'group')!;
@@ -128,12 +128,12 @@ test('Branchements : prises, sorties, fils, relier et enlever', () =>
   withTable(10174, wiringPaths(), async (c, sim) => {
     const w = await import('../src/xair/wiring');
     const P = w.plugs(c);
-    assert.equal(P.length, 18);
+    assert.equal(P.length, 16); // le simulateur est une XR16 : 16 prises, pas de LINE 17/18
     assert.deepEqual(P[0].chans, [1]); // prise 1 → voie 1 par défaut
     assert.equal(P[0].name, 'Voix');
-    assert.equal(P[16].usb, true);
+    assert.ok(P.every((p) => !p.usb));
     const O = w.outlets(c);
-    assert.equal(O.length, 7);
+    assert.equal(O.length, 5); // AUX 1-4 + façade
     assert.equal(O[0].label, 'AUX 1');
     assert.equal(O[0].name, 'Bassiste');
     const before = w.wires(c);

@@ -96,12 +96,13 @@ const CableG = React.memo(function CableG({ d, type, dim, dash }: { d: string; t
   );
 });
 
-const ObjG = React.memo(function ObjG({ kind, name, x, y, on, n, dim, color }: { kind: Kind; name: string; x: number; y: number; on: boolean; n: number; dim: boolean; color: string }) {
+const ObjG = React.memo(function ObjG({ kind, name, x, y, on, n, dim, color, k = 1 }: { kind: Kind; name: string; x: number; y: number; on: boolean; n: number; dim: boolean; color: string; k?: number }) {
   const c = color;
   const t = name.slice(0, 14);
   const lw = Math.min(118, 16 + t.length * 7);
   return (
-    <G opacity={dim ? 0.5 : 1}>
+    // k > 1 : tout le bloc est dessiné plus gros (téléphone), autour de son centre
+    <G opacity={dim ? 0.5 : 1} transform={k !== 1 ? `translate(${x} ${y}) scale(${k}) translate(${-x} ${-y})` : undefined}>
       {on && <Circle cx={x} cy={y} r={R + 7} fill="none" stroke="#FFFFFF" strokeWidth={3} />}
       <Circle cx={x} cy={y} r={R} fill="#1E2227" stroke={c} strokeWidth={3} />
       <KindIcon kind={kind} x={x} y={y} c={c} s={0.9} />
@@ -292,7 +293,11 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const [st, setSt] = useState<Stage>(EMPTY);
   const [palTab, setPalTab] = useState<PalTab>('instr');
   const [palH, setPalH] = useState(0);
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, height: winH } = useWindowDimensions();
+  // téléphone : la scène prend toute la largeur, les blocs sont dessinés plus gros
+  const phone = Math.min(winW, winH) < 600;
+  const objK = phone ? (winW > winH ? 1.25 : 1.7) : 1;
+  const [palOpen, setPalOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState<'move' | 'wire' | 'frame'>('move');
   const [ctype, setCtype] = useState<'auto' | CableType>('auto');
@@ -421,7 +426,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   }, [client, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- géométrie : la scène prend toute la place disponible
-  const H = size.w ? Math.max(520, Math.min(1000, Math.round((W * size.h) / size.w))) : 600;
+  const H = size.w ? Math.max(520, Math.min(phone ? 1800 : 1000, Math.round((W * size.h) / size.w))) : 600;
   const sc = size.w && size.h ? Math.min(size.w / W, size.h / H) : 0;
   const STAGE_H = H - 184;
   const IN_Y = H - 148;
@@ -482,7 +487,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const hit = (x: number, y: number): Hit => {
     for (const p of pills) if (Math.abs(x - p.x) < 24 && Math.abs(y - p.y) < 14) return { t: 'pill', id: p.id };
     // un bloc se prend par son rond OU par son nom dessous (zone généreuse pour le doigt)
-    for (let k = st.objs.length - 1; k >= 0; k--) { const o = st.objs[k]; const p = objPos(o); if (Math.abs(x - p.x) < R + 14 && y > p.y - R - 12 && y < p.y + R + 28) return { t: 'obj', id: o.id }; }
+    for (let k = st.objs.length - 1; k >= 0; k--) { const o = st.objs[k]; const p = objPos(o); if (Math.abs(x - p.x) < (R + 14) * objK && y > p.y - (R + 12) * objK && y < p.y + (R + 28) * objK) return { t: 'obj', id: o.id }; }
     for (const z of zonesOf(st)) {
       const r = zoneRect(z);
       if (Math.hypot(x - r.x2, y - r.y2) < 22) return { t: 'resize', id: z.id };
@@ -769,6 +774,24 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     { text: 'Tout effacer', style: 'destructive', onPress: () => Alert.alert('Effacer la scène ?', '', [{ text: 'Annuler', style: 'cancel' }, { text: 'Effacer', style: 'destructive', onPress: () => { setSt({ ...EMPTY, free: true }); setSel(null); } }]) },
     { text: 'Fermer', style: 'cancel' },
   ]);
+  const land = phone && winW > winH;
+  const palTabs = (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 4 }}>
+      {PAL_TABS.map(([k, label]) => (
+        <Pressable key={k} onPress={() => setPalTab(k)} style={[styles.tab, { paddingHorizontal: 12 }, palTab === k ? { backgroundColor: theme.accent } : { borderColor: theme.line2, borderWidth: 1 }]}>
+          <Text style={{ color: palTab === k ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '900' }}>{label}</Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+  const phoneMore = () => Alert.alert('Ma scène', `${linkMode === 'free' ? '○ Libre' : linkMode === 'strong' ? '⇄ Lien fort' : '● Lié'} à la table · ${xlrN} XLR · ${jackN} jack`, [
+    { text: 'Le plan et la table…', onPress: () => setLinkBox(true) },
+    { text: `🎒 Matériel (${xlrN} XLR · ${jackN} jack)`, onPress: () => setSel({ gear: true }) },
+    { text: showOut ? 'Cacher les câbles des retours' : 'Montrer les câbles des retours', onPress: toggleOut },
+    { text: '↗ Exporter', onPress: exportMenu },
+    { text: 'Refaire d’après la table', onPress: redo },
+    { text: 'Fermer', style: 'cancel' },
+  ]);
   const shareText = () => Share.share({ message: `${stageText(st, busName)}\n\nFait avec Ma table`, title: 'Ma scène' });
   const shareImage = () => {
     const ref = svgRef.current as unknown as { toDataURL?: (cb: (b64: string) => void) => void } | null;
@@ -886,8 +909,9 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const showIcon = cellH >= 40;
 
   return (
-    <View ref={rootRef} style={{ flex: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 8, paddingBottom: 8 }}>
-      {/* palette */}
+    <View ref={rootRef} style={{ flex: 1, flexDirection: 'row', gap: phone ? 0 : 8, paddingHorizontal: phone ? 2 : 8, paddingBottom: phone ? 2 : 8 }}>
+      {!phone && (
+      // palette
       <View style={[styles.palette, { width: palW, backgroundColor: theme.panel, borderColor: theme.line }]} onLayout={(e) => setPalH(e.nativeEvent.layout.height)}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
           {PAL_TABS.map(([k, label]) => (
@@ -910,9 +934,43 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           ))}
         </View>
       </View>
+      )}
 
       <View style={{ flex: 1, gap: 6 }}>
-        {/* barre d'outils, une ligne */}
+        {phone ? (
+          <>
+            {/* téléphone : une barre courte, le reste dans ⋯ */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: land ? 250 : 0, minHeight: land ? 60 : 0 }}>
+              <Pressable onPress={() => setPalOpen((o) => !o)} style={[styles.tool, { borderColor: theme.accent, backgroundColor: palOpen ? theme.accent : 'transparent' }]}>
+                <Text style={{ color: palOpen ? theme.onAccent : theme.accent, fontWeight: '900', fontSize: 13 }}>{palOpen ? '✓ Fini' : '＋ Ajouter'}</Text>
+              </Pressable>
+              {land && palOpen ? <View style={{ flex: 1 }}>{palTabs}</View> : <>
+              <Segmented theme={theme} value={mode} onChange={setMode} options={[['move', '✋'], ['wire', '🔌'], ['frame', '▢']] as const} />
+              <View style={{ flex: 1 }} /></>}
+              <Pressable onPress={phoneMore} accessibilityLabel="Plus" style={[styles.tool, { borderColor: theme.line2, paddingHorizontal: 12 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>⋯</Text></Pressable>
+            </View>
+            {palOpen && (
+              <View style={{ gap: 4 }}>
+                {!land && palTabs}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 4 }}>
+                  {palTab === 'configs' ? CONFIGS.map((c) => (
+                    <PalCell key={c.key} onTap={() => { const r = addConfig(st, c.key); setSt(r.st); setSel(null); }} onStart={ghostStart({ config: c.key })} onMove={ghostMove} onDrop={ghostDrop({ config: c.key })} style={[styles.pal, { width: 120, height: 58, flexDirection: 'row', gap: 4, paddingHorizontal: 6, borderColor: c.drums ? FAM.drum : theme.line2 }]}>
+                      <Svg width={26} height={26} viewBox="0 0 30 30"><KindIcon kind={c.drums ? 'batterie' : c.items[0].kind} x={15} y={15} c={FAM[family(c.drums ? 'batterie' : c.items[0].kind)]} s={0.62} /></Svg>
+                      <Text numberOfLines={3} style={[styles.palT, { color: theme.text, flex: 1, textAlign: 'left' }]}>{c.label}</Text>
+                    </PalCell>
+                  )) : PALETTE[palTab].map((k) => (
+                    <PalCell key={k} onTap={() => addObj(k)} onStart={ghostStart({ kind: k })} onMove={ghostMove} onDrop={ghostDrop({ kind: k })} style={[styles.pal, { width: land ? 58 : 64, height: land ? 48 : 58, borderColor: theme.line2 }]}>
+                      <Svg width={28} height={28} viewBox="0 0 30 30"><KindIcon kind={k} x={15} y={15} c={FAM[family(k)]} s={0.62} /></Svg>
+                      <Text numberOfLines={1} style={[styles.palT, { color: theme.text, lineHeight: 11 }]}>{kindLabel(k).replace('Guitare ', 'Guit. ').replace('Contrebasse', 'Contreb.').replace('Violoncelle', 'Vlc.')}</Text>
+                    </PalCell>
+                  ))}
+                </ScrollView>
+                {!land && <Text style={{ color: theme.muted, fontSize: 11 }}>Touche pour poser au milieu, ou glisse jusqu’à sa place sur la scène.</Text>}
+              </View>
+            )}
+          </>
+        ) : (
+        // barre d'outils, une ligne
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Segmented theme={theme} value={mode} onChange={setMode} options={[['move', '✋ Déplacer'], ['wire', '🔌 Câbler'], ['frame', '▢ Cadre']] as const} />
           {mode === 'wire' && <Segmented theme={theme} value={ctype} onChange={setCtype} options={[['auto', 'Auto'], ['jack', 'Jack'], ['xlr', 'XLR']] as const} />}
@@ -931,6 +989,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
           </Pressable>
           <Pressable onPress={more} accessibilityLabel="Plus" style={[styles.tool, { borderColor: theme.line2, paddingHorizontal: 12 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>⋯</Text></Pressable>
         </View>
+        )}
 
         {/* la scène */}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
@@ -983,7 +1042,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                 {st.objs.map((o) => {
                   const p = objPos(o);
                   const on = selObj?.id === o.id;
-                  return <ObjG key={o.id} kind={o.kind} name={o.name} x={p.x} y={p.y} on={on} n={perEnd.get('o:' + o.id) ?? 0} dim={anySel && !on && !linked.has(o.id) && !(selZone && o.zone === selZone.id)} color={objColor(o)} />;
+                  return <ObjG key={o.id} kind={o.kind} name={o.name} x={p.x} y={p.y} on={on} n={perEnd.get('o:' + o.id) ?? 0} dim={anySel && !on && !linked.has(o.id) && !(selZone && o.zone === selZone.id)} color={objColor(o)} k={objK} />;
                 })}
                 {/* pastilles Jack / XLR à toucher */}
                 {pills.map((p) => (

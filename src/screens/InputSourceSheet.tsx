@@ -26,10 +26,10 @@ function Body({ client, ch, theme, onClose }: { client: XAirClient; ch: number; 
       <Pressable style={[styles.sheet, { backgroundColor: theme.panel, borderColor: theme.line }]} onPress={() => {}}>
         <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>Quelle prise arrive sur « {name} » ?</Text>
         <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>
-          Sur la {MODEL.name}, chaque voie peut écouter n’importe quelle prise de l’arrière, ou le son de l’ordinateur (USB). L’EQ, les effets et les envois de la voie restent.
+          Sur la {MODEL.name}, chaque voie peut écouter n’importe quelle prise de l’arrière{MODEL.usbMulti ? ', ou le son de l’ordinateur (USB)' : ''}. L’EQ, les effets et les envois de la voie restent.
         </Text>
         <ScrollView contentContainerStyle={styles.grid}>
-          {Array.from({ length: INSRC_COUNT }, (_, k) => k).map((src) => {
+          {Array.from({ length: Math.min(INSRC_COUNT, MODEL.inputs) }, (_, k) => k).map((src) => {
             const on = src === cur;
             const others = usedBy(src);
             const preamp = src < MODEL.preamps;

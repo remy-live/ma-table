@@ -7,9 +7,15 @@ import { Remote, Transport } from './transport';
 
 const TABLE: Remote = { address: 'demo', port: 10024 };
 
+/** Modèle imité par la démo (XR18, XR16, XR12…), choisi sur l'écran de connexion. */
+let demoModel = 'XR18';
+export const setDemoModel = (m: string) => { demoModel = m; };
+export const getDemoModel = () => demoModel;
+
 export class DemoTransport implements Transport {
   private onMessage: ((b: Uint8Array, from: Remote) => void) | null = null;
-  private model = new TableModel(true);
+  private name = demoModel;
+  private model = new TableModel(true, /12/.test(demoModel) ? 4 : /16/.test(demoModel) ? 8 : 16);
   private rtaTimer: ReturnType<typeof setInterval> | null = null;
   private meterTimer: ReturnType<typeof setInterval> | null = null;
   private tick = 0;
@@ -22,7 +28,7 @@ export class DemoTransport implements Transport {
     const m = decode(bytes);
     if (!m) return;
     const answer = (path: string, args: OscArg[]) => setTimeout(() => this.onMessage?.(encode(path, args), TABLE), 2);
-    if (m.address === '/xinfo') return answer('/xinfo', [s('demo'), s('Table de démo'), s('XR18'), s('démo')]);
+    if (m.address === '/xinfo') return answer('/xinfo', [s('demo'), s('Table de démo'), s(this.name), s('démo')]);
     if (m.address === '/xremote') return;
     if (m.address === '/meters' && String(m.args[0] ?? '') === '/meters/4') {
       // spectre factice : un peu de graves, une bosse dans les médiums, qui bouge

@@ -6,7 +6,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import {
   chDcaPath, chLevelPath, chNamePath, chOnPath, soloPath, dcaFaderPath, dcaOnPath, fToGainDb, fToPan, headampGainPath,
   inDca, invertPath, meterIndex, outOnPath, outPath, panPath, phantomPath, Target,
-  insrcPath, insrcPlug, sourceKind,
+  insrcPath, insrcPlug, MODEL, sourceKind,
 } from '../xair/addresses';
 import { Group, moveMembers, snapshot } from '../xair/groups';
 import { dbToFader, faderToDb, formatDb } from '../xair/levels';
@@ -117,7 +117,7 @@ export function Strip(p: StripProps) {
         accessibilityLabel={`Prise ${insrcPlug(insrc)} · ${kind}`}
         style={[styles.head, { backgroundColor: theme.deep, borderColor: theme.line, borderWidth: 1, height: 34 }]}
       >
-        <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>PRISE {insrcPlug(insrc)}</Text>
+        <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>{insrcPlug(insrc) > MODEL.inputs ? 'SANS PRISE' : `PRISE ${insrcPlug(insrc)}`}</Text>
         <Text style={{ color: kind === 'Micro 48V' ? '#F87171' : kind === 'USB' ? '#A3E635' : theme.text, fontSize: 10, fontWeight: '700' }}>{kind}</Text>
       </Pressable>
 

@@ -142,6 +142,7 @@ export default function App() {
     setTab(t);
   };
 
+  const [navHidden, setNavHidden] = useState(false);
   if (!client) {
     return (
       <>
@@ -233,7 +234,7 @@ export default function App() {
     <View style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
-      {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} />}
+      {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} onFull={setNavHidden} />}
       {tab === 'scene' && <StageScreen client={client} theme={theme} locked={locked} onToggleLock={() => setLocked((l) => !l)} onMonitor={(cfg) => setMonitor({ cfg, owner: true })} night={themeKey === 'rouge'} onNight={toggleNight} />}
       {tab === 'reglages' && <SettingsScreen client={client} theme={theme} prefs={prefs} onPrefs={setPrefs} onDisconnect={disconnect} />}
     </View>
@@ -241,9 +242,9 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
+      {wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
       {body}
-      {!wide && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {!wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
