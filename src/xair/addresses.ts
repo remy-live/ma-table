@@ -127,12 +127,28 @@ export const hpOnPath = (ch: number) => `/ch/${ch2(ch)}/preamp/hpon`;
 export const hpfPath = (ch: number) => `/ch/${ch2(ch)}/preamp/hpf`;
 export const gateOnPath = (ch: number) => `/ch/${ch2(ch)}/gate/on`;
 export const gateThrPath = (ch: number) => `/ch/${ch2(ch)}/gate/thr`;
+// Gate des X Air (comme la X32) : mode 0 EXP2 · 1 EXP3 · 2 EXP4 · 3 GATE · 4 DUCK,
+// profondeur 3-60 dB, attaque 0-120 ms, maintien 0,02-2000 ms (log), relâche 5-4000 ms (log).
+// À VÉRIFIER sur la vraie table (« Vérifier ma table » les essaie).
+export const gateModePath = (ch: number) => `/ch/${ch2(ch)}/gate/mode`;
+export const gateRangePath = (ch: number) => `/ch/${ch2(ch)}/gate/range`;
+export const gateAttackPath = (ch: number) => `/ch/${ch2(ch)}/gate/attack`;
+export const gateHoldPath = (ch: number) => `/ch/${ch2(ch)}/gate/hold`;
+export const gateReleasePath = (ch: number) => `/ch/${ch2(ch)}/gate/release`;
+/** Pente du coupe-bas (12 / 18 / 24 dB par octave) : seulement si la table répond. */
+export const hpSlopePath = (ch: number) => `/ch/${ch2(ch)}/preamp/hpslope`;
+const lin = (a: number, b: number) => ({ to: (x: number) => clamp01((x - a) / (b - a)), from: (f: number) => a + f * (b - a) });
+const logm = (a: number, b: number) => ({ to: (x: number) => clamp01(Math.log(x / a) / Math.log(b / a)), from: (f: number) => a * Math.pow(b / a, f) });
+export const GATE_RANGE = lin(3, 60);
+export const GATE_ATTACK = lin(0, 120);
+export const GATE_HOLD = logm(0.02, 2000);
+export const GATE_RELEASE = logm(5, 4000);
 export const dynOnPath = (ch: number) => `/ch/${ch2(ch)}/dyn/on`;
 export const dynThrPath = (ch: number) => `/ch/${ch2(ch)}/dyn/thr`;
 
 /** Toutes les adresses de l'écran « EQ · FX » d'une voie. */
 export function channelDetailPaths(ch: number): string[] {
-  const p = [eqOnPath(ch), hpOnPath(ch), hpfPath(ch), gateOnPath(ch), gateThrPath(ch), dynOnPath(ch), dynThrPath(ch)];
+  const p = [eqOnPath(ch), hpOnPath(ch), hpfPath(ch), hpSlopePath(ch), gateOnPath(ch), gateThrPath(ch), gateModePath(ch), gateRangePath(ch), gateAttackPath(ch), gateHoldPath(ch), gateReleasePath(ch), dynOnPath(ch), dynThrPath(ch)];
   for (let b = 1; b <= 4; b++) p.push(eqPath(ch, b, 'type'), eqPath(ch, b, 'f'), eqPath(ch, b, 'g'), eqPath(ch, b, 'q'));
   for (let n = 1; n <= FX_COUNT; n++) p.push(chLevelPath(ch, { kind: 'fx', n }));
   return p;

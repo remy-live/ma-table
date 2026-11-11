@@ -85,13 +85,17 @@ const PALETTE: Record<Exclude<PalTab, 'configs'>, Kind[]> = {
 };
 
 // ---- morceaux du dessin, mémorisés : seul ce qui bouge est redessiné
-const CableG = React.memo(function CableG({ d, type, dim, dash }: { d: string; type: CableType; dim?: boolean; dash?: boolean }) {
+// Entrée (vers une prise IN) : trait plein, à la couleur de la voie.
+// Sortie (d'un AUX vers un retour) : pointillés, à la couleur du retour.
+// XLR un peu plus épais que le jack.
+const CableG = React.memo(function CableG({ d, type, dim, dash, color, out }: { d: string; type: CableType; dim?: boolean; dash?: boolean; color?: string; out?: boolean }) {
+  const c = color ?? (type === 'xlr' ? XLR : JACK);
+  const w = type === 'xlr' ? 4.5 : 3.5;
+  const da = out ? '2 9' : dash ? '14 10' : undefined;
   return (
     <G opacity={dim ? 0.22 : 1}>
-      {type === 'xlr' ? <>
-        <Path d={d} fill="none" stroke="#0B0D10" strokeWidth={8} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
-        <Path d={d} fill="none" stroke={XLR} strokeWidth={4} strokeLinecap="round" strokeDasharray={dash ? '14 10' : undefined} />
-      </> : <Path d={d} fill="none" stroke={JACK} strokeWidth={3.5} strokeLinecap="round" strokeDasharray={dash ? '12 10' : undefined} />}
+      <Path d={d} fill="none" stroke="#0B0D10" strokeWidth={w + 4} strokeLinecap="round" strokeDasharray={out ? '6 5' : da} opacity={out ? 0.6 : 1} />
+      <Path d={d} fill="none" stroke={c} strokeWidth={out ? w + 1 : w} strokeLinecap="round" strokeDasharray={da} />
     </G>
   );
 });
@@ -888,6 +892,14 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     const c = zp.length === 1 ? chanOfPlug(zp[0]) : 0;
     return c ? chColor(client, c) : z.color;
   };
+  // couleur et style d'un câble : entrée = couleur de la voie, sortie = pointillés couleur du retour
+  const cableLook = (c: { a: End; b: End }): { color?: string; out: boolean } => {
+    const o = 'out' in c.a ? c.a.out : 'out' in c.b ? c.b.out : null;
+    if (o) { const k = OUTS.indexOf(o); return { color: k >= 0 && k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0], out: true }; }
+    const p = 'plug' in c.a ? c.a.plug : 'plug' in c.b ? c.b.plug : 0;
+    const ch = p ? chanOfPlug(p) : 0;
+    return { color: ch ? chColor(client, ch) : undefined, out: false };
+  };
   const namesKey = [
     ...Array.from({ length: 18 }, (_, k) => k + 1).filter((n) => perEnd.has('p' + n)).map((n) => `p${n}=${plugName(n) || (st.objs.find((o) => o.plug === n)?.name ?? '')}|${chanOfPlug(n) ? chColor(client, chanOfPlug(n)) : '#9AA3AD'}`),
     ...(linkMode === 'free' ? [] : Array.from({ length: BUS_COUNT }, (_, k) => `aux${k + 1}=${busName(k + 1)}|`)),
@@ -1003,7 +1015,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                   return <ZoneG key={z.id} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} color={zoneColor(z)} label={`${z.name}${z.drums ? ` · ${membersOf(st, z.id).length} él.` : ''}`} on={selZone?.id === z.id || ghost?.zone === z.id} n={zoneTableCables(st, z.id).length} bundled={!!z.bundled} />;
                 })}
                 {/* câbles */}
-                {st.cables.filter((c) => !hiddenCable.has(c.id) && (showOut || selIds.has(c.id) || !('out' in c.a || 'out' in c.b))).map((c) => <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} />)}
+                {st.cables.filter((c) => !hiddenCable.has(c.id) && (showOut || selIds.has(c.id) || !('out' in c.a || 'out' in c.b))).map((c) => { const k = cableLook(c); return <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} color={k.color} out={k.out} />; })}
                 {/* faisceaux : un gros câble par cadre, jusqu'à ses prises */}
                 {bundles.map(({ z, cables }) => {
                   const r = zoneRect(z);

@@ -55,6 +55,16 @@ export const CHECKS: CheckStep[] = [
   { id: 'send', label: 'Envoi d’une voie vers un retour', run: (c) => writeRead(c, '/ch/16/mix/01/level', nudge) },
   { id: 'pan', label: 'Gauche / droite (L/R)', run: (c) => writeRead(c, '/ch/16/mix/pan', nudge) },
   { id: 'eq', label: 'Égaliseur', run: (c) => writeRead(c, '/ch/16/eq/1/g', nudge) },
+  { id: 'gate', label: 'Gate : mode, profondeur, maintien', run: async (c) => {
+    const a = await writeRead(c, '/ch/16/gate/range', nudge);
+    const b = await writeRead(c, '/ch/16/gate/hold', nudge);
+    const m = await ask(c, '/ch/16/gate/mode');
+    return { ok: a.ok && b.ok && m !== undefined, detail: `profondeur ${a.ok ? '✓' : '×'} · maintien ${b.ok ? '✓' : '×'} · mode ${m !== undefined ? `= ${String(m)}` : 'pas de réponse'}` };
+  } },
+  { id: 'hpslope', label: 'Pente du coupe-bas', run: async (c) => {
+    const v = await ask(c, '/ch/16/preamp/hpslope');
+    return { ok: v !== undefined ? true : null, detail: v !== undefined ? `la table répond (${String(v)}) : le choix 12/18/24 dB s’affiche` : 'pas sur cette table : le choix de pente reste caché' };
+  } },
   { id: 'busname', label: 'Noms des retours', run: (c) => writeRead(c, '/bus/6/config/name', (o) => s(String(o ?? '') === 'TEST' ? 'TEST2' : 'TEST')) },
   { id: 'solo', label: 'Écoute au casque (solo)', run: (c) => writeRead(c, '/-stat/solosw/16', (o) => i(Number(o ?? 0) ? 0 : 1), 0) },
   { id: 'meters', label: 'Vumètres', run: async (c) => {

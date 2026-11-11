@@ -258,7 +258,7 @@ export default function App() {
       {wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
       {body}
       {!wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
-      <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} />
+      <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
       <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />

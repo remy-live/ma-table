@@ -6,12 +6,14 @@ import { XAirClient } from '../xair/XAirClient';
 import { AutoBalanceScreen } from './AutoBalanceScreen';
 import { ChecklistSheet } from './ConcertExtras';
 import { GuideScreen } from './GuideScreen';
+import { MagicWand } from './MagicWand';
 import { Tutorial } from './Tutorial';
 import { TableCheckSheet } from './TableCheckSheet';
 
-type Which = 'auto' | 'guide' | 'check' | 'tuto' | 'verif' | null;
+type Which = 'magie' | 'auto' | 'guide' | 'check' | 'tuto' | 'verif' | null;
 
 const ITEMS: [Exclude<Which, null>, string, string, string][] = [
+  ['magie', '🪄 Qui branche quoi', 'Combien vous êtes, qui joue quoi, qui veut un retour : l’appli range prises et retours', '#E879F9'],
   ['auto', 'Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle gains, faders et retours', '#22C55E'],
   ['guide', 'Mode guidé', 'Installer un concert pas à pas : ce qui est branché, groupes, retours, ambiance', '#60A5FA'],
   ['check', 'Avant le concert', 'La check-list : connexion, noms, retours, balance, sauvegarde', '#F59E0B'],
@@ -19,7 +21,7 @@ const ITEMS: [Exclude<Which, null>, string, string, string][] = [
   ['tuto', 'Les gestes en 30 s', 'Glisser, rester appuyé, choisir qui écoute, les bulles', '#A78BFA'],
 ];
 
-export function HelpSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
+export function HelpSheet({ client, theme, visible, onClose, onSeeWiring }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; onSeeWiring?: () => void }) {
   const [which, setWhich] = useState<Which>(null);
   return (
     <>
@@ -41,6 +43,7 @@ export function HelpSheet({ client, theme, visible, onClose }: { client: XAirCli
           </Pressable>
         </Pressable>
       </Modal>
+      <MagicWand client={client} theme={theme} visible={visible && which === 'magie'} onClose={() => { setWhich(null); onClose(); }} onSeeWiring={onSeeWiring} />
       <AutoBalanceScreen client={client} theme={theme} visible={visible && which === 'auto'} onClose={() => { setWhich(null); onClose(); }} />
       <GuideScreen client={client} theme={theme} visible={visible && which === 'guide'} onClose={() => { setWhich(null); onClose(); }} />
       <ChecklistSheet client={client} theme={theme} visible={visible && which === 'check'} onClose={() => { setWhich(null); onClose(); }} />

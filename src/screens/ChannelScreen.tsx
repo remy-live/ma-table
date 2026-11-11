@@ -31,6 +31,7 @@ import { InputSheet } from './InputSheet';
 import { InputSourceSheet } from './InputSourceSheet';
 import { mixInfo } from './MixPicker';
 import { PresetPanel } from './PresetPanel';
+import { GatePanel, HpfPanel } from './CutGatePanels';
 import { showTip } from '../ui/tip';
 import { meterIndex } from '../xair/addresses';
 
@@ -258,24 +259,13 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
 
         {show('hpf') && (
           <Card theme={theme} title="Coupe-bas" color="#60A5FA" on={hpOn} onToggle={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))}>
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: theme.muted, fontSize: 11 }}>Enlève le grondement sous la voix (100 Hz) ou sous les guitares (80 Hz). Garde-le coupé pour le kick et la basse.</Text>
-              <HSlider label="Fréquence" value={hpf} valueText={formatHz(fToHpfHz(hpf))} onChange={(v) => client.set(hpfPath(ch), f(v))} color="#60A5FA" theme={theme} />
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {[80, 100, 150].map((hz) => (
-                  <Pressable key={hz} onPress={() => { client.set(hpfPath(ch), f(hpfHzToF(hz))); client.set(hpOnPath(ch), i(1)); }} style={[styles.quick, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
-                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{hz} Hz</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
+            <HpfPanel client={client} theme={theme} ch={ch} name={name} quick={styles.quick} />
           </Card>
         )}
 
         {show('gate') && (
           <Card theme={theme} title="Gate" color="#9AA3AD" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
-            <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Coupe le micro quand on ne joue pas. Utile sur le kick et les toms (il ne laisse passer que les coups). À éviter sur la voix.</Text>
-            <HSlider label="Seuil" value={gateThr} valueText={`${fToGateDb(gateThr).toFixed(0)} dB`} onChange={(v) => client.set(gateThrPath(ch), f(v))} color={theme.ok} theme={theme} />
+            <GatePanel client={client} theme={theme} ch={ch} name={name} quick={styles.quick} />
           </Card>
         )}
 
