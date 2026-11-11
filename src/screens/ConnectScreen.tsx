@@ -8,6 +8,7 @@ import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBar
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
+import { FlowProbe } from './FlowProbe';
 import { DemoTransport, getDemoModel, setDemoEmpty, setDemoModel } from '../xair/demoTransport';
 import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
 import { load, save, setSandbox } from '../store/persist';
@@ -125,6 +126,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   };
 
   const [demoM, setDemoM] = useState(getDemoModel());
+  const [flow, setFlow] = useState(false);
   useEffect(() => { load<string>('demoModele', 'XR18').then((m) => { setDemoModel(m); setDemoM(m); }); }, []);
   const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }, empty = false) => {
     setBusy(true);
@@ -337,6 +339,15 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🏠 Préparer chez moi, sans table</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Noms, couleurs, groupes, qui entend quoi… puis tout est envoyé à la table en arrivant (sauf les gains et le 48 V).</Text>
           </Pressable>
+          <Pressable onPress={() => setFlow(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: theme.line2, borderRadius: 12, padding: 10 }}>
+            <Text style={{ fontSize: 18 }}>🔵</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>Behringer FLOW 8 (Bluetooth) · essai</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>Première étape : la sonde écoute la table et fait un rapport</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 18 }}>›</Text>
+          </Pressable>
+          <FlowProbe theme={theme} visible={flow} onClose={() => setFlow(false)} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Table imitée par la démo :</Text>
             {XAIR_MODELS.filter((m) => m !== 'MR18').map((m) => (
