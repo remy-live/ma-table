@@ -9,8 +9,7 @@
       "bundleIdentifier": "fr.remy.matable",
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Ma table a besoin du réseau local pour piloter ta table de mixage.",
-        "NSBluetoothAlwaysUsageDescription": "Ma table utilise le Bluetooth pour piloter une table Behringer FLOW 8."
+        "NSLocalNetworkUsageDescription": "Ma table a besoin du réseau local pour piloter ta table de mixage."
       }
     },
     "android": {
@@ -51,16 +50,7 @@
         }
       ],
       "./plugins/withFontScale",
-      "./plugins/withNoScriptSandbox",
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": false,
-          "modes": [],
-          "bluetoothAlwaysPermission": "Ma table utilise le Bluetooth pour piloter une table Behringer FLOW 8.",
-          "neverForLocation": true
-        }
-      ]
+      "./plugins/withNoScriptSandbox"
     ]
   }
 }
