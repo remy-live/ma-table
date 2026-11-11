@@ -11,7 +11,7 @@ import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'reac
 import { Segmented, CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { showTip } from '../ui/tip';
-import { BUS_COUNT, busNamePath, CH_COUNT, MAIN, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, inDca, insrcPath, insrcPlug } from '../xair/addresses';
+import { BUS_COUNT, busNamePath, CH_COUNT, MAIN, MODEL, chDcaPath, chLevelPath, chNamePath, chOnPath, DCA_COUNT, dcaNamePath, inDca, insrcPath, insrcPlug, meterIndex, phantomPath, soloPath } from '../xair/addresses';
 import { readGroups } from '../xair/groups';
 import { onSide } from '../xair/wiring';
 import { goMono, isMono, monoPaths, onMonoChange } from '../xair/mono';
@@ -99,6 +99,53 @@ const CableG = React.memo(function CableG({ d, type, dim, dash, color, out }: { 
     </G>
   );
 });
+
+// ---- câbles vivants : ils s'allument au rythme du son (vumètres), et les
+// câbles choisis montrent le sens du signal par des points qui avancent.
+type LiveItem = { id: string; d: string; idx: number; color: string; w: number; flow: 0 | 1 | -1 };
+function LiveCables({ client, items }: { client: XAirClient; items: LiveItem[] }) {
+  const [lv, setLv] = useState<Record<number, number>>({});
+  const [phase, setPhase] = useState(0);
+  const key = items.map((x) => x.idx).join(',');
+  const anyFlow = items.some((x) => x.flow);
+  useEffect(() => {
+    client.startMeters();
+    const shown: Record<number, number> = {};
+    let last = 0;
+    const idxs = [...new Set(items.map((x) => x.idx))];
+    const off = client.onMeters((m) => {
+      for (const k of idxs) {
+        const t = Math.max(0, Math.min(1, ((m[k] ?? -90) + 50) / 45));
+        const s0 = shown[k] ?? 0;
+        shown[k] = t > s0 ? t : s0 * 0.75 + t * 0.25;
+      }
+      const now = Date.now();
+      if (now - last < 100) return;
+      last = now;
+      setLv({ ...shown });
+    });
+    return () => { off(); client.stopMeters(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, key]);
+  useEffect(() => {
+    if (!anyFlow) return;
+    const t = setInterval(() => setPhase((x) => (x + 3) % 1000), 60);
+    return () => clearInterval(t);
+  }, [anyFlow]);
+  return (
+    <G pointerEvents="none">
+      {items.map((x) => {
+        const v = lv[x.idx] ?? 0;
+        return (
+          <G key={x.id}>
+            {v > 0.05 && <Path d={x.d} fill="none" stroke={x.color} strokeWidth={x.w + 2 + v * 9} strokeLinecap="round" opacity={0.12 + v * 0.38} />}
+            {x.flow !== 0 && <Path d={x.d} fill="none" stroke="#FFFFFF" strokeWidth={x.w - 0.5} strokeLinecap="round" strokeDasharray="1 16" strokeDashoffset={-phase * x.flow} opacity={0.95} />}
+          </G>
+        );
+      })}
+    </G>
+  );
+}
 
 const ObjG = React.memo(function ObjG({ kind, name, x, y, on, n, dim, color, k = 1 }: { kind: Kind; name: string; x: number; y: number; on: boolean; n: number; dim: boolean; color: string; k?: number }) {
   const c = color;
@@ -414,7 +461,7 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     let t: ReturnType<typeof setTimeout> | null = null;
     let mt: ReturnType<typeof setTimeout> | null = null;
     const off = client.on('*', (_v, path) => {
-      if (/\/mix\/(\d\d\/level|fader)$/.test(String(path))) { if (!mt) mt = setTimeout(() => { mt = null; setMixTick((x) => x + 1); }, 150); return; }
+      if (/\/mix\/(\d\d\/level|fader|on)$|\/-stat\/solosw\/|\/headamp\/\d\d\/phantom$/.test(String(path))) { if (!mt) mt = setTimeout(() => { mt = null; setMixTick((x) => x + 1); }, 150); return; }
       if (!/\/(config\/name|grp\/dca|config\/insrc)$/.test(String(path))) return;
       if (Date.now() - lastWrite.current < 1200 || dirty.current) return; // c'est nous qui venons d'écrire
       if (t) clearTimeout(t);
@@ -456,7 +503,36 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
   const selZone = sel && 'zone' in sel ? zonesOf(st).find((z) => z.id === sel.zone) ?? null : null;
   const selEnd: End | null = selObj ? { o: selObj.id } : sel && 'end' in sel ? sel.end : null;
   const selCables = selEnd ? touching(st, selEnd) : selZone ? st.cables.filter((c) => membersOf(st, selZone.id).some((o) => sameEnd(c.a, { o: o.id }) || sameEnd(c.b, { o: o.id }))) : [];
+  /** Tout ce qui est relié à un bloc, de proche en proche, sans passer par la table (guitare › pédalier › ampli › micro). */
+  const chainOf = (oid: string): Set<string> => {
+    const seen = new Set([oid]);
+    let front = [oid];
+    for (let d = 0; d < 8 && front.length; d++) {
+      const next: string[] = [];
+      for (const id of front) for (const c of touching(st, { o: id })) for (const e of [c.a, c.b]) if ('o' in e && !seen.has(e.o)) { seen.add(e.o); next.push(e.o); }
+      front = next;
+    }
+    return seen;
+  };
+  /** La prise de la table au bout de la chaîne d'un bloc. */
+  const plugOfChain = (oid: string): number | undefined => {
+    for (const id of chainOf(oid)) { const p = plugOf(st, id); if (p !== undefined) return p; }
+    // pas de câble jusqu'à la table (ampli repris par un micro posé devant) : le cadre le dit
+    const z = st.objs.find((o) => o.id === oid)?.zone;
+    const zp = z ? zonePlugs(st, z) : [];
+    return zp.length === 1 ? zp[0] : undefined;
+  };
+  // le monde d'un bloc choisi : toute sa chaîne de câbles
+  const selChain = selObj ? (() => {
+    const set = chainOf(selObj.id);
+    // dans un cadre (Guitare élec : guitare, pédalier, ampli, micro) : tout le cadre fait partie de son monde
+    const z = selObj.zone ? zonesOf(st).find((q) => q.id === selObj.zone) : undefined;
+    if (z && !z.drums) for (const o of membersOf(st, z.id)) for (const id of chainOf(o.id)) set.add(id);
+    return set;
+  })() : null;
+  if (selChain) for (const c of st.cables) if (('o' in c.a && selChain.has(c.a.o)) || ('o' in c.b && selChain.has(c.b.o))) if (!selCables.includes(c)) selCables.push(c);
   const selIds = new Set(selCables.map((c) => c.id));
+  const anySelNow = !!sel && !('gear' in (sel as object));
 
   const cablePath = (c: { a: End; b: End }, k: number) => {
     const a = posOf(c.a);
@@ -893,13 +969,85 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
     return c ? chColor(client, c) : z.color;
   };
   // couleur et style d'un câble : entrée = couleur de la voie, sortie = pointillés couleur du retour
-  const cableLook = (c: { a: End; b: End }): { color?: string; out: boolean } => {
+  const cableInfo = (c: { a: End; b: End }): { color?: string; out: boolean; outId?: string; plug?: number; ch: number } => {
     const o = 'out' in c.a ? c.a.out : 'out' in c.b ? c.b.out : null;
-    if (o) { const k = OUTS.indexOf(o); return { color: k >= 0 && k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0], out: true }; }
-    const p = 'plug' in c.a ? c.a.plug : 'plug' in c.b ? c.b.plug : 0;
-    const ch = p ? chanOfPlug(p) : 0;
-    return { color: ch ? chColor(client, ch) : undefined, out: false };
+    if (o) { const k = OUTS.indexOf(o); return { color: k >= 0 && k < 6 ? MIX_COLORS[k + 1] : MIX_COLORS[0], out: true, outId: o, ch: 0 }; }
+    const p = 'plug' in c.a ? c.a.plug : 'plug' in c.b ? c.b.plug : 'o' in c.a ? plugOfChain(c.a.o) : 'o' in c.b ? plugOfChain(c.b.o) : undefined;
+    const ch = p && linkMode !== 'free' ? chanOfPlug(p) : 0;
+    if (!ch) return { color: undefined, out: false, plug: p, ch: 0 };
+    const muted = Number(client.get(chOnPath(ch)) ?? 1) === 0;
+    const solo = Number(client.get(soloPath(ch)) ?? 0) === 1;
+    return { color: muted ? '#4B525C' : solo ? '#FDE047' : chColor(client, ch), out: false, plug: p, ch };
   };
+  const cableLook = (c: { a: End; b: End }) => cableInfo(c);
+  // « son monde » : un retour choisi allume les câbles des voies qu'il entend ;
+  // un instrument choisi allume les câbles des retours qui l'entendent.
+  const heard = (() => {
+    const ids = new Set<string>();
+    const objs = new Set<string>();
+    if (!selObj || linkMode === 'free') return { ids, objs };
+    const selOut = family(selObj.kind) === 'monitor' ? touching(st, { o: selObj.id }).map((c) => ('out' in c.a ? c.a.out : 'out' in c.b ? c.b.out : '')).find((x) => x && x.startsWith('aux')) : undefined;
+    const tOf = (id: string) => ({ kind: 'bus' as const, n: Number(id.slice(3)) });
+    if (selOut) {
+      for (const c of st.cables) {
+        const k = cableInfo(c);
+        if (k.ch && Number(client.get(chLevelPath(k.ch, tOf(selOut))) ?? 0) > 0.02) { ids.add(c.id); for (const e of [c.a, c.b]) if ('o' in e) objs.add(e.o); }
+      }
+    } else {
+      const p = plugOfChain(selObj.id);
+      const ch = p ? chanOfPlug(p) : 0;
+      if (ch) for (const c of st.cables) {
+        const k = cableInfo(c);
+        if (k.outId && k.outId.startsWith('aux') && Number(client.get(chLevelPath(ch, tOf(k.outId))) ?? 0) > 0.02) { ids.add(c.id); for (const e of [c.a, c.b]) if ('o' in e) objs.add(e.o); }
+      }
+    }
+    return { ids, objs };
+  })();
+  const heardIds = heard.ids;
+  const heardObjs = heard.objs;
+  // les câbles vivants (allumés par le son) et les marques d'état (coupée ✕, solo, 48 V ⚡)
+  const visibleCables = st.cables.filter((c) => !hiddenCable.has(c.id) && (showOut || selIds.has(c.id) || !('out' in c.a || 'out' in c.b)));
+  const liveItems: LiveItem[] = linkMode === 'free' ? [] : visibleCables.flatMap((c) => {
+    const k = cableInfo(c);
+    const d = cablePath(c, cableIdx[c.id] ?? 0).d;
+    const w = c.type === 'xlr' ? 4.5 : 3.5;
+    const flowSel = selIds.has(c.id) && anySelNow;
+    if (k.out && k.outId) {
+      const n = k.outId.startsWith('aux') ? Number(k.outId.slice(3)) : 0;
+      const idx = n ? meterIndex.bus(n) : k.outId === 'mainR' ? meterIndex.lrR : meterIndex.lrL;
+      // le câble part de l'objet (le retour) : le son va dans l'autre sens
+      return [{ id: c.id, d, idx, color: k.color!, w: w + 1, flow: flowSel ? -1 : 0 }];
+    }
+    if (!k.ch) return flowSel ? [{ id: c.id, d, idx: -1, color: '#9AA3AD', w, flow: 1 }] : [];
+    const muted = Number(client.get(chOnPath(k.ch)) ?? 1) === 0;
+    return [{ id: c.id, d, idx: muted ? -1 : meterIndex.ch(k.ch), color: k.color!, w, flow: flowSel ? (isTableEnd(c.a) ? -1 : 1) : 0 }];
+  });
+  const badges = linkMode === 'free' ? [] : visibleCables.flatMap((c) => {
+    const k = cableInfo(c);
+    if (!k.ch || !isTableEnd(c.a) && !isTableEnd(c.b)) return [];
+    const m = cablePath(c, cableIdx[c.id] ?? 0).mid;
+    const muted = Number(client.get(chOnPath(k.ch)) ?? 1) === 0;
+    const solo = Number(client.get(soloPath(k.ch)) ?? 0) === 1;
+    const p48 = c.type === 'xlr' && k.plug !== undefined && k.plug <= MODEL.preamps && Number(client.get(phantomPath(k.plug)) ?? 0) === 1;
+    const out: { id: string; x: number; y: number; t: string; bg: string; fg: string }[] = [];
+    let y = m.y;
+    if (muted) { out.push({ id: c.id + 'm', x: m.x, y, t: '✕', bg: '#EF4444', fg: '#FFFFFF' }); y += 22; }
+    if (solo) { out.push({ id: c.id + 's', x: m.x, y, t: 'S', bg: '#FDE047', fg: '#0B0D10' }); y += 22; }
+    if (p48) out.push({ id: c.id + 'p', x: m.x, y, t: '⚡', bg: '#0B0D10', fg: '#FDE047' });
+    return out;
+  });
+  // ce qu'entend chaque retour posé sur la scène : de petites barres à sa couleur
+  const monitorBars = linkMode === 'free' ? [] : st.objs.filter((o) => family(o.kind) === 'monitor').flatMap((o) => {
+    const oid = touching(st, { o: o.id }).map((c) => ('out' in c.a ? c.a.out : 'out' in c.b ? c.b.out : '')).find((x) => x && x.startsWith('aux'));
+    if (!oid) return [];
+    const t = { kind: 'bus' as const, n: Number(oid.slice(3)) };
+    const bars = Array.from({ length: CH_COUNT }, (_, k) => k + 1)
+      .map((ch) => ({ ch, v: Number(client.get(chLevelPath(ch, t)) ?? 0) }))
+      .filter((b) => b.v > 0.02 && String(client.get(chNamePath(b.ch)) ?? '').trim())
+      .sort((a, b) => b.v - a.v).slice(0, 8)
+      .map((b) => ({ ch: b.ch, v: Math.max(0.15, Math.min(1, (faderToDb(b.v) + 40) / 45)), c: chColor(client, b.ch) }));
+    return bars.length ? [{ id: o.id, ...objPos(o), bars }] : [];
+  });
   const namesKey = [
     ...Array.from({ length: 18 }, (_, k) => k + 1).filter((n) => perEnd.has('p' + n)).map((n) => `p${n}=${plugName(n) || (st.objs.find((o) => o.plug === n)?.name ?? '')}|${chanOfPlug(n) ? chColor(client, chanOfPlug(n)) : '#9AA3AD'}`),
     ...(linkMode === 'free' ? [] : Array.from({ length: BUS_COUNT }, (_, k) => `aux${k + 1}=${busName(k + 1)}|`)),
@@ -1015,7 +1163,22 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                   return <ZoneG key={z.id} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} color={zoneColor(z)} label={`${z.name}${z.drums ? ` · ${membersOf(st, z.id).length} él.` : ''}`} on={selZone?.id === z.id || ghost?.zone === z.id} n={zoneTableCables(st, z.id).length} bundled={!!z.bundled} />;
                 })}
                 {/* câbles */}
-                {st.cables.filter((c) => !hiddenCable.has(c.id) && (showOut || selIds.has(c.id) || !('out' in c.a || 'out' in c.b))).map((c) => { const k = cableLook(c); return <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id)} color={k.color} out={k.out} />; })}
+                {visibleCables.map((c) => { const k = cableLook(c); return <CableG key={c.id} d={cablePath(c, cableIdx[c.id] ?? 0).d} type={c.type} dim={anySel && !selIds.has(c.id) && !heardIds.has(c.id)} color={k.color} out={k.out} />; })}
+                {liveItems.length > 0 && <LiveCables client={client} items={anySel ? liveItems.filter((x) => selIds.has(x.id) || heardIds.has(x.id)) : liveItems} />}
+                {badges.map((b) => (
+                  <G key={b.id}>
+                    <Circle cx={b.x} cy={b.y} r={10} fill={b.bg} stroke="#0B0D10" strokeWidth={2} />
+                    <SvgText x={b.x} y={b.y + 4} textAnchor="middle" fontSize={11} fontWeight="900" fill={b.fg}>{b.t}</SvgText>
+                  </G>
+                ))}
+                {/* légende, en haut à droite de la scène (trop petite sur téléphone : cachée) */}
+                {!phone && <G opacity={0.85}>
+                  <Line x1={W - 500} y1={20} x2={W - 474} y2={20} stroke="#E5E7EB" strokeWidth={3.5} strokeLinecap="round" />
+                  <SvgText x={W - 468} y={24} fontSize={11} fontWeight="700" fill="#9AA3AD">entre</SvgText>
+                  <Line x1={W - 428} y1={20} x2={W - 402} y2={20} stroke="#E5E7EB" strokeWidth={4.5} strokeLinecap="round" strokeDasharray="2 7" />
+                  <SvgText x={W - 396} y={24} fontSize={11} fontWeight="700" fill="#9AA3AD">sort vers un retour</SvgText>
+                  <SvgText x={W - 22} y={24} textAnchor="end" fontSize={11} fontWeight="700" fill="#9AA3AD">✕ coupée · S solo · ⚡ 48 V · s’allume avec le son</SvgText>
+                </G>}
                 {/* faisceaux : un gros câble par cadre, jusqu'à ses prises */}
                 {bundles.map(({ z, cables }) => {
                   const r = zoneRect(z);
@@ -1054,7 +1217,19 @@ export function StageEditor({ client, theme }: { client: XAirClient; theme: Them
                 {st.objs.map((o) => {
                   const p = objPos(o);
                   const on = selObj?.id === o.id;
-                  return <ObjG key={o.id} kind={o.kind} name={o.name} x={p.x} y={p.y} on={on} n={perEnd.get('o:' + o.id) ?? 0} dim={anySel && !on && !linked.has(o.id) && !(selZone && o.zone === selZone.id)} color={objColor(o)} k={objK} />;
+                  return <ObjG key={o.id} kind={o.kind} name={o.name} x={p.x} y={p.y} on={on} n={perEnd.get('o:' + o.id) ?? 0} dim={anySel && !on && !linked.has(o.id) && !(selChain?.has(o.id)) && !heardObjs.has(o.id) && !(selZone && o.zone === selZone.id)} color={objColor(o)} k={objK} />;
+                })}
+                {/* le mélange de chaque retour, en barres au-dessus du bloc */}
+                {monitorBars.map((m) => {
+                  const bw = 7, gap = 3, n = m.bars.length;
+                  const x0 = m.x - (n * bw + (n - 1) * gap) / 2;
+                  const yb = m.y - (R + 12) * objK;
+                  return (
+                    <G key={'mb' + m.id} opacity={anySel && !(selChain?.has(m.id)) ? 0.35 : 1}>
+                      <Rect x={x0 - 4} y={yb - 30} width={n * bw + (n - 1) * gap + 8} height={34} rx={6} fill="#0B0D10" opacity={0.85} />
+                      {m.bars.map((b, k) => <Rect key={b.ch} x={x0 + k * (bw + gap)} y={yb - 26 * b.v} width={bw} height={26 * b.v} rx={2} fill={b.c} />)}
+                    </G>
+                  );
                 })}
                 {/* pastilles Jack / XLR à toucher */}
                 {pills.map((p) => (
