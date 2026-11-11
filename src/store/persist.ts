@@ -46,7 +46,16 @@ async function doInit(): Promise<boolean> {
   return persistent;
 }
 
+// Démo vide : tout ce que l'appli range (scène, balance, soirées…) va dans un
+// bac à sable en mémoire, vide au départ ; tes vraies sauvegardes ne bougent pas.
+// L'apparence et les écrans d'accueil déjà vus restent les tiens.
+const KEEP = new Set(['prefs', 'demarrageVu', 'tutoVu', 'demoModele', 'mt:apercu']);
+let sandbox: Map<string, string> | null = null;
+export function setSandbox(on: boolean) { sandbox = on ? new Map() : null; }
+export const inSandbox = () => !!sandbox;
+
 export async function load<T>(key: string, fallback: T): Promise<T> {
+  if (sandbox && !KEEP.has(key)) { const raw = sandbox.get(key); return raw ? (JSON.parse(raw) as T) : fallback; }
   if (!started) void initStorage();
   await ready;
   try {
@@ -58,6 +67,7 @@ export async function load<T>(key: string, fallback: T): Promise<T> {
 }
 
 export async function save<T>(key: string, value: T): Promise<void> {
+  if (sandbox && !KEEP.has(key)) { sandbox.set(key, JSON.stringify(value)); return; }
   if (!started) void initStorage();
   await ready;
   try {

@@ -8,9 +8,9 @@ import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBar
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
-import { DemoTransport, getDemoModel, setDemoModel } from '../xair/demoTransport';
+import { DemoTransport, getDemoModel, setDemoEmpty, setDemoModel } from '../xair/demoTransport';
 import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
-import { load, save } from '../store/persist';
+import { load, save, setSandbox } from '../store/persist';
 import * as dbg from '../debug/log';
 import { DebugScreen } from './DebugScreen';
 import { Theme } from '../ui/theme';
@@ -126,8 +126,10 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
 
   const [demoM, setDemoM] = useState(getDemoModel());
   useEffect(() => { load<string>('demoModele', 'XR18').then((m) => { setDemoModel(m); setDemoM(m); }); }, []);
-  const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }) => {
+  const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }, empty = false) => {
     setBusy(true);
+    setDemoEmpty(demo && empty);
+    setSandbox(demo && empty);
     setError('');
     const client = new XAirClient(demo ? new DemoTransport() : new RnUdpTransport());
     try {
@@ -348,6 +350,10 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Pressable onPress={() => connect('demo', true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo sans table</Text>
               <Text style={{ color: theme.muted, fontSize: 11 }}>rien n’est envoyé</Text>
+            </Pressable>
+            <Pressable onPress={() => connect('demo', true, undefined, false, false, undefined, true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo vide</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>table neuve · tes sauvegardes ne bougent pas</Text>
             </Pressable>
             <Pressable onPress={() => connect('demo', true, undefined, true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo musicien</Text>

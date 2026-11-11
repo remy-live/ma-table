@@ -10,6 +10,9 @@ const TABLE: Remote = { address: 'demo', port: 10024 };
 /** Modèle imité par la démo (XR18, XR16, XR12…), choisi sur l'écran de connexion. */
 let demoModel = 'XR18';
 let current: DemoTransport | null = null;
+/** Démo vide : une table neuve, sans noms, sans retours ni groupes. */
+let demoEmpty = false;
+export const setDemoEmpty = (on: boolean) => { demoEmpty = on; };
 const preampsOf = (m: string) => (/12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
 /** Change la table imitée ; la démo en cours suit tout de suite (mêmes noms, mêmes réglages). */
 export const setDemoModel = (m: string) => {
@@ -21,7 +24,7 @@ export const getDemoModel = () => demoModel;
 export class DemoTransport implements Transport {
   private onMessage: ((b: Uint8Array, from: Remote) => void) | null = null;
   name = demoModel;
-  model = new TableModel(true, preampsOf(demoModel));
+  model = new TableModel(!demoEmpty, preampsOf(demoModel));
   constructor() { current = this; }
   private rtaTimer: ReturnType<typeof setInterval> | null = null;
   private meterTimer: ReturnType<typeof setInterval> | null = null;
