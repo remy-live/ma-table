@@ -7,8 +7,28 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { isPersistent, load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { NetworkSetupScreen } from './NetworkSetupScreen';
+import { setModel, XAIR_MODELS } from '../xair/addresses';
+import { setDemoModel } from '../xair/demoTransport';
 import { DebugScreen } from './DebugScreen';
 import { SessionsScreen } from './SessionsScreen';
+
+/** Démo : changer de table imitée sans quitter (l'écran en cours se redessine). */
+function DemoModelPicker({ client, theme }: { client: XAirClient; theme: Theme }) {
+  const [cur, setCur] = useState(client.info?.model ?? 'XR18');
+  if (client.hostAddress !== 'demo') return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '800' }}>DÉMO · table imitée</Text>
+      {XAIR_MODELS.filter((m) => m !== 'MR18').map((m) => (
+        <Pressable key={m} accessibilityRole="radio" accessibilityState={{ selected: cur === m }}
+          onPress={() => { setDemoModel(m); save('demoModele', m); if (client.info) client.info.model = m; setCur(m); setModel(m); }}
+          style={{ height: 34, paddingHorizontal: 14, borderRadius: 17, justifyContent: 'center', borderWidth: 2, borderColor: cur === m ? theme.accent : theme.line2, backgroundColor: cur === m ? theme.accent : 'transparent' }}>
+          <Text style={{ color: cur === m ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 13 }}>{m}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 
 const KEYS = ['balance', 'ordre', 'mesPresets', 'autos', 'mesEffets', 'jeuxEffets', 'fxNoms', 'prefs'];
 
@@ -58,6 +78,7 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
   );
   if (compact) return (
     <View style={{ gap: 8 }}>
+      <DemoModelPicker client={client} theme={theme} />
       {status === 'perdu' && <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 13 }}>Liaison perdue · reconnexion en cours (la table garde son mix)</Text>}
       <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: theme.line, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 26 }}>
@@ -94,6 +115,7 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.body}>
+      <DemoModelPicker client={client} theme={theme} />
 
       {status === 'perdu' && (
         <View style={[styles.banner, { backgroundColor: '#2A1414', borderColor: '#7F1D1D' }]}>

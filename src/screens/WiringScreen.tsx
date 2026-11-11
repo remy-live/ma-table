@@ -439,9 +439,9 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             <Rect x={392} y={46} width={16} height={12} rx={2} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={920} y={52} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
             <Rect x={930} y={24} width={6} height={60} rx={3} fill="#2A3038" />
-            <Line x1={36} y1={234} x2={640} y2={234} stroke="#2A3038" />
-            {MODEL.usbMulti && <SvgText x={728} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>}
-            {MODEL.preamps < MODEL.inputs && !MODEL.usbMulti && <SvgText x={728} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">{`${MODEL.preamps} PRISES MICRO (1-${MODEL.preamps}) · LE RESTE EN JACK`}</SvgText>}
+            <Line x1={36} y1={234} x2={820} y2={234} stroke="#2A3038" />
+            {MODEL.usbMulti && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>}
+            {MODEL.preamps < MODEL.inputs && !MODEL.usbMulti && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">{`MICRO 1-${MODEL.preamps} · LE RESTE EN JACK`}</SvgText>}
             {/* prises */}
             {P.map((p) => {
               const { x, y } = plugXY(p.n);

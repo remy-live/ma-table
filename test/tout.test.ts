@@ -150,7 +150,7 @@ test('Branchements : prises, sorties, fils, relier et enlever', () =>
     assert.equal(sim.state.get(chLevelPath(1, { kind: 'bus', n: 3 }))!.v, 0);
     const n = w.toAllReturns(c, P[3]); // basse → retours nommés (1 Bassiste, 2 Mon retour) ; déjà dans le 1
     assert.equal(n, 1);
-    assert.match(w.wireD(1, 'main'), /^M95 110 C/);
+    assert.match(w.wireD(1, 'main'), /^M80 110 C/);
     assert.ok(w.wireWidth(0) > w.wireWidth(-30));
   }));
 

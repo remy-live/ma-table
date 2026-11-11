@@ -87,7 +87,11 @@ export function setModel(model: string) {
   MODEL.outs = k === 18 ? 6 : k === 16 ? 4 : 2;
   MODEL.usbMulti = k === 18;
   BUS_COUNT = MODEL.outs;
+  modelListeners.forEach((fn) => fn());
 }
+const modelListeners = new Set<() => void>();
+/** Prévenu quand le modèle change (démo : on change de table sans revenir au début). */
+export function onModelChange(fn: () => void) { modelListeners.add(fn); return () => { modelListeners.delete(fn); }; }
 export const headampGainPath = (ch: number) => `/headamp/${ch2(ch)}/gain`;
 export const phantomPath = (ch: number) => `/headamp/${ch2(ch)}/phantom`;
 export const invertPath = (ch: number) => `/ch/${ch2(ch)}/preamp/invert`;

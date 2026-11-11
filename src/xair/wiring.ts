@@ -159,16 +159,20 @@ export function wiringPaths(): string[] {
 // ---------- Géométrie de la face arrière (viewBox 1000 × 300) ----------
 export const PANEL_W = 1000;
 export const PANEL_H = 330;
+const X0 = 80;
+const STEP = 100;
 export function plugXY(n: number): { x: number; y: number } {
-  if (n <= 16) return { x: 95 + ((n - 1) % 8) * 72, y: n <= 8 ? 110 : 185 };
-  return { x: n === 17 ? 708 : 748, y: 180 };
+  // 8 colonnes sur toute la largeur du panneau, LINE 17/18 tout à droite
+  if (n <= 16) return { x: X0 + ((n - 1) % 8) * STEP, y: n <= 8 ? 110 : 185 };
+  return { x: n === 17 ? 868 : 928, y: 180 };
 }
 export function outletXY(id: string): { x: number; y: number } {
-  if (id === 'main') return { x: 95 + 6.5 * 72, y: 278 };
-  if (id === 'mainL') return { x: 95 + 6.5 * 72 - 23, y: 278 };
-  if (id === 'mainR') return { x: 95 + 6.5 * 72 + 23, y: 278 };
+  const xm = X0 + 6.5 * STEP;
+  if (id === 'main') return { x: xm, y: 278 };
+  if (id === 'mainL') return { x: xm - 23, y: 278 };
+  if (id === 'mainR') return { x: xm + 23, y: 278 };
   const b = Number(id.replace('bus', ''));
-  return { x: 95 + (b - 1) * 72, y: 278 };
+  return { x: X0 + (b - 1) * STEP, y: 278 };
 }
 export function wireD(plug: number, out: string): string {
   const a = plugXY(plug);

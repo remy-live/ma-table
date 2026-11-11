@@ -1,4 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { onModelChange } from './src/xair/addresses';
+
+// navigateur : les textes des dessins SVG prendraient la police à empattements
+// par défaut (Times) ; on leur donne la même police que le reste de l'appli.
+if (typeof document !== 'undefined' && !document.getElementById('mt-svg-font')) {
+  const st = document.createElement('style');
+  st.id = 'mt-svg-font';
+  st.textContent = 'svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}';
+  document.head.appendChild(st);
+}
 import { AppState, Alert, Linking, Pressable, StatusBar, Text, View } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { MixerScreen } from './src/screens/MixerScreen';
@@ -143,6 +153,9 @@ export default function App() {
   };
 
   const [navHidden, setNavHidden] = useState(false);
+  // démo : changer de table redessine les écrans, sans revenir au début
+  const [modelTick, setModelTick] = useState(0);
+  useEffect(() => onModelChange(() => setModelTick((t) => t + 1)), []);
   if (!client) {
     return (
       <>
@@ -231,7 +244,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
+    <View key={modelTick} style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} onFull={setNavHidden} />}
