@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { onModelChange } from './src/xair/addresses';
+import { installDebugBridge } from './src/debugBridge';
 
 // navigateur : les textes des dessins SVG prendraient la police à empattements
 // par défaut (Times) ; on leur donne la même police que le reste de l'appli.
@@ -9,7 +10,7 @@ if (typeof document !== 'undefined' && !document.getElementById('mt-svg-font')) 
   st.textContent = 'svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}';
   document.head.appendChild(st);
 }
-import { AppState, Alert, Linking, Pressable, StatusBar, Text, View } from 'react-native';
+import { AppState, Alert, Linking, Platform, Pressable, StatusBar, Text, View } from 'react-native';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { MixerScreen } from './src/screens/MixerScreen';
 import { StageScreen } from './src/screens/StageScreen';
@@ -153,6 +154,10 @@ export default function App() {
   };
 
   const [navHidden, setNavHidden] = useState(false);
+  // fichier de démo : la barre de débogage pilote la démo (table imitée, larsen, liaison)
+  const clientRef = React.useRef<XAirClient | null>(null);
+  clientRef.current = client;
+  useEffect(() => (Platform.OS === 'web' ? installDebugBridge(() => clientRef.current) : undefined), []);
   // démo : changer de table redessine les écrans, sans revenir au début
   const [modelTick, setModelTick] = useState(0);
   useEffect(() => onModelChange(() => setModelTick((t) => t + 1)), []);

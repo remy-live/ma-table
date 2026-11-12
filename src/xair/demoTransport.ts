@@ -15,6 +15,10 @@ let current: DemoTransport | null = null;
 /** Démo vide : une table neuve, sans noms, sans retours ni groupes. */
 let demoEmpty = false;
 export const setDemoEmpty = (on: boolean) => { demoEmpty = on; };
+/** Barre de débogage : couper la liaison avec la table imitée (la table ne répond plus). */
+let demoOffline = false;
+export const setDemoOffline = (on: boolean) => { demoOffline = on; };
+export const isDemoOffline = () => demoOffline;
 const preampsOf = (m: string) => (isX32(m) ? 32 : isUi(m) ? 24 : /12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
 const chansOf = (m: string) => (isX32(m) ? 32 : isUi(m) ? 24 : 16);
 const familyOf = (m: string) => (isX32(m) ? 'x32' : isUi(m) ? 'ui' : 'xair');
@@ -44,6 +48,7 @@ export class DemoTransport implements Transport {
   }
 
   send(bytes: Uint8Array) {
+    if (demoOffline) return;
     const m0 = decode(bytes);
     if (!m0) return;
     // démo X32 : la table imitée parle « X Air » ; on traduit dans les deux sens, comme la vraie X32
@@ -73,6 +78,7 @@ export class DemoTransport implements Transport {
     if (m.address === '/meters') {
       if (!this.meterTimer)
         this.meterTimer = setInterval(() => {
+          if (demoOffline) return;
           this.tick++;
           if (isX32(this.name)) {
             const { m0, m2 } = this.model.metersX32(this.tick);
