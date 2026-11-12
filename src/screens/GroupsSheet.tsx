@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { f, i, s } from '../osc/osc';
-import { CH_COUNT, chDcaPath, chNamePath, DCA_COUNT, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, toggleDca } from '../xair/addresses';
+import { CH_COUNT, chDcaPath, chNamePath, DCA_COUNT, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, toggleDca, allChannels } from '../xair/addresses';
 import { faderToDb } from '../xair/levels';
 import { chColor, colorOf, findOrCreateGroup, recognize } from '../xair/smartName';
 import { HSlider } from '../ui/HSlider';
@@ -18,7 +18,7 @@ import { Theme } from '../ui/theme';
 
 const GROUP_NAMES = ['Batterie', 'Guitares', 'Voix', 'Choeurs', 'Claviers', 'Percus', 'Cuivres', 'Retours'];
 export const GROUP_COLORS = ['#F59E0B', '#F472B6', '#34D399', '#60A5FA'];
-const ALL = Array.from({ length: CH_COUNT }, (_, n) => n + 1);
+const ALLF = () => allChannels();
 
 export function GroupsSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
   useAnyTick(client);
@@ -28,25 +28,25 @@ export function GroupsSheet({ client, theme, visible, onClose }: { client: XAirC
   const [renaming, setRenaming] = useState<number | null>(null);
   const gName = (g: number) => String(client.get(dcaNamePath(g)) ?? '') || `Groupe ${g}`;
   const mask = (ch: number) => Number(client.get(chDcaPath(ch)) ?? 0);
-  const members = (g: number) => ALL.filter((ch) => inDca(mask(ch), g));
+  const members = (g: number) => ALLF().filter((ch) => inDca(mask(ch), g));
   const chN = (ch: number) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`;
   const chC = (ch: number) => chColor(client, ch);
   const col = GROUP_COLORS[k - 1];
   const cardW = wide ? Math.floor((width - 40 - 3 * 10) / 4) : 230;
   const fam = (ch: number) => recognize(String(client.get(chNamePath(ch)) ?? ''))?.group ?? null;
   // suggestions : familles reconnues dans les noms (Batterie, Voix, Guitares)
-  const families = Array.from(new Set(ALL.map(fam).filter(Boolean))) as string[];
+  const families = Array.from(new Set(ALLF().map(fam).filter(Boolean))) as string[];
   const suggest = (g: number) => {
     const taken = Array.from({ length: DCA_COUNT }, (_, n) => gName(n + 1).toLowerCase());
     return families.filter((fm) => !taken.includes(fm.toLowerCase()) || gName(g).toLowerCase() === fm.toLowerCase());
   };
   const fillWith = (g: number, family: string) => {
     client.set(dcaNamePath(g), s(family.slice(0, 12)));
-    ALL.forEach((ch) => { if (fam(ch) === family) client.set(chDcaPath(ch), i(mask(ch) | (1 << (g - 1)))); });
+    ALLF().forEach((ch) => { if (fam(ch) === family) client.set(chDcaPath(ch), i(mask(ch) | (1 << (g - 1)))); });
   };
   const autoAll = () => {
     let n = 0;
-    ALL.forEach((ch) => {
+    ALLF().forEach((ch) => {
       const fm = fam(ch);
       if (!fm) return;
       const g = findOrCreateGroup(client, fm);
@@ -107,7 +107,7 @@ export function GroupsSheet({ client, theme, visible, onClose }: { client: XAirC
                   <View style={{ gap: 4 }}>
                     {suggest(g).slice(0, 3).map((fm) => (
                       <Pressable key={fm} onPress={() => { fillWith(g, fm); setK(g); }} style={[styles.sugg, { borderColor: c }]}>
-                        <Text style={{ color: c, fontWeight: '800', fontSize: 12 }}>✨ En faire « {fm} » ({ALL.filter((ch) => fam(ch) === fm).length} voies)</Text>
+                        <Text style={{ color: c, fontWeight: '800', fontSize: 12 }}>✨ En faire « {fm} » ({ALLF().filter((ch) => fam(ch) === fm).length} voies)</Text>
                       </Pressable>
                     ))}
                     <Text style={{ color: theme.muted, fontSize: 11 }}>ou choisis-le puis touche des voies en dessous</Text>
@@ -131,7 +131,7 @@ export function GroupsSheet({ client, theme, visible, onClose }: { client: XAirC
           <Text style={[styles.section, { color: theme.text }]}>Touche les voies à mettre dans « {gName(k)} »</Text>
         </View>
         <ScrollView contentContainerStyle={styles.grid}>
-          {ALL.map((ch) => {
+          {ALLF().map((ch) => {
             const mk = mask(ch);
             const on = inDca(mk, k);
             return (

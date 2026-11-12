@@ -8,7 +8,7 @@ import { f } from '../osc/osc';
 import { DragBubble } from '../ui/DragBubble';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
-import { CH_COUNT, meterIndex, Target } from '../xair/addresses';
+import { CH_COUNT, meterIndex, Target, allChannels } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { dbToFader } from '../xair/levels';
 import { shift } from '../xair/monitor';
@@ -20,7 +20,7 @@ import { initials, MIX_COLORS } from './MixPicker';
 
 const dbText = (db: number) => (!isFinite(db) || db < -40 ? 'rien' : (db > 0 ? '+' : '') + Math.round(db) + ' dB');
 const CELL = 64;
-const ALL_CH = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+const ALL_CHF = () => allChannels();
 const LABEL_W = 150;
 
 
@@ -33,7 +33,7 @@ export function WhoHearsScreen(props: { client: XAirClient; theme: Theme; visibl
   const [pick, setPick] = useState<{ s: string; d: string } | null>(null);
   const [areaW, setAreaW] = useState(0);
   // les bulles battent avec le son qui arrive
-  const lv = useLevels(client, ALL_CH, meterIndex.ch, 150);
+  const lv = useLevels(client, ALL_CHF(), meterIndex.ch, 150);
   useEffect(() => { if (props.visible) client.loadPaths(whoHearsPaths()); }, [client, props.visible]);
 
   const dests = destinations(client).filter((d) => !isoD || d.id === isoD);

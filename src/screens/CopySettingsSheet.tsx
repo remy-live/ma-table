@@ -8,13 +8,13 @@ import { safetyBackup } from '../store/sessions';
 import { readInset } from '../ui/immersive';
 import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
-import { CH_COUNT, chNamePath } from '../xair/addresses';
+import { CH_COUNT, chNamePath, allChannels } from '../xair/addresses';
 import { CATEGORIES, Category, copySettings } from '../xair/clipboard';
 import { readGroups } from '../xair/groups';
 import { chColor, colorOf, recognize } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 
-const ALL = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+const ALLF = () => allChannels();
 
 export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; visible: boolean; from: number | null; to?: number[]; onClose: () => void }) {
   const { client, theme } = props;
@@ -31,7 +31,7 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
   const packs: { label: string; chans: number[] }[] = [];
   readGroups(client).filter((g) => g.members.length).forEach((g) => packs.push({ label: g.name, chans: g.members }));
   const fams = new Map<string, number[]>();
-  ALL.forEach((c) => { const fm = recognize(String(client.get(chNamePath(c)) ?? ''))?.group; if (fm) fams.set(fm, [...(fams.get(fm) ?? []), c]); });
+  ALLF().forEach((c) => { const fm = recognize(String(client.get(chNamePath(c)) ?? ''))?.group; if (fm) fams.set(fm, [...(fams.get(fm) ?? []), c]); });
   fams.forEach((chans, label) => { if (!packs.some((p) => p.label.toLowerCase() === label.toLowerCase()) && chans.length > 1) packs.push({ label: `Toutes : ${label}`, chans }); });
   const pickSrc = (chans: number[]) => { setSrcs(chans); setDsts((d) => d.filter((x) => !chans.includes(x))); };
   const pickDst = (chans: number[]) => {
@@ -85,13 +85,13 @@ export function CopySettingsSheet(props: { client: XAirClient; theme: Theme; vis
             <Kicker theme={theme}>1 · JE PRENDS LES RÉGLAGES DE… (une ou plusieurs voies)</Kicker>
             <Packs onPick={pickSrc} />
             <View style={styles.wrap}>
-              {ALL.map((c) => <Tile key={c} c={c} on={srcs.includes(c)} badge={many && srcs.includes(c) ? String(srcs.indexOf(c) + 1) : undefined} onPress={() => { toggle(srcs, setSrcs, c); setDsts((d) => d.filter((x) => x !== c)); }} />)}
+              {ALLF().map((c) => <Tile key={c} c={c} on={srcs.includes(c)} badge={many && srcs.includes(c) ? String(srcs.indexOf(c) + 1) : undefined} onPress={() => { toggle(srcs, setSrcs, c); setDsts((d) => d.filter((x) => x !== c)); }} />)}
             </View>
 
             <Kicker theme={theme}>{many ? `2 · …ET JE LES DONNE À ${srcs.length} VOIES, DANS LE MÊME ORDRE` : '2 · …ET JE LES DONNE À (une ou plusieurs voies)'}</Kicker>
             {srcs.length > 0 && <Packs onPick={pickDst} />}
             <View style={styles.wrap}>
-              {ALL.map((c) => {
+              {ALLF().map((c) => {
                 const on = dsts.includes(c);
                 const full = many && !on && dsts.length >= srcs.length;
                 return <Tile key={c} c={c} on={on} disabled={srcs.includes(c) || full || !srcs.length} sub={on && sourceOf(c) ? `← ${name(sourceOf(c))}` : undefined} badge={many && on ? String(dsts.indexOf(c) + 1) : undefined} onPress={() => toggle(dsts, setDsts, c)} />;

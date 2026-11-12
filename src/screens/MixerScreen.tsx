@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CloseX } from '../ui/kit';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
-  allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId,
-} from '../xair/addresses';
+  allTargets, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaNamePath, inDca, outOnPath, outPath, Target, targetId, allChannels } from '../xair/addresses';
 import { Group } from '../xair/groups';
 import { CopyMixSheet } from './CopyMixSheet';
 import { LarsenSheet } from './LarsenSheet';
@@ -31,12 +30,12 @@ import { GroupBar } from '../ui/GroupBar';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
 import { HELP, showTip } from '../ui/tip';
 
-const CHANNELS = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+const CHANNELSF = () => allChannels();
 
 /** Bandeau jaune tant qu'une voie est en solo : on sait qu'on n'entend qu'elle au casque, et on arrête tout d'un appui. */
 function SoloBar({ client, theme }: { client: XAirClient; theme: Theme }) {
   useAnyTick(client, 150);
-  const on = CHANNELS.filter((ch) => Number(client.get(soloPath(ch)) ?? 0) === 1);
+  const on = CHANNELSF().filter((ch) => Number(client.get(soloPath(ch)) ?? 0) === 1);
   if (!on.length) return null;
   const names = on.map((ch) => String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`).join(', ');
   return (
@@ -71,7 +70,7 @@ function useMixerLabels(client: XAirClient) {
     const busName = (n: number) => String(client.get(busNamePath(n)) ?? '') || `Retour ${n}`;
     const groups: Group[] = [];
     for (let k = 1; k <= 4; k++) {
-      const members = CHANNELS.filter((ch) => inDca(Number(client.get(chDcaPath(ch)) ?? 0), k));
+      const members = CHANNELSF().filter((ch) => inDca(Number(client.get(chDcaPath(ch)) ?? 0), k));
       const name = String(client.get(dcaNamePath(k)) ?? '') || `Groupe ${k}`;
       if (members.length) groups.push({ k, name, members });
     }
@@ -106,7 +105,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const stripW = STRIP_WIDTHS[props.stripWidth ?? 'normal'];
   const [virtual, setVirtual] = useState<Record<string, number>>({});
   const [openGroups, setOpenGroups] = useState<number[]>([]);
-  const [order, setOrder] = useState<number[]>(CHANNELS);
+  const [order, setOrder] = useState<number[]>(CHANNELSF());
   const [sel, setSel] = useState<number | null>(null);
   // « ☑ Sélectionner » : cocher des voies pour en faire un groupe
   const [picking, setPicking] = useState(false);
@@ -138,7 +137,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
 
   // Ordre des voies à l'écran (Déplacer) : gardé dans l'appli.
   useEffect(() => {
-    load<number[]>('ordre', CHANNELS).then((o) => o.length === CH_COUNT && setOrder(o));
+    load<number[]>('ordre', CHANNELSF()).then((o) => o.length === CH_COUNT && setOrder(o));
   }, []);
   const setAndSaveOrder = (o: number[]) => {
     setOrder(o);
@@ -150,7 +149,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
     return () => client.stopMeters();
   }, [client]);
   useEffect(() => {
-    client.loadPaths([...CHANNELS.map((ch) => chLevelPath(ch, target)), ...CHANNELS.map(soloPath), outPath(target), outOnPath(target)]);
+    client.loadPaths([...CHANNELSF().map((ch) => chLevelPath(ch, target)), ...CHANNELSF().map(soloPath), outPath(target), outOnPath(target)]);
   }, [client, target]);
 
   const [bodyH, setBodyH] = useState(0);

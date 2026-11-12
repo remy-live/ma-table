@@ -11,13 +11,13 @@ import { dbToFader, faderToDb } from '../xair/levels';
 import { XAirClient } from '../xair/XAirClient';
 import { LarsenSheet } from './LarsenSheet';
 
-const BUS_IDX = Array.from({ length: BUS_COUNT }, (_, n) => meterIndex.bus(n + 1));
+const busIdx = () => Array.from({ length: BUS_COUNT }, (_, n) => meterIndex.bus(n + 1));
 const targetOf = (idx: number): Target => (idx === meterIndex.lrL || idx === meterIndex.lrR ? { kind: 'main' } : { kind: 'bus', n: idx - meterIndex.bus(0) });
 
 export function LarsenWatch({ client, theme, top = 10 }: { client: XAirClient; theme: Theme; top?: number }) {
   const [hit, setHit] = useState<{ idx: number; at: number } | null>(null);
   const [hunt, setHunt] = useState<number | null>(null);
-  const w = useRef(new LarsenWatcher([...BUS_IDX, meterIndex.lrL])).current;
+  const w = useRef(new LarsenWatcher([...busIdx(), meterIndex.lrL])).current;
 
   useEffect(() => {
     client.startMeters();

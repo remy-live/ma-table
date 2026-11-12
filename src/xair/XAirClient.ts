@@ -12,11 +12,14 @@
 
 import { decode, encode, OscArg, OscValue, i as oscI, s as oscS } from '../osc/osc';
 import { ch2 } from './levels';
-import { setModel } from './addresses';
+import { BUS_COUNT, CH_COUNT, chLevelPath, DCA_COUNT, FX_COUNT, MODEL, setModel } from './addresses';
+import { fromX32, parseX32Meters, toX32 } from './x32Wire';
 import { Remote, Transport } from './transport';
 import * as dbg from '../debug/log';
 
 export const XAIR_PORT = 10024;
+/** Les X32 / M32 écoutent sur 10023. */
+export const X32_PORT = 10023;
 
 export interface TableInfo {
   ip: string;
@@ -50,7 +53,7 @@ export class XAirClient {
   private reading = new Set<string>();
   private listeners = new Map<string, Set<Listener>>();
   private statusListeners = new Set<(s: Status) => void>();
-  private pending = new Map<string, Uint8Array>();
+  private pending = new Map<string, OscArg>();
   private lastLocal = new Map<string, number>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private keepTimer: ReturnType<typeof setInterval> | null = null;
@@ -64,7 +67,7 @@ export class XAirClient {
   private meterUsers = 0;
   private meterListeners = new Set<(db: Float32Array) => void>();
   /** Dernières valeurs de /meters/1, en dB. */
-  meters = new Float32Array(40).fill(-90);
+  meters = new Float32Array(80).fill(-90);
 
   constructor(private transport: Transport, private port = XAIR_PORT, private now: () => number = Date.now) {}
 
@@ -78,6 +81,7 @@ export class XAirClient {
     const info = await this.askInfo(timeoutMs);
     dbg.info(`Table : ${info.name} · ${info.model} · firmware ${info.firmware} · ${info.ip}`);
     setModel(info.model);
+    if (MODEL.family === 'x32') dbg.info(`X32 / M32 : adresses traduites, port ${this.port}`);
     this.keepTimer = setInterval(() => this.keepAlive(channels), KEEPALIVE_MS);
     this.raw('/xremote');
     await this.loadState(channels);
@@ -106,8 +110,10 @@ export class XAirClient {
     transport.setBroadcast?.(true);
     const q = encode('/xinfo');
     transport.send(q, '255.255.255.255', port);
+    transport.send(q, '255.255.255.255', X32_PORT);
     await sleep(timeoutMs / 2);
     transport.send(q, '255.255.255.255', port);
+    transport.send(q, '255.255.255.255', X32_PORT);
     await sleep(timeoutMs / 2);
     transport.close();
     return [...found.values()];
@@ -117,7 +123,14 @@ export class XAirClient {
   startMeters() {
     this.meterUsers++;
     this.metersOn = true;
-    this.raw('/meters', [oscS('/meters/1')]);
+    this.subscribeMeters();
+  }
+  private subscribeMeters() {
+    if (MODEL.family === 'x32') {
+      // X32 : /meters/0 (voies, bus) et /meters/2 (sorties L/R)
+      this.raw('/meters', [oscS('/meters/0')]);
+      this.raw('/meters', [oscS('/meters/2')]);
+    } else this.raw('/meters', [oscS('/meters/1')]);
   }
 
   stopMeters() {
@@ -245,7 +258,7 @@ export class XAirClient {
     this.lastLocal.set(path, this.now());
     this.emit(path);
     if (before !== undefined && before !== arg.v) this.changeListeners.forEach((cb) => cb(path, arg.v as OscValue, before, 'moi'));
-    this.pending.set(path, encode(path, [arg]));
+    this.pending.set(path, arg);
     if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), FLUSH_MS);
   }
 
@@ -257,17 +270,18 @@ export class XAirClient {
   /** Relit l'état utile de la table : noms, niveaux, mutes, groupes, retours. */
   async loadState(channels = 16) {
     const paths: string[] = ['/lr/mix/fader', '/lr/mix/on'];
-    for (let c = 1; c <= channels; c++) {
+    void channels;
+    for (let c = 1; c <= CH_COUNT; c++) {
       const n = ch2(c);
       paths.push(
         `/ch/${n}/config/name`, `/ch/${n}/mix/fader`, `/ch/${n}/mix/on`, `/ch/${n}/grp/dca`,
-        `/ch/${n}/mix/pan`, `/ch/${n}/preamp/invert`, `/headamp/${n}/gain`, `/headamp/${n}/phantom`,
-        `/ch/${n}/config/color`, `/ch/${n}/eq/on`, `/ch/${n}/mix/07/level`, `/ch/${n}/mix/08/level`,
-        `/ch/${n}/mix/09/level`, `/ch/${n}/mix/10/level`, `/ch/${n}/config/insrc`,
+        `/ch/${n}/mix/pan`, `/ch/${n}/preamp/invert`, `/ch/${n}/config/color`, `/ch/${n}/eq/on`, `/ch/${n}/config/insrc`,
       );
+      if (c <= MODEL.preamps) paths.push(`/headamp/${n}/gain`, `/headamp/${n}/phantom`);
+      for (let k = 1; k <= FX_COUNT; k++) paths.push(chLevelPath(c, { kind: 'fx', n: k }));
     }
-    for (let k = 1; k <= 4; k++) paths.push(`/dca/${k}/config/name`, `/dca/${k}/fader`, `/dca/${k}/on`);
-    for (let b = 1; b <= 6; b++) paths.push(`/bus/${b}/config/name`);
+    for (let k = 1; k <= DCA_COUNT; k++) paths.push(`/dca/${k}/config/name`, `/dca/${k}/fader`, `/dca/${k}/on`);
+    for (let b = 1; b <= BUS_COUNT; b++) paths.push(`/bus/${b}/config/name`);
     // Les paramètres déjà demandés (écran ouvert) sont relus aussi après une coupure.
     for (const p of this.extra) if (!paths.includes(p)) paths.push(p);
     await this.loadPaths(paths);
@@ -291,6 +305,17 @@ export class XAirClient {
 
   private raw(path: string, args: OscArg[] = []) {
     dbg.oscTraffic('out', path, args.map((a) => a.v));
+    this.wireSend(path, args);
+  }
+
+  /** Envoie vers la table, traduit pour une X32 si besoin. */
+  private wireSend(path: string, args: OscArg[]) {
+    if (MODEL.family === 'x32' && !path.startsWith('/meters') && path !== '/xinfo' && path !== '/xremote') {
+      const w = toX32(path, args);
+      if (!w) return;
+      this.transport.send(encode(w.path, w.args), this.host, this.port);
+      return;
+    }
     this.transport.send(encode(path, args), this.host, this.port);
   }
 
@@ -301,9 +326,9 @@ export class XAirClient {
 
   private flush() {
     this.flushTimer = null;
-    for (const [p, bytes] of this.pending) {
+    for (const [p, arg] of this.pending) {
       dbg.oscTraffic('out', p, [this.state.get(p)]);
-      this.transport.send(bytes, this.host, this.port);
+      this.wireSend(p, [arg]);
     }
     this.pending.clear();
   }
@@ -314,7 +339,7 @@ export class XAirClient {
     this.pingAt = this.now();
     this.pings.sent++;
     this.raw('/xinfo'); // sert aussi de « ping »
-    if (this.metersOn) this.raw('/meters', [oscS('/meters/1')]);
+    if (this.metersOn) this.subscribeMeters();
     if (this.rtaUsers > 0) this.raw('/meters', [oscS('/meters/4')]);
     const silent = this.now() - this.lastHeard;
     if (this.status === 'connecté' && silent > LOST_AFTER_MS) this.setStatus('perdu');
@@ -335,11 +360,22 @@ export class XAirClient {
       };
       this.infoWaiters.push(done);
       this.raw('/xinfo');
+      // une X32 / M32 répond sur 10023 : on demande aussi là
+      if (this.port === XAIR_PORT) this.transport.send(encode('/xinfo'), this.host, X32_PORT);
     });
   }
 
   private onPacket(bytes: Uint8Array, from: Remote) {
-    const m = decode(bytes);
+    const m0 = decode(bytes);
+    let m = m0;
+    if (m0 && m0.address === '/xinfo' && from.port === X32_PORT && this.port !== X32_PORT) {
+      this.port = X32_PORT;
+    }
+    if (m0 && MODEL.family === 'x32' && m0.address !== '/xinfo' && !m0.address.startsWith('/meters')) {
+      const t = fromX32(m0.address, m0.args);
+      if (!t) return;
+      m = { ...m0, address: t.path, args: t.args };
+    }
     if (!m) {
       dbg.warn(`Paquet illisible de ${from.address} : ${dbg.hex(bytes)}`);
       return;
@@ -373,6 +409,15 @@ export class XAirClient {
       // analyseur de spectre (RTA) : 100 bandes de 20 Hz à 20 kHz, en 1/256 dB
       const blob = m.args[0];
       if (blob instanceof Uint8Array && parseMeters(blob, this.rta)) this.rtaListeners.forEach((cb) => cb(this.rta));
+      return;
+    }
+    if (m.address === '/meters/0' || m.address === '/meters/2') {
+      // X32 : /meters/0 = voies, aux, retours FX, bus, matrices ; /meters/2 : bus, matrices, puis L/R
+      const blob = m.args[0];
+      if (!(blob instanceof Uint8Array)) return;
+      dbg.traffic.meterFrames++;
+      const ok = m.address === '/meters/0' ? parseX32Meters(blob, this.meters, 0, 0, 70) : parseX32Meters(blob, this.meters, 70, 22, 2);
+      if (ok && m.address === '/meters/0') this.meterListeners.forEach((cb) => cb(this.meters));
       return;
     }
     if (m.address === '/meters/1') {

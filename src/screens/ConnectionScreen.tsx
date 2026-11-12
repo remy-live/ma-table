@@ -7,7 +7,7 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { isPersistent, load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { NetworkSetupScreen } from './NetworkSetupScreen';
-import { setModel, XAIR_MODELS } from '../xair/addresses';
+import { setModel, DEMO_MODELS } from '../xair/addresses';
 import { setDemoModel } from '../xair/demoTransport';
 import { DebugScreen } from './DebugScreen';
 import { SessionsScreen } from './SessionsScreen';
@@ -19,7 +19,7 @@ function DemoModelPicker({ client, theme }: { client: XAirClient; theme: Theme }
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '800' }}>DÉMO · table imitée</Text>
-      {XAIR_MODELS.filter((m) => m !== 'MR18').map((m) => (
+      {DEMO_MODELS.map((m) => (
         <Pressable key={m} accessibilityRole="radio" accessibilityState={{ selected: cur === m }}
           onPress={() => { setDemoModel(m); save('demoModele', m); if (client.info) client.info.model = m; setCur(m); setModel(m); }}
           style={{ height: 34, paddingHorizontal: 14, borderRadius: 17, justifyContent: 'center', borderWidth: 2, borderColor: cur === m ? theme.accent : theme.line2, backgroundColor: cur === m ? theme.accent : 'transparent' }}>

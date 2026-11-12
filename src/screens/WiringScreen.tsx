@@ -15,7 +15,7 @@ import { Shell } from '../ui/Shell';
 import { busNamePath, chNamePath, meterIndex, MODEL, panPath } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { colorOf } from '../xair/smartName';
-import { connect, disconnect, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, PANEL_W, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
+import { connect, disconnect, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, panelW, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
@@ -296,7 +296,8 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   const { theme, P, O, sel } = props;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [drag, setDrag] = useState<{ from: { kind: 'plug'; n: number } | { kind: 'out'; id: string }; x: number; y: number } | null>(null);
-  const scale = size.w ? size.w / PANEL_W : 0;
+  const PW = panelW();
+  const scale = size.w ? size.w / PW : 0;
   const h = PANEL_H * scale;
   const latest = useRef({ P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut });
   latest.current = { P, O, scale, onLink: props.onLink, onPlug: props.onPlug, onOut: props.onOut };
@@ -426,9 +427,10 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
     <View style={{ flex: 1, paddingHorizontal: 10 }} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
       {size.w > 0 && (
         <View style={{ width: size.w, height: h, alignSelf: 'center' }} {...pan.panHandlers}>
-          <Svg width={size.w} height={h} viewBox={`0 0 ${PANEL_W} ${PANEL_H}`}>
-            <Rect x={8} y={8} width={984} height={314} rx={18} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
-            <Rect x={20} y={20} width={960} height={290} rx={10} fill="#1A1D22" stroke="#232830" />
+          <Svg width={size.w} height={h} viewBox={`0 0 ${PW} ${PANEL_H}`}>
+            <Rect x={8} y={8} width={PW - 16} height={314} rx={18} fill="#15181C" stroke="#2A3038" strokeWidth={2} />
+            <Rect x={20} y={20} width={PW - 40} height={290} rx={10} fill="#1A1D22" stroke="#232830" />
+            {MODEL.family === 'xair' ? <>
             <Rect x={36} y={30} width={60} height={26} rx={3} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={66} y={68} textAnchor="middle" fontSize={7} fill="#9AA3AD">REMOTE · ETHERNET</SvgText>
             <Rect x={108} y={30} width={54} height={26} rx={3} fill="#0E1013" stroke="#3A414B" />
@@ -437,10 +439,11 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             <Circle cx={285} cy={52} r={7} fill="#0B0D10" stroke="#3A414B" /><Circle cx={315} cy={52} r={7} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={400} y={40} textAnchor="middle" fontSize={8} fill="#9AA3AD">USB</SvgText>
             <Rect x={392} y={46} width={16} height={12} rx={2} fill="#0B0D10" stroke="#3A414B" />
-            <SvgText x={920} y={52} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
-            <Rect x={930} y={24} width={6} height={60} rx={3} fill="#2A3038" />
-            <Line x1={36} y1={234} x2={820} y2={234} stroke="#2A3038" />
-            {MODEL.usbMulti && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>}
+            </> : <SvgText x={36} y={52} fontSize={11} fontWeight="700" fill="#9AA3AD">ENTRÉES 1-32 · SORTIES : les retours 1-12 (les bus 13-16 servent aux effets)</SvgText>}
+            <SvgText x={PW - 80} y={52} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
+            <Rect x={PW - 70} y={24} width={6} height={60} rx={3} fill="#2A3038" />
+            <Line x1={36} y1={234} x2={MODEL.family === 'x32' ? PW - 60 : 820} y2={234} stroke="#2A3038" />
+            {MODEL.usbMulti && MODEL.family === 'xair' && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>}
             {MODEL.preamps < MODEL.inputs && !MODEL.usbMulti && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">{`MICRO 1-${MODEL.preamps} · LE RESTE EN JACK`}</SvgText>}
             {/* prises */}
             {P.map((p) => {
@@ -552,7 +555,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
               </>
             )}
             {/* éventail : fils vers les entrées écartées */}
-            {fanC && <Rect x={0} y={0} width={PANEL_W} height={PANEL_H} fill="#000000" opacity={0.55} />}
+            {fanC && <Rect x={0} y={0} width={PW} height={PANEL_H} fill="#000000" opacity={0.55} />}
           {fanC && fanWires.map((w, k) => { const q = fanPos(k); return <Line key={'fl' + w.plug} x1={fanC.x} y1={fanC.y - 18} x2={(q.x + CHIP_W / 2) / (scale || 1)} y2={(q.y + 40) / (scale || 1)} stroke={props.plugColor(P[w.plug - 1])} strokeWidth={3} opacity={0.95} />; })}
             {/* halos de sélection */}
             {P.filter((p) => isSelPlug(p.n) || linkedPlug(p.n)).map((p) => { const { x, y } = plugXY(p.n); return <Circle key={'h' + p.n} cx={x} cy={y} r={27} fill="none" stroke={isSelPlug(p.n) ? '#FFFFFF' : props.plugColor(p)} strokeWidth={3} />; })}

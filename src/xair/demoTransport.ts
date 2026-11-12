@@ -1,6 +1,8 @@
 // « Table de démo » dans l'appli : imite une XR16 sans réseau, pour essayer
 // les écrans n'importe où. Même interface que le vrai transport UDP.
 import { decode, encode, OscArg, s } from '../osc/osc';
+import { isX32 } from './addresses';
+import { buildX32Meters, fromX32, toX32 } from './x32Wire';
 import { TableModel } from './tableModel';
 import { buildMeters } from './XAirClient';
 import { Remote, Transport } from './transport';
@@ -13,18 +15,23 @@ let current: DemoTransport | null = null;
 /** Démo vide : une table neuve, sans noms, sans retours ni groupes. */
 let demoEmpty = false;
 export const setDemoEmpty = (on: boolean) => { demoEmpty = on; };
-const preampsOf = (m: string) => (/12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
+const preampsOf = (m: string) => (isX32(m) ? 32 : /12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
 /** Change la table imitée ; la démo en cours suit tout de suite (mêmes noms, mêmes réglages). */
 export const setDemoModel = (m: string) => {
   demoModel = m;
-  if (current) { current.name = m; current.model.preamps = preampsOf(m); }
+  if (current) {
+    // passer d'une X Air à une X32 (ou l'inverse) : une table neuve de la bonne taille
+    if (isX32(m) !== isX32(current.name)) current.model = new TableModel(!demoEmpty, preampsOf(m), isX32(m) ? 32 : 16);
+    current.name = m;
+    current.model.preamps = preampsOf(m);
+  }
 };
 export const getDemoModel = () => demoModel;
 
 export class DemoTransport implements Transport {
   private onMessage: ((b: Uint8Array, from: Remote) => void) | null = null;
   name = demoModel;
-  model = new TableModel(!demoEmpty, preampsOf(demoModel));
+  model = new TableModel(!demoEmpty, preampsOf(demoModel), isX32(demoModel) ? 32 : 16);
   constructor() { current = this; }
   private rtaTimer: ReturnType<typeof setInterval> | null = null;
   private meterTimer: ReturnType<typeof setInterval> | null = null;
@@ -35,9 +42,20 @@ export class DemoTransport implements Transport {
   }
 
   send(bytes: Uint8Array) {
-    const m = decode(bytes);
-    if (!m) return;
-    const answer = (path: string, args: OscArg[]) => setTimeout(() => this.onMessage?.(encode(path, args), TABLE), 2);
+    const m0 = decode(bytes);
+    if (!m0) return;
+    // démo X32 : la table imitée parle « X Air » ; on traduit dans les deux sens, comme la vraie X32
+    const x32 = isX32(this.name);
+    let m = m0;
+    if (x32 && m0.address !== '/xinfo' && m0.address !== '/xremote' && m0.address !== '/meters') {
+      const t = fromX32(m0.address, m0.args);
+      if (!t) return;
+      m = { ...m0, address: t.path, args: t.args };
+    }
+    const answer = (path: string, args: OscArg[]) => setTimeout(() => {
+      if (x32 && path !== '/xinfo') { const w = toX32(path, args); if (!w) return; this.onMessage?.(encode(w.path, w.args), TABLE); return; }
+      this.onMessage?.(encode(path, args), TABLE);
+    }, 2);
     if (m.address === '/xinfo') return answer('/xinfo', [s('demo'), s('Table de démo'), s(this.name), s('démo')]);
     if (m.address === '/xremote') return;
     if (m.address === '/meters' && String(m.args[0] ?? '') === '/meters/4') {
@@ -54,7 +72,11 @@ export class DemoTransport implements Transport {
       if (!this.meterTimer)
         this.meterTimer = setInterval(() => {
           this.tick++;
-          this.onMessage?.(encode('/meters/1', [{ t: 'b', v: buildMeters(this.model.meters(this.tick)) }]), TABLE);
+          if (isX32(this.name)) {
+            const { m0, m2 } = this.model.metersX32(this.tick);
+            this.onMessage?.(encode('/meters/0', [{ t: 'b', v: buildX32Meters(m0) }]), TABLE);
+            this.onMessage?.(encode('/meters/2', [{ t: 'b', v: buildX32Meters(m2) }]), TABLE);
+          } else this.onMessage?.(encode('/meters/1', [{ t: 'b', v: buildMeters(this.model.meters(this.tick)) }]), TABLE);
         }, 60);
       return;
     }

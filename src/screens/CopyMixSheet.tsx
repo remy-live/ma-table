@@ -8,22 +8,22 @@ import { dbLabel } from '../ui/format';
 import { readInset } from '../ui/immersive';
 import { Btn, Kicker, SEM } from '../ui/kit';
 import { Theme } from '../ui/theme';
-import { allTargets, BUS_COUNT, CH_COUNT, chLevelPath, chNamePath, Target, targetId } from '../xair/addresses';
+import { allTargets, BUS_COUNT, CH_COUNT, chLevelPath, chNamePath, Target, targetId, allChannels } from '../xair/addresses';
 import { copyMix } from '../xair/groups';
 import { chColor, colorOf } from '../xair/smartName';
 import { XAirClient } from '../xair/XAirClient';
 import { safetyBackup } from '../store/sessions';
 import { mixInfo } from './MixPicker';
 
-const ALL = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+const ALLF = () => allChannels();
 
 export function CopyMixSheet(props: { client: XAirClient; theme: Theme; visible: boolean; dst: Target; onClose: () => void; onDone: (msg: string) => void }) {
   const { client, theme } = props;
   const mixes = allTargets().filter((t) => t.kind !== 'fx');
   const [src, setSrc] = useState<string>('main');
   const [dsts, setDsts] = useState<string[]>([]);
-  const named = ALL.filter((c) => String(client.get(chNamePath(c)) ?? ''));
-  const list = named.length ? named : ALL;
+  const named = ALLF().filter((c) => String(client.get(chNamePath(c)) ?? ''));
+  const list = named.length ? named : ALLF();
   const [picked, setPicked] = useState<number[]>(list);
   useEffect(() => {
     if (!props.visible) return;

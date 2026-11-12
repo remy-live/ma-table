@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { i, s as oscS } from '../osc/osc';
-import { CH_COUNT, chDcaPath, chNamePath, DCA_COUNT, dcaNamePath } from '../xair/addresses';
+import { CH_COUNT, chDcaPath, chNamePath, DCA_COUNT, dcaNamePath, allChannels } from '../xair/addresses';
 import { readGroups } from '../xair/groups';
 import { XAirClient } from '../xair/XAirClient';
 import { GROUP_COLORS } from '../screens/GroupsSheet';
@@ -86,7 +86,7 @@ async function tipOnce() {
   setTimeout(() => showTip('Astuce : un appui long sur le nom d’une voie fait la même chose que « ☑ Sélectionner ».'), 1200);
 }
 
-export const ALL_CH = Array.from({ length: CH_COUNT }, (_, k) => k + 1);
+export const ALL_CHF = () => allChannels();
 
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 2, borderRadius: 16, padding: 10 },

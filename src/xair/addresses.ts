@@ -15,8 +15,13 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 // par setModel à la connexion : on le lit toujours au moment de s'en servir.
 export let BUS_COUNT = 6;
 export const FX_COUNT = 4;
-export const DCA_COUNT = 4;
-export const CH_COUNT = 16;
+export let DCA_COUNT = 4;
+/** Voies : 16 sur les X Air, 32 sur X32 / M32. Réglé par setModel. */
+export let CH_COUNT = 16;
+/** Envois vers les effets : /ch/NN/mix/07..10 sur X Air ; sur X32 on prend les bus 13 à 16. */
+export let FX_SEND_BASE = 6;
+/** Toutes les voies, 1..CH_COUNT (à appeler au moment de s'en servir). */
+export const allChannels = () => Array.from({ length: CH_COUNT }, (_, k) => k + 1);
 
 export type Target = { kind: 'main' } | { kind: 'bus'; n: number } | { kind: 'fx'; n: number };
 
@@ -38,7 +43,7 @@ export function chLevelPath(ch: number, t: Target): string {
   const n = ch2(ch);
   if (t.kind === 'main') return `/ch/${n}/mix/fader`;
   if (t.kind === 'bus') return `/ch/${n}/mix/${ch2(t.n)}/level`;
-  return `/ch/${n}/mix/${ch2(6 + t.n)}/level`;
+  return `/ch/${n}/mix/${ch2(FX_SEND_BASE + t.n)}/level`;
 }
 
 /** Fader de sortie de la cible : master, niveau du retour, retour d'effet. */
@@ -69,9 +74,15 @@ export const dcaNamePath = (k: number) => `/dca/${k}/config/name`;
 // Entrée d'une voie
 // Préamplis micro (gain + 48 V) : XR18 / MR18 → entrées 1 à 16, XR16 → 1 à 8, XR12 → 1 à 4.
 // Le modèle vient de /xinfo à la connexion.
-export const MODEL = { name: 'XR18', preamps: 16, inputs: 18, outs: 6, usbMulti: true };
+export type Family = 'xair' | 'x32';
+export const MODEL = { name: 'XR18', family: 'xair' as Family, preamps: 16, inputs: 18, outs: 6, usbMulti: true };
+/** Les X32 / M32 connues. */
+export const X32_MODELS = ['X32', 'M32'] as const;
+/** Les tables qu'on peut imiter en démo. */
+export const DEMO_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'X32'] as const;
+export const isX32 = (model: string) => /^(X32|M32)/i.test(model.trim());
 /** Les tables X Air connues, pour le mode démo et l'aide. */
-export const XAIR_MODELS = ['XR18', 'MR18', 'XR16', 'XR12'] as const;
+export const XAIR_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'MR12'] as const;
 /**
  * Ce qui change d'un modèle à l'autre (le reste du protocole est identique) :
  *  - XR18 / MR18 / X18 : 16 préamplis, prises 1-16 + LINE 17/18, 6 AUX, carte son 18 voies
@@ -80,12 +91,31 @@ export const XAIR_MODELS = ['XR18', 'MR18', 'XR16', 'XR12'] as const;
  */
 export function setModel(model: string) {
   const m = model.toUpperCase();
-  const k = /12/.test(m) ? 12 : /16/.test(m) ? 16 : 18;
   MODEL.name = model || 'XR18';
-  MODEL.preamps = k === 18 ? 16 : k === 16 ? 8 : 4;
-  MODEL.inputs = k;
-  MODEL.outs = k === 18 ? 6 : k === 16 ? 4 : 2;
-  MODEL.usbMulti = k === 18;
+  if (isX32(m)) {
+    // X32 / M32 : 32 voies, 16 bus (12 pour les retours, 13-16 pour les effets), 8 DCA.
+    // X32 Compact / Producer / Rack : 16 préamplis sur la table, le reste par la scène numérique.
+    MODEL.family = 'x32';
+    MODEL.preamps = /COMPACT|PRODUCER|RACK|C$|R$/.test(m) ? 16 : 32;
+    MODEL.inputs = 32;
+    MODEL.outs = 12;
+    MODEL.usbMulti = true;
+    CH_COUNT = 32;
+    DCA_COUNT = 8;
+    FX_SEND_BASE = 12;
+    INSRC_COUNT = 32;
+  } else {
+    const k = /12/.test(m) ? 12 : /16/.test(m) ? 16 : 18;
+    MODEL.family = 'xair';
+    MODEL.preamps = k === 18 ? 16 : k === 16 ? 8 : 4;
+    MODEL.inputs = k;
+    MODEL.outs = k === 18 ? 6 : k === 16 ? 4 : 2;
+    MODEL.usbMulti = k === 18;
+    CH_COUNT = 16;
+    DCA_COUNT = 4;
+    FX_SEND_BASE = 6;
+    INSRC_COUNT = 18;
+  }
   BUS_COUNT = MODEL.outs;
   modelListeners.forEach((fn) => fn());
 }
@@ -112,12 +142,15 @@ export function formatPan(f: number): string {
 // Vumètres (étape 5) : /meters/1 = 16 voies (avant fader), 5x2 effets/aux,
 // 6 bus, 4 envois FX, 2 sortie LR (après fader), 2 moniteur. Valeurs en 1/256 dB.
 export const METERS_ALL = '/meters/1';
+// X32 : la table envoie /meters/0 (32 voies, 8 aux, 8 retours FX, 16 bus, 6 matrices,
+// en linéaire) et /meters/2 (où sont les sorties L/R) ; le client les range ainsi :
+// voies 0-31, bus 48-63, L 70, R 71.
 export const meterIndex = {
   ch: (ch: number) => ch - 1,
-  bus: (n: number) => 25 + n,
-  fxsend: (n: number) => 31 + n,
-  lrL: 36,
-  lrR: 37,
+  bus: (n: number) => (MODEL.family === 'x32' ? 47 + n : 25 + n),
+  fxsend: (n: number) => (MODEL.family === 'x32' ? 59 + n : 31 + n),
+  get lrL() { return MODEL.family === 'x32' ? 70 : 36; },
+  get lrR() { return MODEL.family === 'x32' ? 71 : 37; },
 };
 
 // Traitement d'une voie
@@ -195,8 +228,8 @@ export const toggleDca = (mask: number, k: number) => mask ^ (1 << (k - 1));
 // À VÉRIFIER avec le rapport : /ch/NN/config/insrc, entier 0..17
 // (0 = prise 1 … 15 = prise 16, 16 = LINE 17 / USB gauche, 17 = LINE 18 / USB droite).
 export const insrcPath = (ch: number) => `/ch/${ch2(ch)}/config/insrc`;
-export const INSRC_COUNT = 18;
-export const insrcLabel = (i: number) => (i < 16 ? `Prise ${i + 1}` : i === 16 ? 'Ordi G (17)' : 'Ordi D (18)');
+export let INSRC_COUNT = 18;
+export const insrcLabel = (i: number) => (MODEL.family === 'x32' || i < 16 ? `Prise ${i + 1}` : i === 16 ? 'Ordi G (17)' : 'Ordi D (18)');
 /** Numéro de prise à l'arrière (1..18) pour une valeur insrc. */
 export const insrcPlug = (i: number) => i + 1;
 

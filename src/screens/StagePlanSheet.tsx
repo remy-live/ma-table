@@ -5,7 +5,7 @@ import React, { useEffect } from 'react';
 import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { Theme } from '../ui/theme';
-import { chLevelPath, chNamePath, insrcPath, insrcPlug, MODEL, phantomPath, sourceKind } from '../xair/addresses';
+import { chLevelPath, chNamePath, insrcPath, insrcPlug, MODEL, phantomPath, sourceKind, allChannels } from '../xair/addresses';
 import { faderToDb } from '../xair/levels';
 import { chColor } from '../xair/smartName';
 import { outlets, wiringPaths } from '../xair/wiring';
@@ -14,11 +14,11 @@ import { load } from '../store/persist';
 import { EMPTY, endLabel, gearText, Stage } from '../store/stage';
 import { StageEditor } from './StageEditor';
 
-const CHS = Array.from({ length: 16 }, (_, k) => k + 1);
+const CHSF = () => allChannels();
 
 export function stagePlan(client: XAirClient) {
   const name = (c: number) => String(client.get(chNamePath(c)) ?? '').trim();
-  const inputs = CHS.filter((c) => name(c)).map((c) => {
+  const inputs = CHSF().filter((c) => name(c)).map((c) => {
     const insrc = Number(client.get(insrcPath(c)) ?? c - 1);
     const p48 = Number(client.get(phantomPath(c)) ?? 0) === 1;
     return { ch: c, name: name(c), plug: insrcPlug(insrc), kind: sourceKind(insrc, p48) };

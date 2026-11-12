@@ -29,14 +29,15 @@ import { MIX_COLORS } from './MixPicker';
 
 type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | { k: 'many'; ns: number[]; g?: number } | null;
 type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'fold'; k: number };
-const W = 1000;
+// X32 / M32 : 32 prises sur 2 rangées de 16 et 12 retours : dessin plus large
+const big = () => MODEL.family === 'x32';
 const H = 300;
-const xIn = (n: number) => (n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
-const yIn = (n: number) => (n <= 8 ? 66 : 158);
-const xOut = (k: number) => (k < 6 ? 60 + k * 100 : k === 6 ? 860 : 920); // 2 enceintes : MAIN L puis MAIN R
+const xIn = (n: number) => (big() ? 60 + ((n - 1) % 16) * 100 : n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
+const yIn = (n: number) => (big() ? (n <= 16 ? 66 : 158) : n <= 8 ? 66 : 158);
+const xOut = (k: number) => { const nb = big() ? 12 : 6; return k < nb ? 60 + k * 100 : 60 + nb * 100 + 100 + (k - nb) * 60; }; // 2 enceintes : MAIN L puis MAIN R
 const Y_OUT = 262;
 // bouton « Plusieurs », dans le coin libre à droite de la 2e rangée (repère du dessin)
-const MULTI = { x: 812, y: 126, w: 170, h: 46 };
+const multiBox = () => (big() ? { x: 1500, y: 214, w: 170, h: 46 } : { x: 812, y: 126, w: 170, h: 46 });
 
 /** Sélection pilotée de l'extérieur (la Table) : les voies choisies restent choisies d'une vue à l'autre. */
 export interface MultiCtl { on: boolean; set: (v: boolean) => void; picked?: number[]; setPicked?: (chs: number[]) => void }
@@ -53,6 +54,8 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const setMulti = (v: boolean) => (props.multiCtl ? props.multiCtl.set(v) : setMultiL(v));
   const [open, setOpen] = useState<number[]>([]);
   const [size, setSize] = useState({ w: 0 });
+  const W = big() ? 1700 : 1000;
+  const MULTI = multiBox();
   const scale = size.w ? size.w / W : 0;
   const linked = (n: number, id: string) => props.W.some((w) => w.plug === n && w.out === id);
   const plug = sel?.k === 'in' ? P[sel.n - 1] : null;

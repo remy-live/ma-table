@@ -11,11 +11,18 @@ export class TableModel {
   /** préamplis micro : 16 (XR18), 8 (XR16), 4 (XR12) */
   preamps = 16;
 
-  constructor(demo = true, preamps = 16) {
+  /** voies : 16 (X Air) ou 32 (X32) */
+  chans = 16;
+  /** retours : 6 (X Air) ou 12 (X32) */
+  buses = 6;
+
+  constructor(demo = true, preamps = 16, chans = 16) {
     this.preamps = preamps;
+    this.chans = chans;
+    this.buses = chans > 16 ? 12 : 6;
     this.state.set('/lr/mix/fader', f(0.75));
     this.state.set('/lr/mix/on', i(1));
-    for (let c = 1; c <= 16; c++) {
+    for (let c = 1; c <= this.chans; c++) {
       const n = ch2(c);
       this.state.set(`/ch/${n}/config/name`, s(demo ? NAMES[c - 1] ?? '' : ''));
       this.state.set(`/ch/${n}/mix/fader`, f(demo && c <= 9 ? 0.7 : 0));
@@ -75,9 +82,31 @@ export class TableModel {
 
   /** Vumètres imités : chaque voie « joue » selon son fader, son mute et son gain. */
   meters(tick: number): number[] {
+    const { ch, bus, lr: L } = this.levels(tick);
     const out = new Array(40).fill(-90);
+    for (let c = 1; c <= 16; c++) out[c - 1] = ch[c - 1];
+    for (let b = 1; b <= 6; b++) out[25 + b] = bus[b - 1];
+    out[36] = L[0];
+    out[37] = L[1];
+    return out;
+  }
+
+  /** Vumètres façon X32 : /meters/0 (voies 0-31, bus 48-63) et /meters/2 (L/R en 22-23). */
+  metersX32(tick: number): { m0: number[]; m2: number[] } {
+    const { ch, bus, lr } = this.levels(tick);
+    const m0 = new Array(70).fill(-90);
+    for (let c = 0; c < 32; c++) m0[c] = ch[c] ?? -90;
+    for (let b = 0; b < 16; b++) m0[48 + b] = bus[b] ?? -90;
+    const m2 = new Array(49).fill(-90);
+    m2[22] = lr[0];
+    m2[23] = lr[1];
+    return { m0, m2 };
+  }
+
+  private levels(tick: number): { ch: number[]; bus: number[]; lr: [number, number] } {
+    const out = new Array(this.chans).fill(-90);
     let lr = -90;
-    for (let c = 1; c <= 16; c++) {
+    for (let c = 1; c <= this.chans; c++) {
       const n = c < 10 ? '0' + c : String(c);
       const on = Number(this.get(`/ch/${n}/mix/on`)?.v ?? 1) === 1;
       const fader = Number(this.get(`/ch/${n}/mix/fader`)?.v ?? 0);
@@ -88,15 +117,14 @@ export class TableModel {
       out[c - 1] = Math.min(2, pre);
       if (on) lr = Math.max(lr, pre + (fader * 40 - 30));
     }
-    for (let b = 1; b <= 6; b++) out[25 + b] = lr > -90 ? lr - 8 - b : -90;
-    out[36] = Math.min(6, lr);
-    out[37] = Math.min(6, lr - 1);
+    const bus = Array.from({ length: this.buses }, (_, k) => (lr > -90 ? lr - 9 - k : -90));
+    let L: [number, number] = [Math.min(6, lr), Math.min(6, lr - 1)];
     // Démo : un retour (ou la façade) poussé à fond se met à « siffler » :
     // un niveau fort et presque constant, comme un vrai larsen.
     const hiss = (path: string) => Number(this.get(path)?.v ?? 0.75) >= 0.87 && Number(this.get(path.replace('fader', 'on'))?.v ?? 1) === 1;
-    for (let b = 1; b <= 6; b++) if (hiss(`/bus/${b}/mix/fader`)) out[25 + b] = -3 + Math.sin(tick) * 0.4;
-    if (hiss('/lr/mix/fader')) { out[36] = -2 + Math.sin(tick) * 0.4; out[37] = out[36]; }
-    return out;
+    for (let b = 1; b <= this.buses; b++) if (hiss(`/bus/${b}/mix/fader`)) bus[b - 1] = -3 + Math.sin(tick) * 0.4;
+    if (hiss('/lr/mix/fader')) { const v = -2 + Math.sin(tick) * 0.4; L = [v, v]; }
+    return { ch: out, bus, lr: L };
   }
 
   /** Applique une valeur reçue, en gardant le type de l'adresse. */

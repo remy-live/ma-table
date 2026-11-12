@@ -67,7 +67,7 @@ export function plugs(client: XAirClient): Plug[] {
   // XR18 : 1-16 + LINE 17/18 ; XR16 : 1-16 ; XR12 : 1-12
   for (let n = 1; n <= MODEL.inputs; n++) {
     const chans = Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => insrcPlug(Number(client.get(insrcPath(c)) ?? c - 1)) === n);
-    out.push({ n, chans, name: chans.length ? String(client.get(chNamePath(chans[0])) ?? '') : '', usb: MODEL.usbMulti && n > 16 });
+    out.push({ n, chans, name: chans.length ? String(client.get(chNamePath(chans[0])) ?? '') : '', usb: MODEL.family === 'xair' && MODEL.usbMulti && n > 16 });
   }
   return out;
 }
@@ -157,17 +157,19 @@ export function wiringPaths(): string[] {
 }
 
 // ---------- Géométrie de la face arrière (viewBox 1000 × 300) ----------
-export const PANEL_W = 1000;
+// X32 / M32 : 32 prises sur 2 rangées de 16, 12 retours : le panneau est plus large.
+export const panelW = () => (MODEL.family === 'x32' ? 1700 : 1000);
 export const PANEL_H = 330;
 const X0 = 80;
 const STEP = 100;
 export function plugXY(n: number): { x: number; y: number } {
+  if (MODEL.family === 'x32') return { x: X0 + ((n - 1) % 16) * STEP, y: n <= 16 ? 110 : 185 };
   // 8 colonnes sur toute la largeur du panneau, LINE 17/18 tout à droite
   if (n <= 16) return { x: X0 + ((n - 1) % 8) * STEP, y: n <= 8 ? 110 : 185 };
   return { x: n === 17 ? 868 : 928, y: 180 };
 }
 export function outletXY(id: string): { x: number; y: number } {
-  const xm = X0 + 6.5 * STEP;
+  const xm = X0 + (MODEL.family === 'x32' ? 12.5 : 6.5) * STEP;
   if (id === 'main') return { x: xm, y: 278 };
   if (id === 'mainL') return { x: xm - 23, y: 278 };
   if (id === 'mainR') return { x: xm + 23, y: 278 };

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { QrScanner } from '../ui/QrScanner';
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
-import { WLAN, WLAN_PATHS, XAIR_MODELS } from '../xair/addresses';
+import { WLAN, WLAN_PATHS, DEMO_MODELS } from '../xair/addresses';
 import { BUILD_VERSION } from '../version';
 import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBars } from '../xair/wifiScan';
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
@@ -339,7 +339,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           </Pressable>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Table imitée par la démo :</Text>
-            {XAIR_MODELS.filter((m) => m !== 'MR18').map((m) => (
+            {DEMO_MODELS.map((m) => (
               <Pressable key={m} onPress={() => { setDemoModel(m); setDemoM(m); save('demoModele', m); }} accessibilityRole="radio" accessibilityState={{ selected: demoM === m }}
                 style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', borderWidth: 2, borderColor: demoM === m ? theme.accent : theme.line2, backgroundColor: demoM === m ? theme.accent : 'transparent' }}>
                 <Text style={{ color: demoM === m ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{m}</Text>
