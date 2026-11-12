@@ -244,7 +244,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View key={modelTick} style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
+    <View key={`corps${modelTick}`} style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} onFull={setNavHidden} />}
@@ -255,9 +255,9 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
+      {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
       {body}
-      {!wide && !(navHidden && tab === 'branchements') && <NavBar client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}

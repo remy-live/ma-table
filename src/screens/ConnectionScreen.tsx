@@ -13,7 +13,7 @@ import { DebugScreen } from './DebugScreen';
 import { SessionsScreen } from './SessionsScreen';
 
 /** Démo : changer de table imitée sans quitter (l'écran en cours se redessine). */
-function DemoModelPicker({ client, theme }: { client: XAirClient; theme: Theme }) {
+export function DemoModelPicker({ client, theme }: { client: XAirClient; theme: Theme }) {
   const [cur, setCur] = useState(client.info?.model ?? 'XR18');
   if (client.hostAddress !== 'demo') return null;
   return (

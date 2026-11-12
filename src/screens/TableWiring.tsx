@@ -30,7 +30,7 @@ import { MIX_COLORS } from './MixPicker';
 type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | { k: 'many'; ns: number[]; g?: number } | null;
 type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'fold'; k: number };
 // X32 / M32 : 32 prises sur 2 rangées de 16 et 12 retours : dessin plus large
-const big = () => MODEL.family === 'x32';
+const big = () => MODEL.family !== 'xair';
 const H = 300;
 const xIn = (n: number) => (big() ? 60 + ((n - 1) % 16) * 100 : n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
 const yIn = (n: number) => (big() ? (n <= 16 ? 66 : 158) : n <= 8 ? 66 : 158);

@@ -19,7 +19,7 @@ export class TableModel {
   constructor(demo = true, preamps = 16, chans = 16) {
     this.preamps = preamps;
     this.chans = chans;
-    this.buses = chans > 16 ? 12 : 6;
+    this.buses = chans === 32 ? 12 : chans === 24 ? 10 : 6;
     this.state.set('/lr/mix/fader', f(0.75));
     this.state.set('/lr/mix/on', i(1));
     for (let c = 1; c <= this.chans; c++) {
@@ -27,7 +27,7 @@ export class TableModel {
       this.state.set(`/ch/${n}/config/name`, s(demo ? NAMES[c - 1] ?? '' : ''));
       this.state.set(`/ch/${n}/mix/fader`, f(demo && c <= 9 ? 0.7 : 0));
       // Démo : les voies 5 à 9 sont dans le groupe DCA 1 « Batterie »
-      this.state.set(`/ch/${n}/grp/dca`, i(demo && c >= 5 && c <= 9 ? 1 : 0));
+      this.state.set(`/ch/${n}/grp/dca`, i(demo && chans !== 24 && c >= 5 && c <= 9 ? 1 : 0)); // Ui : pas de groupes
       this.state.set(`/ch/${n}/mix/01/level`, f(demo && c <= 9 ? 0.55 : 0));
       this.state.set(`/ch/${n}/mix/02/level`, f(demo && c <= 3 ? 0.65 : 0));
     }

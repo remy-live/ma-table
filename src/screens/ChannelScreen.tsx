@@ -33,7 +33,7 @@ import { mixInfo } from './MixPicker';
 import { PresetPanel } from './PresetPanel';
 import { GatePanel, HpfPanel } from './CutGatePanels';
 import { showTip } from '../ui/tip';
-import { meterIndex } from '../xair/addresses';
+import { meterIndex, MODEL } from '../xair/addresses';
 
 const FX_COLORS = ['#C084FC', '#F472B6', '#2DD4BF', '#FBBF24'];
 type Block = 'preset' | 'in' | 'hpf' | 'gate' | 'eq' | 'comp' | 'fx' | 'qui';
@@ -64,7 +64,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
   const [blockSel, setBlock] = useState<Block>(start ?? 'eq');
   useEffect(() => { if (start) setBlock(start); }, [ch, start]);
-  const block = blockSel;
+  // Ui : seuls Entrée, Effets et Qui entend existent
+  const block: Block = MODEL.family === 'ui' && !['in', 'fx', 'qui'].includes(blockSel) ? 'in' : blockSel;
   // un bloc à la fois, sur téléphone comme sur tablette : tout tient sans défiler
   const show = (b: Block | Block[]) => (Array.isArray(b) ? b.includes(block) : block === b);
   const [band, setBand] = useState(2);
@@ -110,7 +111,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
   const destLv = dests.map((t) => num(chLevelPath(ch, t), 0));
 
   const fxCount = sends.filter((v) => v > 0).length;
-  const BLOCKS: { id: Block; icon: string; label: string; sub: string; color: string }[] = [
+  // Soundcraft Ui : l'appli ne pilote pas (encore) son égaliseur, son gate ni son compresseur
+  const BLOCKS0: { id: Block; icon: string; label: string; sub: string; color: string }[] = [
     { id: 'preset', icon: '', label: 'Préréglage', sub: lastPreset ?? 'choisir', color: '#FBBF24' },
     { id: 'in', icon: '🎤', label: 'Entrée', sub: `prise ${insrcPlug(insrc)} · ${gain === undefined ? kind : `${fToGainDb(Number(gain)) > 0 ? '+' : ''}${fToGainDb(Number(gain)).toFixed(0)} dB`}`, color: '#C9CED4' },
     { id: 'hpf', icon: '⤴', label: 'Coupe-bas', sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
@@ -120,6 +122,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
     { id: 'fx', icon: '✦', label: 'Effets', sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
     { id: 'qui', icon: '🎧', label: 'Qui entend', sub: `${destLv.filter((v) => v > 0).length} sortie${destLv.filter((v) => v > 0).length > 1 ? 's' : ''}`, color: '#60A5FA' },
   ];
+  const BLOCKS = MODEL.family === 'ui' ? BLOCKS0.filter((b) => b.id === 'in' || b.id === 'fx' || b.id === 'qui') : BLOCKS0;
   const active = (b: Block) => (b === 'hpf' ? hpOn : b === 'gate' ? gateOn : b === 'eq' ? eqOn : b === 'comp' ? dynOn : b === 'fx' ? fxCount > 0 : true);
 
   // EQ

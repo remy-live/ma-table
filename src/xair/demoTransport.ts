@@ -1,7 +1,7 @@
 // « Table de démo » dans l'appli : imite une XR16 sans réseau, pour essayer
 // les écrans n'importe où. Même interface que le vrai transport UDP.
 import { decode, encode, OscArg, s } from '../osc/osc';
-import { isX32 } from './addresses';
+import { isUi, isX32 } from './addresses';
 import { buildX32Meters, fromX32, toX32 } from './x32Wire';
 import { TableModel } from './tableModel';
 import { buildMeters } from './XAirClient';
@@ -15,13 +15,15 @@ let current: DemoTransport | null = null;
 /** Démo vide : une table neuve, sans noms, sans retours ni groupes. */
 let demoEmpty = false;
 export const setDemoEmpty = (on: boolean) => { demoEmpty = on; };
-const preampsOf = (m: string) => (isX32(m) ? 32 : /12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
+const preampsOf = (m: string) => (isX32(m) ? 32 : isUi(m) ? 24 : /12/.test(m) ? 4 : /16/.test(m) ? 8 : 16);
+const chansOf = (m: string) => (isX32(m) ? 32 : isUi(m) ? 24 : 16);
+const familyOf = (m: string) => (isX32(m) ? 'x32' : isUi(m) ? 'ui' : 'xair');
 /** Change la table imitée ; la démo en cours suit tout de suite (mêmes noms, mêmes réglages). */
 export const setDemoModel = (m: string) => {
   demoModel = m;
   if (current) {
     // passer d'une X Air à une X32 (ou l'inverse) : une table neuve de la bonne taille
-    if (isX32(m) !== isX32(current.name)) current.model = new TableModel(!demoEmpty, preampsOf(m), isX32(m) ? 32 : 16);
+    if (familyOf(m) !== familyOf(current.name)) current.model = new TableModel(!demoEmpty, preampsOf(m), chansOf(m));
     current.name = m;
     current.model.preamps = preampsOf(m);
   }
@@ -31,7 +33,7 @@ export const getDemoModel = () => demoModel;
 export class DemoTransport implements Transport {
   private onMessage: ((b: Uint8Array, from: Remote) => void) | null = null;
   name = demoModel;
-  model = new TableModel(!demoEmpty, preampsOf(demoModel), isX32(demoModel) ? 32 : 16);
+  model = new TableModel(!demoEmpty, preampsOf(demoModel), chansOf(demoModel));
   constructor() { current = this; }
   private rtaTimer: ReturnType<typeof setInterval> | null = null;
   private meterTimer: ReturnType<typeof setInterval> | null = null;
@@ -76,6 +78,15 @@ export class DemoTransport implements Transport {
             const { m0, m2 } = this.model.metersX32(this.tick);
             this.onMessage?.(encode('/meters/0', [{ t: 'b', v: buildX32Meters(m0) }]), TABLE);
             this.onMessage?.(encode('/meters/2', [{ t: 'b', v: buildX32Meters(m2) }]), TABLE);
+          } else if (isUi(this.name)) {
+            // démo Ui : même rangement que le traducteur Ui (voies 0-23, retours 30-39, L/R 44-45)
+            const { m0, m2 } = this.model.metersX32(this.tick);
+            const db = new Array(48).fill(-90);
+            for (let c = 0; c < 24; c++) db[c] = m0[c];
+            for (let b = 0; b < 10; b++) db[30 + b] = m0[48 + b];
+            db[44] = m2[22];
+            db[45] = m2[23];
+            this.onMessage?.(encode('/meters/1', [{ t: 'b', v: buildMeters(db) }]), TABLE);
           } else this.onMessage?.(encode('/meters/1', [{ t: 'b', v: buildMeters(this.model.meters(this.tick)) }]), TABLE);
         }, 60);
       return;

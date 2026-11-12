@@ -5,6 +5,7 @@ import { Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextIn
 import { bottomPad } from '../ui/immersive';
 import { clearLog, Entry, getEntries, onLog, stamp } from '../debug/log';
 import { APP_VERSION, runDiagnostic } from '../debug/diagnostic';
+import { DemoModelPicker } from './ConnectionScreen';
 import { XAirClient } from '../xair/XAirClient';
 import { Theme } from '../ui/theme';
 
@@ -82,6 +83,7 @@ export function DebugScreen({ client, theme, visible, onClose }: { client: XAirC
           </Pressable>
         </View>
 
+        {client && <View style={{ marginBottom: 8 }}><DemoModelPicker client={client} theme={theme} /></View>}
         <View style={styles.row}>
           <Pressable onPress={diag} disabled={!!busy} style={[styles.btn, { backgroundColor: theme.panel, borderColor: theme.line2, borderWidth: 1 }]}>
             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Lancer le diagnostic</Text>

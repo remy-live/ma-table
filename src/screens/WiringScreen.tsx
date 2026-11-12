@@ -439,10 +439,10 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
             <Circle cx={285} cy={52} r={7} fill="#0B0D10" stroke="#3A414B" /><Circle cx={315} cy={52} r={7} fill="#0B0D10" stroke="#3A414B" />
             <SvgText x={400} y={40} textAnchor="middle" fontSize={8} fill="#9AA3AD">USB</SvgText>
             <Rect x={392} y={46} width={16} height={12} rx={2} fill="#0B0D10" stroke="#3A414B" />
-            </> : <SvgText x={36} y={52} fontSize={11} fontWeight="700" fill="#9AA3AD">ENTRÉES 1-32 · SORTIES : les retours 1-12 (les bus 13-16 servent aux effets)</SvgText>}
+            </> : <SvgText x={36} y={52} fontSize={11} fontWeight="700" fill="#9AA3AD">{MODEL.family === 'x32' ? 'ENTRÉES 1-32 · SORTIES : les retours 1-12 (les bus 13-16 servent aux effets)' : `ENTRÉES 1-${MODEL.inputs} · SORTIES : les ${MODEL.outs} retours (AUX)`}</SvgText>}
             <SvgText x={PW - 80} y={52} textAnchor="end" fontSize={20} fontWeight="800" fill="#E8EAED">{MODEL.name}</SvgText>
             <Rect x={PW - 70} y={24} width={6} height={60} rx={3} fill="#2A3038" />
-            <Line x1={36} y1={234} x2={MODEL.family === 'x32' ? PW - 60 : 820} y2={234} stroke="#2A3038" />
+            <Line x1={36} y1={234} x2={MODEL.family !== 'xair' ? PW - 60 : 820} y2={234} stroke="#2A3038" />
             {MODEL.usbMulti && MODEL.family === 'xair' && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">LINE 17/18 · ORDI</SvgText>}
             {MODEL.preamps < MODEL.inputs && !MODEL.usbMulti && <SvgText x={898} y={150} textAnchor="middle" fontSize={8} fontWeight="700" fill="#9AA3AD">{`MICRO 1-${MODEL.preamps} · LE RESTE EN JACK`}</SvgText>}
             {/* prises */}

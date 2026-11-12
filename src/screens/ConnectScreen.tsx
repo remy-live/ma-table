@@ -8,6 +8,7 @@ import { canScanWifi, currentWifi, openFix, ScanInfo, scanWifi, WifiNet, wifiBar
 import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/monitor';
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
+import { UiTransport } from '../xair/uiTransport';
 import { DemoTransport, getDemoModel, setDemoEmpty, setDemoModel } from '../xair/demoTransport';
 import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
 import { load, save, setSandbox } from '../store/persist';
@@ -59,6 +60,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   useEffect(() => {
     load<string | null>('derniereIp', null).then(async (ip0) => {
       setLast(ip0);
+      const b = await load<'osc' | 'ui'>('derniereMarque', 'osc');
+      brandRef.current = b;
+      setBrand0(b);
       if (autoTried || !ip0 || invite) return;
       autoTried = true;
       const t = await load<MyTable | null>('maTable', null);
@@ -125,15 +129,19 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   };
 
   const [demoM, setDemoM] = useState(getDemoModel());
+  // marque pour la connexion par adresse : Behringer / Midas (OSC) ou Soundcraft Ui (WebSocket)
+  const [brand, setBrand0] = useState<'osc' | 'ui'>('osc');
+  const brandRef = React.useRef<'osc' | 'ui'>('osc');
+  const setBrand = (b: 'osc' | 'ui') => { brandRef.current = b; setBrand0(b); save('derniereMarque', b); };
   useEffect(() => { load<string>('demoModele', 'XR18').then((m) => { setDemoModel(m); setDemoM(m); }); }, []);
   const connect = async (host: string, demo = false, mon?: MonConfig, musician = false, prep = false, cancel?: { current: boolean }, empty = false) => {
     setBusy(true);
     setDemoEmpty(demo && empty);
     setSandbox(demo && empty);
     setError('');
-    const client = new XAirClient(demo ? new DemoTransport() : new RnUdpTransport());
+    const client = new XAirClient(demo ? new DemoTransport() : brandRef.current === 'ui' ? new UiTransport() : new RnUdpTransport());
     try {
-      await client.connect(host);
+      await client.connect(host, 16, !demo && brandRef.current === 'ui' ? 8000 : 2500);
       if (cancel?.current) { client.close(); setBusy(false); return; }
       if (!demo && !mon && !musician) {
         save('derniereIp', host);
@@ -229,8 +237,17 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           </Pressable>
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              {([['osc', 'Behringer · Midas'], ['ui', 'Soundcraft Ui']] as const).map(([k, label]) => (
+                <Pressable key={k} onPress={() => setBrand(k)} accessibilityRole="radio" accessibilityState={{ selected: brand === k }}
+                  style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', borderWidth: 2, borderColor: brand === k ? theme.accent : theme.line2, backgroundColor: brand === k ? theme.accent : 'transparent' }}>
+                  <Text style={{ color: brand === k ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {brand === 'ui' && <Text style={{ color: theme.muted, fontSize: 11 }}>Ui12 · Ui16 · Ui24R. Sur son propre Wi-Fi, la table est souvent en 10.10.1.1.</Text>}
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput value={ip} onChangeText={setIp} placeholder="192.168.1.1" placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+              <TextInput value={ip} onChangeText={setIp} placeholder={brand === 'ui' ? '10.10.1.1' : '192.168.1.1'} placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
               <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
                 <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
               </Pressable>

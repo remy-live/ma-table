@@ -1,0 +1,32 @@
+// Essai du traducteur Soundcraft Ui contre une fausse Ui (tools : /tmp/ui/fake.mjs, port 8899).
+import { XAirClient } from '../src/xair/XAirClient';
+import { UiTransport } from '../src/xair/uiTransport';
+import { BUS_COUNT, CH_COUNT, chLevelPath, MODEL, meterIndex } from '../src/xair/addresses';
+import { faderToDb } from '../src/xair/levels';
+import { f, i, s } from '../src/osc/osc';
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+(async () => {
+  const c = new XAirClient(new UiTransport());
+  const info = await c.connect('127.0.0.1:8899', 16, 5000);
+  console.log('xinfo', info, MODEL.family, 'voies', CH_COUNT, 'retours', BUS_COUNT);
+  console.log('voie 1 :', c.get('/ch/01/config/name'), 'fader dB', faderToDb(Number(c.get('/ch/01/mix/fader'))).toFixed(1), 'on', c.get('/ch/01/mix/on'));
+  console.log('retour 3 :', c.get('/bus/3/config/name'), faderToDb(Number(c.get('/bus/3/mix/fader'))).toFixed(1), 'dB');
+  console.log('envoi voie 4 → retour 3 :', faderToDb(Number(c.get(chLevelPath(4, { kind: 'bus', n: 3 })))).toFixed(1), 'dB');
+  console.log('gain prise 1 :', (Number(c.get('/headamp/01/gain')) * 72 - 12).toFixed(1), 'dB');
+  let frames = 0; let v = 0;
+  c.onMeters((m) => { frames++; v = m[meterIndex.ch(1)]; });
+  c.startMeters();
+  await sleep(500);
+  console.log('vumètres', frames, 'voie 1', v.toFixed(1), 'dB');
+  c.set('/ch/02/mix/fader', f(0.75));
+  c.set('/ch/02/mix/on', i(0));
+  c.set('/ch/02/config/name', s('Voix'));
+  c.set(chLevelPath(2, { kind: 'fx', n: 1 }), f(0.5));
+  c.set('/bus/1/mix/fader', f(0.75));
+  c.set('/lr/mix/fader', f(0.75));
+  c.set('/-stat/solosw/05', i(1));
+  await sleep(200);
+  c.close();
+  await sleep(300);
+  process.exit(0);
+})();

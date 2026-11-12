@@ -74,13 +74,15 @@ export const dcaNamePath = (k: number) => `/dca/${k}/config/name`;
 // Entrée d'une voie
 // Préamplis micro (gain + 48 V) : XR18 / MR18 → entrées 1 à 16, XR16 → 1 à 8, XR12 → 1 à 4.
 // Le modèle vient de /xinfo à la connexion.
-export type Family = 'xair' | 'x32';
+export type Family = 'xair' | 'x32' | 'ui';
 export const MODEL = { name: 'XR18', family: 'xair' as Family, preamps: 16, inputs: 18, outs: 6, usbMulti: true };
 /** Les X32 / M32 connues. */
 export const X32_MODELS = ['X32', 'M32'] as const;
 /** Les tables qu'on peut imiter en démo. */
-export const DEMO_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'X32'] as const;
+export const DEMO_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'X32', 'Ui24R'] as const;
 export const isX32 = (model: string) => /^(X32|M32)/i.test(model.trim());
+/** Soundcraft Ui12 / Ui16 / Ui24R (par la WebSocket, voir uiTransport). */
+export const isUi = (model: string) => /^UI ?(12|16|24)/i.test(model.trim());
 /** Les tables X Air connues, pour le mode démo et l'aide. */
 export const XAIR_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'MR12'] as const;
 /**
@@ -92,7 +94,19 @@ export const XAIR_MODELS = ['XR18', 'XR16', 'XR12', 'MR18', 'MR12'] as const;
 export function setModel(model: string) {
   const m = model.toUpperCase();
   MODEL.name = model || 'XR18';
-  if (isX32(m)) {
+  if (isUi(m)) {
+    // Soundcraft Ui : 8 / 12 / 24 entrées, 4 / 6 / 10 retours, 4 effets, pas de groupes (DCA)
+    const n = /12/.test(m) ? 8 : /16/.test(m) ? 12 : 24;
+    MODEL.family = 'ui';
+    MODEL.preamps = n;
+    MODEL.inputs = n;
+    MODEL.outs = /12/.test(m) ? 4 : /16/.test(m) ? 6 : 10;
+    MODEL.usbMulti = false;
+    CH_COUNT = n;
+    DCA_COUNT = 0;
+    FX_SEND_BASE = 10;
+    INSRC_COUNT = n;
+  } else if (isX32(m)) {
     // X32 / M32 : 32 voies, 16 bus (12 pour les retours, 13-16 pour les effets), 8 DCA.
     // X32 Compact / Producer / Rack : 16 préamplis sur la table, le reste par la scène numérique.
     MODEL.family = 'x32';
@@ -147,10 +161,10 @@ export const METERS_ALL = '/meters/1';
 // voies 0-31, bus 48-63, L 70, R 71.
 export const meterIndex = {
   ch: (ch: number) => ch - 1,
-  bus: (n: number) => (MODEL.family === 'x32' ? 47 + n : 25 + n),
-  fxsend: (n: number) => (MODEL.family === 'x32' ? 59 + n : 31 + n),
-  get lrL() { return MODEL.family === 'x32' ? 70 : 36; },
-  get lrR() { return MODEL.family === 'x32' ? 71 : 37; },
+  bus: (n: number) => (MODEL.family === 'x32' ? 47 + n : MODEL.family === 'ui' ? 29 + n : 25 + n),
+  fxsend: (n: number) => (MODEL.family === 'x32' ? 59 + n : MODEL.family === 'ui' ? 39 + n : 31 + n),
+  get lrL() { return MODEL.family === 'x32' ? 70 : MODEL.family === 'ui' ? 44 : 36; },
+  get lrR() { return MODEL.family === 'x32' ? 71 : MODEL.family === 'ui' ? 45 : 37; },
 };
 
 // Traitement d'une voie
