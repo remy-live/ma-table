@@ -9,6 +9,7 @@ import { DEFAULT_RIGHTS, MonConfig, parseInvite, parseShortCode } from '../xair/
 import { TableInfo, XAirClient } from '../xair/XAirClient';
 import { RnUdpTransport } from '../xair/udpTransport';
 import { UiTransport } from '../xair/uiTransport';
+import { ShareSheet } from './ShareSheet';
 import { DemoTransport, getDemoModel, setDemoEmpty, setDemoModel } from '../xair/demoTransport';
 import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
 import { load, save, setSandbox } from '../store/persist';
@@ -129,6 +130,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   };
 
   const [demoM, setDemoM] = useState(getDemoModel());
+  const [share, setShare] = useState(false);
   // marque pour la connexion par adresse : Behringer / Midas (OSC) ou Soundcraft Ui (WebSocket)
   const [brand, setBrand0] = useState<'osc' | 'ui'>('osc');
   const brandRef = React.useRef<'osc' | 'ui'>('osc');
@@ -354,6 +356,15 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🏠 Préparer chez moi, sans table</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Noms, couleurs, groupes, qui entend quoi… puis tout est envoyé à la table en arrivant (sauf les gains et le 48 V).</Text>
           </Pressable>
+          <Pressable onPress={() => setShare(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: theme.line2, borderRadius: 12, padding: 10 }}>
+            <Text style={{ fontSize: 20 }}>🤝</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>Partager · recevoir d’un ami</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>QR code animé ou fichier .matable : scène, soirées, réglages</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 18 }}>›</Text>
+          </Pressable>
+          <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={null} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Table imitée par la démo :</Text>
             {DEMO_MODELS.map((m) => (

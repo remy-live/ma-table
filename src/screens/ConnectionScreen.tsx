@@ -7,6 +7,7 @@ import { Status, XAirClient } from '../xair/XAirClient';
 import { isPersistent, load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { NetworkSetupScreen } from './NetworkSetupScreen';
+import { ShareSheet } from './ShareSheet';
 import { setModel, DEMO_MODELS } from '../xair/addresses';
 import { setDemoModel } from '../xair/demoTransport';
 import { DebugScreen } from './DebugScreen';
@@ -42,6 +43,7 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
   const [checkOpen, setCheckOpen] = useState(false);
   const [sessOpen, setSessOpen] = useState(false);
   const [impOpen, setImpOpen] = useState(false);
+  const [share, setShare] = useState(false);
   useEffect(() => client.onStatus(setStatus), [client]);
   useEffect(() => {
     const t = setInterval(() => setSilence(client.silenceSeconds()), 1000);
@@ -92,6 +94,10 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
       </View>
       {link('Réseau de la table', 'Partage de connexion, routeur, câble ou Wi-Fi de la table', theme.accent, () => setNetOpen(true))}
       {link('Mes soirées et sauvegardes', 'Enregistrer, nouvelle soirée, reprendre, copie dans la table', '#34D399', () => setSessOpen(true))}
+      <Pressable onPress={() => setShare(true)} style={[styles.btnS, { borderColor: theme.accent, borderWidth: 1.5, flexDirection: 'row', gap: 8 }]}>
+        <Text style={{ fontSize: 16 }}>🤝</Text><Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Partager tout avec un ami (QR animé, fichier)</Text>
+      </Pressable>
+      <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={client} />
       <View style={{ flexDirection: 'row', gap: 6 }}>
         <Pressable onPress={doExport} style={[styles.btnS, { flex: 1, backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 13 }}>Exporter</Text></Pressable>
         <Pressable onPress={() => setImpOpen((x) => !x)} style={[styles.btnS, { flex: 1, borderColor: theme.line2, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>{impOpen ? 'Fermer' : 'Importer…'}</Text></Pressable>
@@ -161,6 +167,10 @@ export function ConnectionScreen({ client, theme, onDisconnect, compact }: { cli
         <Text style={{ color: isPersistent() ? theme.ok : theme.accent, fontSize: 12 }}>
           {isPersistent() ? '✓ Sauvegarde automatique active' : '⚠ Sauvegarde en mémoire seulement : recompile l’appli une fois (eas build) pour l’activer.'}
         </Text>
+        <Pressable onPress={() => setShare(true)} style={[styles.btn, { borderColor: theme.accent, borderWidth: 1.5 }]}>
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>🤝 Partager tout avec un ami (QR animé, fichier)</Text>
+        </Pressable>
+        <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={client} />
         <Pressable onPress={doExport} style={[styles.btn, { backgroundColor: theme.accent }]}>
           <Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 14 }}>Exporter (envoyer à soi-même)</Text>
         </Pressable>

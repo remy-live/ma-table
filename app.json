@@ -9,7 +9,36 @@
       "bundleIdentifier": "fr.remy.matable",
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Ma table a besoin du réseau local pour piloter ta table de mixage."
+        "NSLocalNetworkUsageDescription": "Ma table a besoin du réseau local pour piloter ta table de mixage.",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Réglages Ma table",
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": [
+              "fr.remy.matable.bundle"
+            ]
+          }
+        ],
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "fr.remy.matable.bundle",
+            "UTTypeDescription": "Réglages Ma table",
+            "UTTypeConformsTo": [
+              "public.data",
+              "public.content"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "matable"
+              ],
+              "public.mime-type": [
+                "application/x-matable"
+              ]
+            }
+          }
+        ],
+        "LSSupportsOpeningDocumentsInPlace": false
       }
     },
     "android": {
@@ -23,7 +52,34 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0E1014"
       },
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "content",
+              "mimeType": "application/octet-stream"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/x-matable"
+            },
+            {
+              "scheme": "file",
+              "pathPattern": ".*\\.matable"
+            },
+            {
+              "scheme": "content",
+              "pathPattern": ".*\\.matable"
+            }
+          ]
+        }
+      ]
     },
     "scheme": "matable",
     "icon": "./assets/icon.png",

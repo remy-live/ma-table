@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { onModelChange } from './src/xair/addresses';
 import { installDebugBridge } from './src/debugBridge';
+import { readBundleFile, ShareSheet } from './src/screens/ShareSheet';
+import { Bundle } from './src/store/share';
 
 // navigateur : les textes des dessins SVG prendraient la police à empattements
 // par défaut (Times) ; on leur donne la même police que le reste de l'appli.
@@ -66,6 +68,8 @@ export default function App() {
   const [locked, setLocked] = useState(false);
   const [monitor, setMonitor] = useState<{ cfg: MonConfig; owner: boolean } | null>(null);
   const [invite, setInvite] = useState<MonConfig | null>(null);
+  // fichier .matable ouvert depuis une autre appli (WhatsApp, Fichiers, mail…)
+  const [incoming, setIncoming] = useState<Bundle | null>(null);
   const [prep, setPrep] = useState(false);
   const [tuto, setTuto] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
@@ -108,6 +112,10 @@ export default function App() {
   // QR code scanné avec l'appareil photo → l'appli s'ouvre sur matable://retour?…
   useEffect(() => {
     const handle = (url: string | null | undefined) => {
+      if (url && /^(file|content):\/\//.test(url)) {
+        readBundleFile(url).then((b) => b && setIncoming(b)).catch((e) => Alert.alert('Fichier illisible', String(e?.message ?? e)));
+        return;
+      }
       const cfg = url ? parseInvite(url) : null;
       if (!cfg) return;
       dbg.info(`Invitation reçue : retour ${cfg.bus} sur ${cfg.host}`);
@@ -165,6 +173,7 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
+        <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={null} onClose={() => setIncoming(null)} />
         <ConnectScreen
           theme={theme}
           invite={invite}
@@ -184,7 +193,7 @@ export default function App() {
               // une préparation faite chez soi attend d'être envoyée ?
               if (c.hostAddress !== 'demo') setTimeout(() => loadPrepared().then((p) => {
                 if (!p || (p.sent && p.sent > p.savedAt)) return;
-                Alert.alert('Ta préparation', `Tu as préparé ta soirée chez toi (${new Date(p.savedAt).toLocaleDateString('fr-FR')}). L’envoyer à la table ? Les gains et le 48 V ne changent pas.`, [
+                Alert.alert('Ta préparation', `${/reçu/i.test(p.snap.name) ? 'Tu as reçu des réglages d’un ami' : 'Tu as préparé ta soirée chez toi'} (${new Date(p.savedAt).toLocaleDateString('fr-FR')}). L’envoyer à la table ? Les gains et le 48 V ne changent pas.`, [
                   { text: 'Plus tard', style: 'cancel' },
                   { text: 'Envoyer', onPress: () => { safetyBackup(c, 'avant préparation').catch(() => {}).finally(() => { sendPrepared(c, p); markSent(); }); } },
                 ]);
@@ -263,6 +272,7 @@ export default function App() {
       {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
       {body}
       {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
