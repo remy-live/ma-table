@@ -5,6 +5,16 @@ import { ch2 } from './levels';
 
 const NAMES = ['Voix', 'Guitare acou', 'Guitare élec', 'Basse', 'Kick', 'Caisse claire', 'Charley', 'Toms', 'Overhead'];
 
+/**
+ * Démo de la balance auto : qui « joue » en ce moment. null = tout le monde joue
+ * tout le temps (démo normale). Le musicien démarre 2 s après l'annonce, comme en vrai.
+ */
+export const demoStage = { who: null as null | 'none' | 'all' | number, since: 0 };
+export function setDemoStage(who: null | 'none' | 'all' | number) {
+  demoStage.who = who;
+  demoStage.since = Date.now();
+}
+
 export class TableModel {
   state = new Map<string, OscArg>();
 
@@ -113,7 +123,13 @@ export class TableModel {
       const gain = c <= 8 ? (Number(this.get(`/headamp/${n}/gain`)?.v ?? 0.5) * 72 - 12) : 20;
       if (fader <= 0) continue;
       const wob = Math.abs(Math.sin(tick * 0.31 + c * 1.7) * Math.cos(tick * 0.07 + c));
-      const pre = -42 + (gain - 20) * 0.8 + 30 * wob; // le gain fait monter le vumètre d'entrée
+      let pre = -42 + (gain - 20) * 0.8 + 30 * wob; // le gain fait monter le vumètre d'entrée
+      const st = demoStage.who;
+      if (st !== null) {
+        const late = Date.now() - demoStage.since < 2000; // le musicien n'a pas encore commencé
+        if (st === 'none' || late) pre = -75 + 3 * wob;
+        else if (typeof st === 'number' && st !== c) pre = st >= 5 && st <= 9 && c >= 5 && c <= 9 ? pre - 22 : -72 + 3 * wob; // repisse entre micros de batterie
+      }
       out[c - 1] = Math.min(2, pre);
       if (on) lr = Math.max(lr, pre + (fader * 40 - 30));
     }

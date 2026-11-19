@@ -13,6 +13,7 @@ import {
   masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
 } from '../xair/autoBalance';
 import { roleOf } from '../xair/autoBalance';
+import { setDemoStage } from '../xair/tableModel';
 import { swapChannels } from '../xair/clipboard';
 import { capture, restore, Snapshot } from '../xair/snapshot';
 import { addAuto } from '../store/sessions';
@@ -29,6 +30,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   // quelles voies passent, et ce que l'appli a le droit de régler
   const [pick, setPick] = useState<Set<number>>(new Set());
   const [what, setWhat] = useState<What>(WHAT_ALL);
+  const [manual, setManual] = useState(false);
   const [applyOn, setApplyOn] = useState<Record<number, boolean>>({});
   const redo = useRef<number | null>(null);
   useEffect(() => {
@@ -62,14 +64,17 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   const R = useRef({
     steps: [] as AutoStep[], idx: 0, st: 'wait' as StepState, start: 0, samples: new Map() as Samples,
     solos: new Map<number, ChResult>(), bleeds: [] as Bleed[], undo: null as Snapshot | null, lastUi: 0, voice: true, timer: null as ReturnType<typeof setTimeout> | null,
+    spoken: false, playSince: 0, manual: false, entry: 0,
   });
   R.current.voice = voice;
+  R.current.manual = manual;
 
   const speak = (t: string, done?: () => void) => (R.current.voice ? say(t, done) : done?.());
 
   useEffect(() => {
     if (!props.visible) {
       hush();
+      setDemoStage(null);
       return;
     }
     setPhase('intro');
@@ -91,9 +96,18 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     setProgress(0);
     setMsg('');
     const s = r.steps[k];
-    speak(s.speak, () => {
-      if (s.kind === 'silence' && R.current.idx === k && R.current.st === 'wait') startListen();
-    });
+    r.spoken = false;
+    r.playSince = 0;
+    const entry = ++r.entry;
+    setDemoStage(s.kind === 'silence' ? 'none' : s.kind === 'solo' && s.ch ? s.ch : 'all');
+    const said = () => {
+      if (R.current.entry !== entry) return;
+      R.current.spoken = true;
+      if (s.kind === 'silence' && R.current.st === 'wait') startListen();
+    };
+    speak(s.speak, said);
+    // si la voix ne rend pas la main : on estime la durée de la phrase
+    setTimeout(said, R.current.voice ? 600 + s.speak.length * 75 : 0);
     // sans voix (ou si elle ne rend pas la main) : le silence démarre seul après 3 s
     if (s.kind === 'silence') r.timer = setTimeout(() => R.current.idx === k && R.current.st === 'wait' && startListen(), 3500);
   };
@@ -147,6 +161,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   };
 
   const finishAll = () => {
+    setDemoStage(null);
     const r = R.current;
     const res = compute(client, r.steps, r.samples, r.solos);
     if (redo.current !== null) {
@@ -180,7 +195,14 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
       const s = r.steps[r.idx];
       if (!s) return;
       const now = Date.now();
-      if (r.st === 'wait' && s.kind !== 'silence' && isPlaying(m, s, namedChans())) startListen();
+      // on n'écoute qu'une fois la consigne dite, et si le son tient une demi-seconde
+      // (un ampli voisin qui repisse brièvement ne lance pas la mesure)
+      if (r.st === 'wait' && s.kind !== 'silence' && r.spoken && !r.manual) {
+        if (isPlaying(m, s, namedChans())) {
+          if (!r.playSince) r.playSince = now;
+          else if (now - r.playSince >= 500) startListen();
+        } else r.playSince = 0;
+      }
       if (r.st === 'listen') {
         addSample(r.samples, r.idx, m);
         if (now - r.start >= s.seconds * 1000) finishStep();
@@ -335,6 +357,13 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               </View>
               <Switch value={voice && canSpeak()} disabled={!canSpeak()} onValueChange={setVoice} />
             </View>
+            <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, flexDirection: 'row', alignItems: 'center' }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontWeight: '700' }}>Je dis quand c’est prêt</Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>{manual ? 'L’écoute démarre quand tu touches « Prêt »' : 'Sinon l’appli démarre seule quand ça joue'}</Text>
+              </View>
+              <Switch value={manual} onValueChange={setManual} />
+            </View>
             <Pressable onPress={begin} disabled={pick.size === 0} style={[styles.go, { backgroundColor: theme.ok, opacity: pick.size ? 1 : 0.4 }]}>
               <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 17 }}>{pick.size === allNamed.length ? 'Commencer' : `Commencer · ${pick.size} voie${pick.size > 1 ? 's' : ''}`}</Text>
             </Pressable>
@@ -379,7 +408,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                 <View style={{ width: `${Math.max(0, Math.min(100, ((live + 60) / 60) * 100))}%`, height: 14, backgroundColor: live > -3 ? theme.mute : live > -18 ? theme.ok : '#FCD34D' }} />
               </View>
               <Text style={{ color: st === 'listen' ? theme.ok : theme.muted, fontSize: 15, fontWeight: '800' }}>
-                {st === 'wait' ? (step.kind === 'silence' ? 'Silence…' : 'J’attends que ça joue…') : st === 'listen' ? `J’écoute… ${Math.ceil(step.seconds * (1 - progress))} s` : msg || '✓'}
+                {st === 'wait' ? (step.kind === 'silence' ? 'Silence…' : manual ? 'Touche « Prêt » quand ça joue' : 'J’attends que ça joue…') : st === 'listen' ? `J’écoute… ${Math.ceil(step.seconds * (1 - progress))} s` : msg || '✓'}
               </Text>
               {st === 'listen' && (
                 <View style={{ alignSelf: 'stretch', height: 6, borderRadius: 3, backgroundColor: theme.track }}>
