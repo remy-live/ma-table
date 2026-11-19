@@ -76,8 +76,16 @@ const named = (client: XAirClient) =>
     .filter((x) => x.name);
 
 /** Le déroulé. Complet : silence, chaque voie nommée (batterie élément par élément d'abord, voix en dernier), tous ensemble. Express : tous ensemble. */
-export function buildSteps(client: XAirClient, mode: Mode = 'complet'): AutoStep[] {
-  const list = named(client).sort((a, b) => roleOf(a.name).order - roleOf(b.name).order || a.ch - b.ch);
+/** Ce que la balance automatique a le droit de régler. */
+export interface What { gain: boolean; gate: boolean; comp: boolean; fader: boolean }
+export const WHAT_ALL: What = { gain: true, gate: true, comp: true, fader: true };
+
+/** Les voies nommées (celles qu'on peut appeler). */
+export const namedChannels = (client: XAirClient) => named(client).map((n) => n.ch);
+
+/** only : les voies à faire passer (par défaut toutes les voies nommées). */
+export function buildSteps(client: XAirClient, mode: Mode = 'complet', only?: Set<number>): AutoStep[] {
+  const list = named(client).filter((n) => !only || only.has(n.ch)).sort((a, b) => roleOf(a.name).order - roleOf(b.name).order || a.ch - b.ch);
   const tutti: AutoStep = { kind: 'tutti', who: 'Tout le monde', what: 'Le groupe', say: 'Jouez un refrain ensemble, comme au concert', speak: 'Maintenant tout le monde ensemble : un refrain, comme au concert.', seconds: mode === 'express' ? 20 : 25 };
   if (mode === 'express') return list.length ? [tutti] : [];
   const steps: AutoStep[] = [{ kind: 'silence', who: 'Tout le monde', what: 'Silence', say: 'Personne ne joue, personne ne parle', speak: 'Silence s’il vous plaît, personne ne joue.', seconds: 5 }];
@@ -257,12 +265,21 @@ export function compute(client: XAirClient, steps: AutoStep[], samples: Samples,
 }
 
 /** Envoie gate, compresseur et faders (les gains sont déjà envoyés pendant le test). */
-export function applyResults(client: XAirClient, results: ChResult[]) {
+export function applyResults(client: XAirClient, results: ChResult[], what: What = WHAT_ALL, only?: Set<number>) {
   for (const r of results) {
-    if (r.gate !== undefined) client.set(gateThrPath(r.ch), f(gateDbToF(r.gate)));
-    if (r.comp !== undefined) client.set(dynThrPath(r.ch), f(compDbToF(r.comp)));
-    if (r.fader !== undefined) client.set(chLevelPath(r.ch, MAIN), f(dbToFader(r.fader)));
+    if (only && !only.has(r.ch)) continue;
+    if (what.gate && r.gate !== undefined) client.set(gateThrPath(r.ch), f(gateDbToF(r.gate)));
+    if (what.comp && r.comp !== undefined) client.set(dynThrPath(r.ch), f(compDbToF(r.comp)));
+    if (what.fader && r.fader !== undefined) client.set(chLevelPath(r.ch, MAIN), f(dbToFader(r.fader)));
   }
+}
+
+/** Refaire une voie : on garde l'ancien résultat et on remplace ce que le nouveau passage a mesuré. */
+export function mergeResult(old: ChResult | undefined, fresh: ChResult): ChResult {
+  if (!old) return fresh;
+  const out: ChResult = { ...old };
+  for (const [k, v] of Object.entries(fresh)) if (v !== undefined) (out as unknown as Record<string, unknown>)[k] = v;
+  return out;
 }
 
 // ---------- Retours ----------

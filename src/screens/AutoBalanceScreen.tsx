@@ -10,8 +10,9 @@ import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath, dynOnPath, gateOnPath } from '../xair/addresses';
 import {
   addSample, applyGainNow, applyMaster, applyResults, applyReturn, AutoStep, Bleed, bleeds, buildSteps, ChResult, compute, isPlaying,
-  masterAdvice, MasterAdvice, Mode, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, wrongPlug,
+  masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
 } from '../xair/autoBalance';
+import { roleOf } from '../xair/autoBalance';
 import { swapChannels } from '../xair/clipboard';
 import { capture, restore, Snapshot } from '../xair/snapshot';
 import { addAuto } from '../store/sessions';
@@ -23,8 +24,21 @@ type StepState = 'wait' | 'listen' | 'done';
 
 const dbs = (x?: number) => (x === undefined || !isFinite(x) ? '—' : `${x > 0 ? '+' : ''}${x} dB`);
 
-export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
+export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void; only?: number[] }) {
   const { client, theme } = props;
+  // quelles voies passent, et ce que l'appli a le droit de régler
+  const [pick, setPick] = useState<Set<number>>(new Set());
+  const [what, setWhat] = useState<What>(WHAT_ALL);
+  const [applyOn, setApplyOn] = useState<Record<number, boolean>>({});
+  const redo = useRef<number | null>(null);
+  useEffect(() => {
+    if (!props.visible) return;
+    const nm = namedChannels(client);
+    const o = (props.only ?? []).filter((c) => nm.includes(c));
+    setPick(new Set(o.length ? o : nm));
+    setPhase('intro');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.visible]);
   const [phase, setPhase] = useState<Phase>('intro');
   const [mode, setMode] = useState<Mode>('complet');
   const [voice, setVoice] = useState(true);
@@ -101,7 +115,8 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     const r = R.current;
     const m = r.samples.get(r.idx);
     const res = soloResult(client, ch, m);
-    applyGainNow(client, res);
+    if (whatRef.current.gain) applyGainNow(client, res);
+    else { res.gainTo = undefined; }
     r.solos.set(ch, res);
     r.bleeds.push(...bleeds(client, m, ch));
     const g = res.gainTo !== undefined && res.gainFrom !== undefined ? res.gainTo - res.gainFrom : 0;
@@ -134,11 +149,23 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   const finishAll = () => {
     const r = R.current;
     const res = compute(client, r.steps, r.samples, r.solos);
+    if (redo.current !== null) {
+      // une seule voie refaite : on la remplace dans le rapport, le reste ne bouge pas
+      const ch = redo.current;
+      redo.current = null;
+      const fresh = res.find((x) => x.ch === ch);
+      if (fresh) setResults((old) => old.map((o) => (o.ch === ch ? mergeResult(o, fresh) : o)));
+      setApplied(false);
+      setPhase('report');
+      speak('Merci.');
+      return;
+    }
     const pl = planReturns(client, res);
     setResults(res);
     setBleedList(r.bleeds);
     setPlans(pl);
     setPlanOn(Object.fromEntries(pl.map((p) => [p.bus, p.empty])));
+    setApplyOn(Object.fromEntries(res.map((x) => [x.ch, true])));
     setMaster(masterAdvice(r.samples, r.steps));
     setPhase('report');
     speak('C’est fini. Merci à tous !');
@@ -167,8 +194,25 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, client]);
 
+  const whatRef = useRef(what);
+  whatRef.current = what;
+  /** Refaire une seule voie (depuis le rapport) : son passage seul, puis retour au rapport. */
+  const redoOne = (ch: number) => {
+    const list = buildSteps(client, 'complet', new Set([ch])).filter((x) => x.kind === 'solo');
+    if (!list.length) return;
+    const r = R.current;
+    redo.current = ch;
+    r.steps = list;
+    r.samples = new Map();
+    r.solos = new Map();
+    r.bleeds = [];
+    setSteps(list);
+    setPhase('run');
+    enterStep(0);
+  };
+
   const begin = async () => {
-    const list = buildSteps(client, mode);
+    const list = buildSteps(client, mode, pick);
     if (!list.length) {
       Alert.alert('Aucune voie nommée', 'Dis d’abord ce qui est branché (Aide-moi › Mode guidé, étape 1), pour que l’appli sache qui appeler.');
       return;
@@ -213,7 +257,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     ]);
 
   const applyAll = () => {
-    applyResults(client, results);
+    applyResults(client, results, what, new Set(results.filter((x) => applyOn[x.ch] !== false).map((x) => x.ch)));
     plans.filter((p) => planOn[p.bus]).forEach((p) => applyReturn(client, p));
     if (master && masterOn) applyMaster(client, master);
     setApplied(true);
@@ -221,7 +265,11 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
 
   const step = steps[idx];
   const chName = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
-  const estimate = Math.max(1, Math.round(buildSteps(client, mode).reduce((a, s) => a + s.seconds + 6, 0) / 60));
+  const estimate = Math.max(1, Math.round(buildSteps(client, mode, pick).reduce((a, s) => a + s.seconds + 6, 0) / 60));
+  const allNamed = namedChannels(client);
+  const isDrum = (c: number) => !!roleOf(chName(c)).drum;
+  const isVoice = (c: number) => /voix|chant|chœur|choeur|vocal/i.test(chName(c));
+  const setOnly = (f: (c: number) => boolean) => setPick(new Set(allNamed.filter(f)));
 
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={close}>
@@ -249,6 +297,37 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                 </Text>
               </Pressable>
             ))}
+            <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+              <Text style={{ color: theme.text, fontWeight: '800' }}>Quelles voies ? <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 12 }}>{pick.size === allNamed.length ? 'toutes' : `${pick.size} sur ${allNamed.length}`}</Text></Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {([['Tout', () => setOnly(() => true)], ['Rien', () => setOnly(() => false)], ['La batterie', () => setOnly(isDrum)], ['Les voix', () => setOnly(isVoice)], ['Sans la batterie', () => setOnly((c) => !isDrum(c))]] as [string, () => void][]).map(([l, fn]) => (
+                  <Pressable key={l} onPress={fn} style={[styles.chip, { borderColor: theme.accent }]}><Text style={{ color: theme.accent, fontWeight: '800', fontSize: 12 }}>{l}</Text></Pressable>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {allNamed.map((c) => {
+                  const on = pick.has(c);
+                  return (
+                    <Pressable key={c} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setPick((p) => { const n = new Set(p); if (on) n.delete(c); else n.add(c); return n; })}
+                      style={[styles.chip, on ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: theme.line2 }]}>
+                      <Text style={{ color: on ? theme.onAccent : theme.muted, fontWeight: '800', fontSize: 12 }}>{c} · {chName(c)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {mode === 'express' && <Text style={{ color: theme.muted, fontSize: 11 }}>En express tout le monde joue ensemble, mais seules les voies choisies sont réglées.</Text>}
+            </View>
+            <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
+              <Text style={{ color: theme.text, fontWeight: '800' }}>Ce que l’appli règle</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {([['gain', 'Gain'], ['gate', 'Gate'], ['comp', 'Compresseur'], ['fader', 'Volume dans la façade']] as [keyof What, string][]).map(([k, l]) => (
+                  <Pressable key={k} accessibilityRole="checkbox" accessibilityState={{ checked: what[k] }} onPress={() => setWhat((w) => ({ ...w, [k]: !w[k] }))}
+                    style={[styles.chip, what[k] ? { backgroundColor: theme.ok, borderColor: theme.ok } : { borderColor: theme.line2 }]}>
+                    <Text style={{ color: what[k] ? '#052E1F' : theme.muted, fontWeight: '800', fontSize: 12 }}>{what[k] ? '✓ ' : ''}{l}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, flexDirection: 'row', alignItems: 'center' }]}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '700' }}>Le téléphone parle</Text>
@@ -256,8 +335,8 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               </View>
               <Switch value={voice && canSpeak()} disabled={!canSpeak()} onValueChange={setVoice} />
             </View>
-            <Pressable onPress={begin} style={[styles.go, { backgroundColor: theme.ok }]}>
-              <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 17 }}>Commencer</Text>
+            <Pressable onPress={begin} disabled={pick.size === 0} style={[styles.go, { backgroundColor: theme.ok, opacity: pick.size ? 1 : 0.4 }]}>
+              <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 17 }}>{pick.size === allNamed.length ? 'Commencer' : `Commencer · ${pick.size} voie${pick.size > 1 ? 's' : ''}`}</Text>
             </Pressable>
             <Text style={{ color: theme.muted, fontSize: 12 }}>La table est photographiée avant : « Annuler tout » la remet comme avant. Le 48 V n’est jamais touché.</Text>
 
@@ -369,10 +448,16 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                 r.comp !== undefined ? `Comp ${r.comp} dB` : '',
               ].filter(Boolean);
               return (
-                <View key={r.ch} style={[styles.card, { backgroundColor: theme.panel, borderColor: warn ? '#7F1D1D' : theme.line }]}>
-                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>
-                    {warn ? '⚠' : '✓'} {r.ch} · {r.name}
-                  </Text>
+                <View key={r.ch} style={[styles.card, { backgroundColor: theme.panel, borderColor: warn ? '#7F1D1D' : theme.line, opacity: applyOn[r.ch] === false ? 0.55 : 1 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15, flex: 1 }}>
+                      {warn ? '⚠' : '✓'} {r.ch} · {r.name}
+                    </Text>
+                    {mode === 'complet' && (
+                      <Pressable onPress={() => redoOne(r.ch)} style={[styles.chip, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>↻ Refaire</Text></Pressable>
+                    )}
+                    <Switch value={applyOn[r.ch] !== false} onValueChange={(v) => { setApplyOn((o) => ({ ...o, [r.ch]: v })); setApplied(false); }} />
+                  </View>
                   <Text style={{ color: theme.muted, fontSize: 12 }}>{parts.join(' · ') || 'Rien à changer'}</Text>
                   {!!r.note && <Text style={{ color: '#FCA5A5', fontSize: 12 }}>{r.note}</Text>}
                   {bleedList.filter((b) => b.ch === r.ch).map((b) => (
@@ -411,7 +496,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             {plans.length === 0 && <Text style={{ color: theme.muted, fontSize: 12 }}>Nomme les retours (« Bassiste », « Chanteur »…) pour que l’appli leur prépare un mix.</Text>}
 
             <Pressable onPress={applyAll} disabled={applied} style={[styles.go, { backgroundColor: applied ? theme.track : theme.ok }]}>
-              <Text style={{ color: applied ? theme.muted : '#052E1F', fontWeight: '800', fontSize: 16 }}>{applied ? '✓ Appliqué' : 'Appliquer ces réglages'}</Text>
+              <Text style={{ color: applied ? theme.muted : '#052E1F', fontWeight: '800', fontSize: 16 }}>{applied ? '✓ Appliqué' : `Appliquer${results.some((x) => applyOn[x.ch] === false) ? ` · ${results.filter((x) => applyOn[x.ch] !== false).length} voie(s)` : ' ces réglages'}`}</Text>
             </Pressable>
             <Pressable onPress={undoAll} style={[styles.go, { borderWidth: 1, borderColor: theme.mute }]}>
               <Text style={{ color: theme.mute, fontWeight: '800' }}>Annuler tout</Text>
@@ -448,6 +533,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700' },
   quit: { height: 44, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
   card: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 6 },
+  chip: { minHeight: 32, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1.5, justifyContent: 'center' },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   go: { minHeight: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   stage: { borderWidth: 2, borderRadius: 22, padding: 18, gap: 10, alignItems: 'center' },

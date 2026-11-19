@@ -11,6 +11,7 @@ import { GROUP_COLORS } from '../screens/GroupsSheet';
 import { showTip } from './tip';
 import { Theme } from './theme';
 import { load, save } from '../store/persist';
+import { AutoBalanceScreen } from '../screens/AutoBalanceScreen';
 
 /** Met des voies dans le groupe k. Une voie n'est que dans un groupe à la fois : elle quitte l'ancien. */
 export function addToGroup(client: XAirClient, k: number, chans: number[]) {
@@ -36,6 +37,7 @@ function guessName(client: XAirClient, chans: number[]): string {
 
 export function GroupBar({ client, theme, chans, onDone, onCancel }: { client: XAirClient; theme: Theme; chans: number[]; onDone: (msg: string) => void; onCancel: () => void }) {
   const [name, setName] = useState('');
+  const [auto, setAuto] = useState(false);
   const groups = readGroups(client).filter((g) => g.members.length);
   const free = freeGroup(client);
   const label = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
@@ -72,9 +74,15 @@ export function GroupBar({ client, theme, chans, onDone, onCancel }: { client: X
           ))}
         </View>
       </View>
-      <Pressable onPress={onCancel} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}>
-        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Annuler</Text>
-      </Pressable>
+      <View style={{ gap: 6 }}>
+        <Pressable onPress={() => setAuto(true)} disabled={!chans.length} accessibilityLabel="Balance auto des voies choisies" style={[styles.btn, { borderWidth: 1.5, borderColor: theme.ok, opacity: chans.length ? 1 : 0.4 }]}>
+          <Text style={{ color: theme.ok, fontWeight: '900', fontSize: 13 }}>🎚 Balance auto</Text>
+        </Pressable>
+        <Pressable onPress={onCancel} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}>
+          <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Annuler</Text>
+        </Pressable>
+      </View>
+      <AutoBalanceScreen client={client} theme={theme} visible={auto} only={chans} onClose={() => { setAuto(false); onCancel(); }} />
     </View>
   );
 }
