@@ -56,6 +56,31 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
                       <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>un retour</Text>
                       <Switch value={m.retour} onValueChange={(v) => edit(k, { retour: v })} />
                     </View>
+                    {m.retour && (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+                        <Pressable onPress={() => edit(k, { ecoute: 'wedge' })} style={chip((m.ecoute ?? 'wedge') === 'wedge')}>
+                          <Text style={{ color: (m.ecoute ?? 'wedge') === 'wedge' ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '800' }}>🔈 Retour de scène</Text>
+                        </Pressable>
+                        <Pressable onPress={() => edit(k, { ecoute: 'iem', avec: undefined })} style={chip(m.ecoute === 'iem')}>
+                          <Text style={{ color: m.ecoute === 'iem' ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '800' }}>🎧 Intras</Text>
+                        </Pressable>
+                        {m.ecoute === 'iem' && (
+                          <Pressable onPress={() => edit(k, { stereo: !m.stereo })} style={chip(!!m.stereo)}>
+                            <Text style={{ color: m.stereo ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '800' }}>{m.stereo ? '✓ ' : ''}Stéréo (2 AUX)</Text>
+                          </Pressable>
+                        )}
+                        {(m.ecoute ?? 'wedge') === 'wedge' && band.some((o, j) => j < k && o.retour && (o.ecoute ?? 'wedge') === 'wedge' && o.avec === undefined) && (
+                          <>
+                            <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>partage avec</Text>
+                            {band.map((o, j) => (j < k && o.retour && (o.ecoute ?? 'wedge') === 'wedge' && o.avec === undefined ? (
+                              <Pressable key={j} onPress={() => edit(k, { avec: m.avec === j ? undefined : j })} style={chip(m.avec === j)}>
+                                <Text style={{ color: m.avec === j ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '800' }}>{o.name || `Musicien ${j + 1}`}</Text>
+                              </Pressable>
+                            ) : null))}
+                          </>
+                        )}
+                      </View>
+                    )}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
                       {KINDS.map((x) => {
                         const on = m.kinds.includes(x.id);
@@ -94,9 +119,10 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
                   {plan.retours.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Personne n’a demandé de retour.</Text>}
                   {plan.retours.map((r) => (
                     <View key={r.bus} style={[styles.row, { borderColor: theme.line, alignItems: 'flex-start' }]}>
-                      <View style={[styles.num, { borderColor: theme.ok, width: 52 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 11 }}>AUX {r.bus}</Text></View>
+                      <View style={[styles.num, { borderColor: theme.ok, width: 52 }]}><Text style={{ color: theme.text, fontWeight: '900', fontSize: 11 }}>{r.stereo ? `AUX ${r.bus}-${r.bus + 1}` : `AUX ${r.bus}`}</Text></View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{r.name}</Text>
+                        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{r.ecoute === 'iem' ? '🎧' : '🔈'} {r.listeners.map((w) => band[w]?.name || `Musicien ${w + 1}`).join(' + ')}{r.stereo ? ' · stéréo' : ''}</Text>
+                        <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>{r.hint}</Text>
                         <Text style={{ color: theme.muted, fontSize: 11 }}>
                           entend {r.mix.map((x) => `${plan.plugs.find((p) => p.plug === x.plug)?.label} ${NEED_TXT[x.need]}`).join(', ') || 'rien pour l’instant'}
                         </Text>

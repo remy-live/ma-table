@@ -11,7 +11,7 @@
 //  - un retour (AUX) par musicien qui en veut un, dans l'ordre ;
 //  - dans son retour, chacun entend fort sa voix, bien son instrument, un peu
 //    les autres voix ; le batteur et le bassiste s'entendent l'un l'autre.
-import { f, s } from '../osc/osc';
+import { f, i, s } from '../osc/osc';
 import { busNamePath, chLevelPath, MAIN, MODEL } from './addresses';
 import { dbToFader } from './levels';
 import { applyNeed, Need } from './guide';
@@ -35,11 +35,21 @@ export const KINDS: { id: Kind; label: string; icon: string }[] = [
   { id: 'souffle', label: 'Sax / trompette', icon: '🎷' },
 ];
 
-export interface Musician { name: string; kinds: Kind[]; retour: boolean }
+/** wedge : enceinte de retour au sol ; iem : intras (écouteurs). */
+export type Ecoute = 'wedge' | 'iem';
+export interface Musician {
+  name: string; kinds: Kind[]; retour: boolean;
+  ecoute?: Ecoute; // retour de scène par défaut
+  stereo?: boolean; // intras en stéréo : deux AUX jumelées
+  avec?: number; // partage l'enceinte de ce musicien (son numéro dans la liste)
+}
 
 /** Une prise de la proposition. */
 export interface PlugPlan { plug: number; label: string; who: number; mic: boolean; phantom: boolean; voice: boolean; drum: boolean }
-export interface RetourPlan { bus: number; who: number; name: string; mix: { plug: number; need: Need }[] }
+export interface RetourPlan {
+  bus: number; buses: number[]; who: number; listeners: number[]; name: string;
+  ecoute: Ecoute; stereo: boolean; hint: string; mix: { plug: number; need: Need }[];
+}
 export interface Plan { plugs: PlugPlan[]; retours: RetourPlan[]; warnings: string[]; drumPlugs: number[] }
 
 type Src = { label: string; mic: boolean; phantom: boolean; voice?: boolean; drum?: boolean };
@@ -101,26 +111,71 @@ export function makePlan(band: Musician[]): Plan {
   plugs.sort((a, b) => a.plug - b.plug);
 
   // 3. les retours
-  const retours: RetourPlan[] = [];
-  let bus = 1;
-  band.forEach((m, who) => {
-    if (!m.retour) return;
-    if (bus > MODEL.outs) { warnings.push(`Pas assez de sorties AUX : ${m.name || 'un musicien'} n’a pas de retour (la ${MODEL.name} en a ${MODEL.outs}).`); return; }
-    const mine = plugs.filter((p) => p.who === who);
-    const isDrum = mine.some((p) => p.drum);
+  const RANK: Record<Need, number> = { rien: 0, bas: 1, moyen: 2, fort: 3 };
+  const mixFor = (who: number) => {
+    const m = band[who];
+    const isDrum = plugs.some((p) => p.who === who && p.drum);
     const isBass = m.kinds.includes('basse');
-    const mix: { plug: number; need: Need }[] = [];
+    const mix = new Map<number, Need>();
     for (const p of plugs) {
       let need: Need = 'rien';
       if (p.who === who) need = p.voice ? 'fort' : p.drum ? 'bas' : 'moyen';
       else if (p.voice) need = 'bas';
       else if (isDrum && !p.voice && band[p.who]?.kinds.includes('basse')) need = 'moyen';
       else if (isBass && p.label.startsWith('Kick')) need = 'moyen';
-      if (need !== 'rien') mix.push({ plug: p.plug, need });
+      if (need !== 'rien') mix.set(p.plug, need);
     }
-    retours.push({ bus, who, name: (m.name || `Retour ${bus}`).slice(0, 12), mix });
-    bus++;
+    return mix;
+  };
+  const freeBus = new Set(Array.from({ length: MODEL.outs }, (_, k) => k + 1));
+  const takeMono = () => { const b = [...freeBus].sort((a, c) => a - c)[0]; if (b) freeBus.delete(b); return b; };
+  const takePair = () => {
+    for (let b = 1; b < MODEL.outs; b += 2) if (freeBus.has(b) && freeBus.has(b + 1)) { freeBus.delete(b); freeBus.delete(b + 1); return b; }
+    return undefined;
+  };
+  const canLink = MODEL.family !== 'ui';
+  const retours: RetourPlan[] = [];
+  const nm = (who: number) => band[who]?.name || `Musicien ${who + 1}`;
+  // d'abord ceux qui ont leur propre retour
+  band.forEach((m, who) => {
+    if (!m.retour) return;
+    const ecoute: Ecoute = m.ecoute ?? 'wedge';
+    const host = m.avec;
+    if (ecoute === 'wedge' && host !== undefined && host !== who && band[host]?.retour && (band[host].ecoute ?? 'wedge') === 'wedge' && band[host].avec === undefined) return; // partage : plus bas
+    let stereo = ecoute === 'iem' && !!m.stereo;
+    let bus: number | undefined;
+    if (stereo) {
+      bus = canLink ? takePair() : undefined;
+      if (bus === undefined) {
+        stereo = false;
+        warnings.push(canLink ? `Pas assez de sorties pour la stéréo de ${nm(who)} : intras en mono.` : `Cette table ne jumelle pas les retours : intras de ${nm(who)} en mono.`);
+      }
+    }
+    if (bus === undefined) bus = takeMono();
+    if (!bus) { warnings.push(`Pas assez de sorties AUX : ${nm(who)} n’a pas de retour (la ${MODEL.name} en a ${MODEL.outs}). Partagez une enceinte de retour.`); return; }
+    const buses = stereo ? [bus, bus + 1] : [bus];
+    const hint = ecoute === 'wedge'
+      ? `AUX ${bus} → enceinte de retour devant ${nm(who)} (câble XLR ou jack)`
+      : stereo
+        ? `AUX ${bus} (gauche) et AUX ${bus + 1} (droite) → émetteur intra stéréo ou ampli casque`
+        : `AUX ${bus} → émetteur intra ou ampli casque (jamais un casque direct)`;
+    const mix = mixFor(who);
+    retours.push({ bus, buses, who, listeners: [who], name: nm(who).slice(0, 12), ecoute, stereo, hint, mix: [...mix].map(([plug, need]) => ({ plug, need })) });
   });
+  // puis ceux qui partagent l'enceinte d'un autre
+  band.forEach((m, who) => {
+    if (!m.retour || (m.ecoute ?? 'wedge') !== 'wedge' || m.avec === undefined) return;
+    const r = retours.find((x) => x.who === m.avec && x.ecoute === 'wedge');
+    if (!r || r.who === who) return;
+    r.listeners.push(who);
+    // le mélange commun : pour chaque prise, ce que le plus exigeant des deux demande
+    const merged = new Map(r.mix.map((x) => [x.plug, x.need] as [number, Need]));
+    for (const [plug, need] of mixFor(who)) if (RANK[need] > RANK[merged.get(plug) ?? 'rien']) merged.set(plug, need);
+    r.mix = [...merged].sort((a, b) => a[0] - b[0]).map(([plug, need]) => ({ plug, need }));
+    r.name = r.listeners.map(nm).join('+').slice(0, 12);
+    r.hint = `AUX ${r.bus} → une enceinte de retour entre ${r.listeners.map(nm).join(' et ')}`;
+  });
+  retours.sort((a, b) => a.bus - b.bus);
   return { plugs, retours, warnings, drumPlugs: plugs.filter((p) => p.drum).map((p) => p.plug) };
 }
 
@@ -133,9 +188,18 @@ export function applyPlan(client: XAirClient, plan: Plan) {
     // une voie tout en bas dans la façade : on la remonte à −10 dB, un point de départ prudent
     if (Number(client.get(chLevelPath(p.plug, MAIN)) ?? 0) < 0.05) client.set(chLevelPath(p.plug, MAIN), f(dbToFader(-10)));
   }
+  // jumelage des AUX : la stéréo des intras, et on défait un jumelage qui mélangerait deux retours
+  if (MODEL.family !== 'ui') {
+    for (let b = 1; b < MODEL.outs; b += 2) {
+      const r = plan.retours.find((x) => x.buses.includes(b) || x.buses.includes(b + 1));
+      if (r) client.set(`/config/buslink/${b}-${b + 1}`, i(r.stereo ? 1 : 0));
+    }
+  }
   for (const r of plan.retours) {
-    client.set(busNamePath(r.bus), s(r.name));
-    const t = { kind: 'bus' as const, n: r.bus };
-    for (let c = 1; c <= 16; c++) applyNeed(client, t, [c], r.mix.find((x) => x.plug === c)?.need ?? 'rien');
+    for (const b of r.buses) {
+      client.set(busNamePath(b), s(r.stereo ? `${r.name.slice(0, 10)} ${b === r.bus ? 'G' : 'D'}` : r.name));
+      const t = { kind: 'bus' as const, n: b };
+      for (let c = 1; c <= 16; c++) applyNeed(client, t, [c], r.mix.find((x) => x.plug === c)?.need ?? 'rien');
+    }
   }
 }
