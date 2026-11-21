@@ -190,3 +190,19 @@ export function plugColor(client: XAirClient, p: Plug, tableColor: (idx: number)
   void tableColor;
   return chColor(client, p.chans[0]);
 }
+
+/**
+ * Les prises qu'on replie pour un groupe : le plus long bloc de prises voisines
+ * (qui se suivent). Une prise du groupe branchée loin des autres
+ * (une voix sur la 5 quand la batterie est sur 9-16) reste visible à sa place.
+ */
+export function foldCore(plugs: number[]): number[] {
+  const s = [...plugs].sort((a, b) => a - b);
+  let best: number[] = [], cur: number[] = [];
+  for (const n of s) {
+    if (cur.length && n - cur[cur.length - 1] > 1) cur = [];
+    cur.push(n);
+    if (cur.length > best.length) best = [...cur];
+  }
+  return best.length >= 2 ? best : s;
+}

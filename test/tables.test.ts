@@ -31,3 +31,10 @@ test('Soundcraft Ui : adresses et loi des faders', () => {
   assert.ok(Math.abs(uiDbToFader(0) - 0.76470588) < 1e-6);
   assert.ok(Math.abs(uiFaderToDb(uiDbToFader(-20)) + 20) < 0.01);
 });
+
+test('groupe replié : la prise isolée reste à sa place', async () => {
+  const { foldCore } = await import('../src/xair/wiring');
+  assert.deepEqual(foldCore([5, 9, 10, 11, 12, 13, 14, 15, 16]), [9, 10, 11, 12, 13, 14, 15, 16]);
+  assert.deepEqual(foldCore([1, 2, 4]), [1, 2]);
+  assert.deepEqual(foldCore([1, 9]), [1, 9]);
+});

@@ -5,7 +5,7 @@
 import { useMono } from '../ui/useMono';
 import { GroupBar } from '../ui/GroupBar';
 import { showTip } from '../ui/tip';
-import { linkSide, onSide, unlinkSide } from '../xair/wiring';
+import { foldCore, linkSide, onSide, unlinkSide } from '../xair/wiring';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
@@ -81,7 +81,8 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
   const plugOfCh = (c: number) => P.find((p) => p.chans.includes(c))?.n ?? null;
   const gInfo = readGroups(client).filter((g) => g.members.length > 1).map((g) => {
     const ps = g.members.map(plugOfCh).filter((n): n is number => n !== null).sort((a, b) => a - b);
-    return { k: g.k, name: g.name, plugs: ps, anchor: ps[0], folded: !open.includes(g.k) && ps.length > 1 };
+    const core = foldCore(ps);
+    return { k: g.k, name: g.name, all: ps, plugs: core, anchor: core[0], folded: !open.includes(g.k) && core.length > 1 };
   }).filter((g) => g.plugs.length > 1);
   const groupOf = (n: number) => gInfo.find((g) => g.plugs.includes(n));
   const folded = (n: number) => { const g = groupOf(n); return g && g.folded ? g : null; };
@@ -150,10 +151,10 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
     if (e.kind === 'group') {
       const g = L.gInfo.find((x) => x.k === e.k);
       if (!g) return;
-      if (!L.multi) { setSel({ k: 'many', ns: g.plugs, g: g.k }); return; }
+      if (!L.multi) { setSel({ k: 'many', ns: g.all, g: g.k }); return; }
       // « Plusieurs » : le groupe entier entre (ou sort) de la sélection
-      const all = g.plugs.every((n) => cur.includes(n));
-      const ns = all ? cur.filter((n) => !g.plugs.includes(n)) : [...new Set([...cur, ...g.plugs])].sort((a, b) => a - b);
+      const all = g.all.every((n) => cur.includes(n));
+      const ns = all ? cur.filter((n) => !g.all.includes(n)) : [...new Set([...cur, ...g.all])].sort((a, b) => a - b);
       setSel(ns.length ? { k: 'many', ns } : null);
       return;
     }

@@ -15,7 +15,7 @@ import { Shell } from '../ui/Shell';
 import { busNamePath, chNamePath, meterIndex, MODEL, panPath } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { colorOf } from '../xair/smartName';
-import { connect, disconnect, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, panelW, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
+import { connect, disconnect, foldCore, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, panelW, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
 import { WhoHearsScreen } from './WhoHearsScreen';
@@ -310,7 +310,7 @@ function RearPanel(props: { client: XAirClient; theme: Theme; P: Plug[]; O: Outl
   const [open, setOpen] = useState<number[]>([]);
   const plugOfCh = (c: number) => P.find((p) => p.chans.includes(c))?.n ?? null;
   const gInfo = groups.map((g) => {
-    const plugs = g.members.map(plugOfCh).filter((n): n is number => n !== null).sort((a, b) => a - b);
+    const plugs = foldCore(g.members.map(plugOfCh).filter((n): n is number => n !== null));
     return { k: g.k, name: g.name, plugs, anchor: plugs[0], folded: !open.includes(g.k) && plugs.length > 1 };
   });
   const groupOfPlug = (n: number) => gInfo.find((g) => g.plugs.includes(n));
