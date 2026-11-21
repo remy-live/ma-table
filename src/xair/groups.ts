@@ -4,7 +4,8 @@
 // envois de chaque membre du même nombre de dB, en gardant leur équilibre.
 
 import { f } from '../osc/osc';
-import { CH_COUNT, chDcaPath, chLevelPath, DCA_COUNT, dcaNamePath, inDca, MAIN, Target } from './addresses';
+import { CH_COUNT, chDcaPath, chLevelPath, DCA_COUNT, dcaNamePath, inDca, MAIN, Target, targetId } from './addresses';
+import { groupAt, GroupBase, groupBase } from './groupTrim';
 import { dbToFader, faderToDb } from './levels';
 import { XAirClient } from './XAirClient';
 
@@ -28,20 +29,25 @@ export function readGroups(client: XAirClient): Group[] {
   return groups;
 }
 
+const bases = new WeakMap<Map<number, number>, { key: string; base: GroupBase | null }>();
+
 /** Photo des niveaux des membres vers une cible, prise au début du geste. */
 export function snapshot(client: XAirClient, members: number[], t: Target): Map<number, number> {
   const m = new Map<number, number>();
   for (const ch of members) m.set(ch, Number(client.get(chLevelPath(ch, t)) ?? 0));
+  const key = `${targetId(t)}|${[...m.keys()].join(',')}`;
+  bases.set(m, { key, base: groupBase(key, [...m.values()]) });
   return m;
 }
 
-/** Décale tous les membres de deltaDb par rapport à la photo (une voie à -∞ reste à -∞). */
+/** Décale tous les membres de deltaDb par rapport à la photo. Une voie descendue à −∞ par le
+ *  groupe retrouve sa place en remontant ; une voie qui n'était pas reliée reste à −∞. */
 export function moveMembers(client: XAirClient, snap: Map<number, number>, t: Target, deltaDb: number) {
-  for (const [ch, start] of snap) {
-    if (start <= 0) continue;
-    const db = Math.min(10, faderToDb(start) + deltaDb);
-    client.set(chLevelPath(ch, t), f(dbToFader(db)));
-  }
+  const b = bases.get(snap);
+  if (!b?.base) return;
+  const top = isFinite(b.base.top) ? b.base.top : -90;
+  const next = groupAt(b.key, b.base, top + deltaDb);
+  [...snap.keys()].forEach((ch, k) => client.set(chLevelPath(ch, t), f(next[k])));
 }
 
 /** « Copier le mix façade » vers un retour : chaque envoi prend la valeur du fader façade. */

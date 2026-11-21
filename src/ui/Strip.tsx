@@ -221,7 +221,7 @@ export function GroupStrip(props: {
     if (isMain) return setDca(v);
     props.setVirtual(v);
     const g = gesture.current;
-    if (g) moveMembers(client, g.snap, target, faderToDb(v) - faderToDb(g.v0));
+    if (g) moveMembers(client, g.snap, target, Math.max(-90, faderToDb(v)) - Math.max(-90, faderToDb(g.v0)));
   };
   const end = () => {
     gesture.current = null;

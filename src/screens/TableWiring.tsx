@@ -5,6 +5,7 @@
 import { useMono } from '../ui/useMono';
 import { GroupBar } from '../ui/GroupBar';
 import { showTip } from '../ui/tip';
+import { groupMove, linkedCount } from '../xair/groupTrim';
 import { foldCore, linkSide, onSide, unlinkSide } from '../xair/wiring';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -410,7 +411,8 @@ export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title,
         <View style={[styles.knobs, !wide && { flexWrap: 'wrap' }]}>
           {targets.map(({ t, label, kicker, color: c }, idx) => {
             const vals = chans.map((ch) => Number(client.get(chLevelPath(ch, t)) ?? 0));
-            const nOn = vals.filter((v) => v > 0).length;
+            const key = `${targetId(t)}|${chans.join(',')}`;
+            const nOn = linkedCount(key, vals);
             const top = Math.max(0, ...vals);
             const all = chans.length > 0 && nOn === chans.length;
             return (
@@ -425,10 +427,9 @@ export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title,
                   color={c}
                   onToggle={() => chans.forEach((ch, k) => { if (all) client.set(chLevelPath(ch, t), f(0)); else if (vals[k] <= 0) client.set(chLevelPath(ch, t), f(dbToFader(kicker ? -14 : -10))); })}
                   onSet={(v) => {
-                    if (nOn === 0) { chans.forEach((ch) => client.set(chLevelPath(ch, t), f(v))); return; }
-                    if (v <= 0) { chans.forEach((ch) => client.set(chLevelPath(ch, t), f(0))); return; }
-                    const delta = faderToDb(v) - faderToDb(top);
-                    chans.forEach((ch, k) => { if (vals[k] > 0) client.set(chLevelPath(ch, t), f(dbToFader(Math.min(10, faderToDb(vals[k]) + delta)))); });
+                    // l'écart de chaque prise avec la plus forte est gardé, même passé par −∞
+                    const next = groupMove(key, vals, v);
+                    chans.forEach((ch, k) => { if (Math.abs(next[k] - vals[k]) > 0.0005) client.set(chLevelPath(ch, t), f(next[k])); });
                   }}
                 />
               </React.Fragment>
