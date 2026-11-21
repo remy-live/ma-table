@@ -200,6 +200,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
                     outColor={outColor}
                     title={selGroup ? selGroup.name : sel?.kind === 'many' ? `${sel.ns.length} prise${sel.ns.length > 1 ? 's' : ''} choisie${sel.ns.length > 1 ? 's' : ''}` : ''}
                     color={selGroup ? GROUP_COLORS[selGroup.k - 1] : theme.text}
+                    dca={selGroup?.k}
                     extra={<Btn theme={theme} small kind="ghost" label="Fermer" onPress={() => setSel(null)} />}
                   />
                 </View>

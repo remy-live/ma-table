@@ -28,6 +28,9 @@ import { GROUP_COLORS } from './GroupsSheet';
 import { InputSourceSheet } from './InputSourceSheet';
 import { MIX_COLORS } from './MixPicker';
 import { PresetsSheet } from './PresetsSheet';
+import { FindMicSheet } from './FindMicSheet';
+import { ChangesSheet } from './ChangesSheet';
+import { ChangeSet } from '../xair/changeLog';
 import { SmartRenameSheet } from './SmartRenameSheet';
 
 export interface DrawerActions {
@@ -55,6 +58,8 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
   const [rename, setRename] = useState(false);
   const [source, setSource] = useState(false);
   const [presets, setPresets] = useState(false);
+  const [find, setFind] = useState(false);
+  const [changed, setChanged] = useState<ChangeSet | null>(null);
   useEffect(() => { client.loadPaths(drawerPaths(ch)); }, [client, ch]);
 
   const n2 = String(ch).padStart(2, '0');
@@ -92,6 +97,7 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
               <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '800', fontSize: 14, flex: 1 }}>{insrcLabel(insrc)}</Text>
               <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 12 }}>Changer ›</Text>
             </Pressable>
+            <Btn theme={theme} small kind="outline" icon="🔍" label="Trouver ce micro" onPress={() => setFind(true)} />
             <Groups client={client} theme={theme} ch={ch} />
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
               {props.actions?.onDetail && <Btn theme={theme} small icon="〰" label="Égaliseur" onPress={() => props.actions!.onDetail!(ch)} style={styles.act} />}
@@ -130,6 +136,8 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
 
       <SmartRenameSheet client={client} ch={rename ? ch : null} theme={theme} onClose={() => setRename(false)} />
       <InputSourceSheet client={client} ch={source ? ch : null} theme={theme} onClose={() => setSource(false)} />
+      <FindMicSheet client={client} theme={theme} ch={ch} visible={find} onClose={() => setFind(false)} onSwapped={(s) => setChanged(s)} />
+      <ChangesSheet client={client} theme={theme} visible={!!changed} set={changed} onClose={() => setChanged(null)} />
       <PresetsSheet client={client} theme={theme} visible={presets} ch={ch} onClose={() => setPresets(false)} />
     </View>
   );

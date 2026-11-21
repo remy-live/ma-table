@@ -3,6 +3,10 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { CloseX } from '../ui/kit';
+import { MiniTable } from '../ui/MiniTable';
+import { ChangeSet, changeSets, record } from '../xair/changeLog';
+import { ChangesSheet } from './ChangesSheet';
+import { showTip } from '../ui/tip';
 import { Theme } from '../ui/theme';
 import { MODEL } from '../xair/addresses';
 import { applyPlan, Kind, KINDS, makePlan, Musician, Plan } from '../xair/magicPlan';
@@ -15,6 +19,7 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
   const [band, setBand] = useState<Musician[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [done, setDone] = useState(false);
+  const [changed, setChanged] = useState<ChangeSet | null>(null);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const close = () => { setPlan(null); setDone(false); onClose(); };
@@ -101,6 +106,13 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
             </>
           ) : (
             <>
+              <MiniTable
+                maxWidth={wide ? 620 : 480}
+                plugs={Object.fromEntries(plan.plugs.map((p) => [p.plug, { label: p.label, color: p.mic ? theme.accent : '#9AA3AD', badge: p.phantom ? '48 V' : undefined }]))}
+                outs={plan.retours.flatMap((r) => r.buses.map((b) => ({ n: b, label: (r.listeners.map((w) => band[w]?.name || `Musicien ${w + 1}`).join('+') + (r.stereo ? (b === r.bus ? ' G' : ' D') : '')), color: theme.ok, badge: r.ecoute === 'iem' ? '🎧' : '🔈' })))}
+                onPlug={(n) => { const p = plan.plugs.find((x) => x.plug === n); showTip(p ? `Prise ${n} : ${p.label} (${band[p.who]?.name}) · ${p.mic ? 'micro, câble XLR' : 'jack ou boîte DI'}${p.phantom ? ' · micro statique : 48 V à allumer' : ''}` : `Prise ${n} : rien à brancher.`); }}
+                onOut={(n) => { const r = plan.retours.find((x) => x.buses.includes(n)); if (r) showTip(r.hint); }}
+              />
               <ScrollView style={{ flexGrow: 0, maxHeight: 520 }} contentContainerStyle={{ gap: 10, flexDirection: wide ? 'row' : 'column' }}>
                 <View style={{ flex: wide ? 1 : undefined, gap: 4 }}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>BRANCHE ICI, À L’ARRIÈRE DE LA TABLE</Text>
@@ -137,9 +149,9 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
               </ScrollView>
               {done ? (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={[styles.go, { flex: 1, backgroundColor: theme.deep, borderWidth: 1, borderColor: theme.ok }]}>
-                    <Text style={{ color: theme.ok, fontWeight: '900', fontSize: 15 }}>✓ C’est réglé · ↶ pour tout annuler</Text>
-                  </View>
+                  <Pressable onPress={() => setChanged(changeSets()[0] ?? null)} style={[styles.go, { flex: 1, backgroundColor: theme.deep, borderWidth: 1, borderColor: theme.ok }]}>
+                    <Text style={{ color: theme.ok, fontWeight: '900', fontSize: 15 }}>✓ Réglé · 👀 voir ce qui a changé</Text>
+                  </Pressable>
                   {onSeeWiring && (
                     <Pressable onPress={() => { close(); onSeeWiring(); }} style={[styles.go, { flex: 1, backgroundColor: theme.accent }]}>
                       <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 15 }}>Voir les branchements ›</Text>
@@ -151,7 +163,7 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
                   <Pressable onPress={() => setPlan(null)} style={[styles.go, { flex: 1, borderWidth: 1, borderColor: theme.line2 }]}>
                     <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>‹ Modifier</Text>
                   </Pressable>
-                  <Pressable onPress={() => { applyPlan(client, plan); setDone(true); }} style={[styles.go, { flex: 2, backgroundColor: theme.accent }]}>
+                  <Pressable onPress={() => { const r = record(client, 'Baguette · qui branche quoi'); applyPlan(client, plan); setDone(true); setTimeout(() => setChanged(r.stop()), 150); }} style={[styles.go, { flex: 2, backgroundColor: theme.accent }]}>
                     <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 15 }}>🪄 Tout régler sur la table</Text>
                   </Pressable>
                 </View>
@@ -159,6 +171,7 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
             </>
           )}
         </View>
+      <ChangesSheet client={client} theme={theme} visible={!!changed} set={changed} onClose={() => setChanged(null)} />
       </View>
     </Modal>
   );

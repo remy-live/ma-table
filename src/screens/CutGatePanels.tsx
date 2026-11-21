@@ -115,7 +115,7 @@ export function HpfPanel({ client, theme, ch, name, quick }: { client: XAirClien
 // ---------- Gate ----------
 type Recipe = { id: string; label: string; mode: number; thr: number; range: number; att: number; hold: number; rel: number; why: string };
 const RECIPES: Recipe[] = [
-  { id: 'kick', label: 'Kick', mode: 3, thr: -30, range: 40, att: 0.5, hold: 30, rel: 120, why: 'ne garde que les coups' },
+  { id: 'kick', label: 'Grosse caisse', mode: 3, thr: -30, range: 40, att: 0.5, hold: 30, rel: 120, why: 'ne garde que les coups' },
   { id: 'toms', label: 'Toms', mode: 3, thr: -35, range: 30, att: 1, hold: 80, rel: 300, why: 'coupe les toms qui résonnent entre les frappes' },
   { id: 'cc', label: 'Caisse claire', mode: 3, thr: -32, range: 18, att: 0.5, hold: 40, rel: 150, why: 'moins de charley dans la caisse' },
   { id: 'ampli', label: 'Ampli qui souffle', mode: 1, thr: -50, range: 12, att: 2, hold: 50, rel: 400, why: 'baisse le souffle quand la guitare se tait, en douceur' },

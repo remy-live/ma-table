@@ -27,7 +27,7 @@ export interface Recognized {
 }
 
 const DICT: [string[], Recognized][] = [
-  [['kick', 'grosse caisse', 'grosse', 'gc', 'bd'], { label: 'Kick', color: 3, group: 'Batterie', preset: 'Kick', phantom: false }],
+  [['kick', 'grosse caisse', 'grosse', 'g.caisse', 'g. caisse', 'g caisse', 'gc', 'bd'], { label: 'Kick', color: 3, group: 'Batterie', preset: 'Kick', phantom: false }],
   [['caisse claire', 'c. claire', 'c claire', 'snare', 'cc', 'sn'], { label: 'Caisse claire', color: 3, group: 'Batterie', preset: 'Caisse claire', phantom: false }],
   [['charley', 'hihat', 'hi-hat', 'hh'], { label: 'Charley', color: 3, group: 'Batterie', preset: 'Charley', phantom: true }],
   [['tom', 'toms', 'floor'], { label: 'Toms', color: 3, group: 'Batterie', preset: 'Toms', phantom: false }],

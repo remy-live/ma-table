@@ -44,10 +44,10 @@ const FAM: Record<string, Family> = {
   Voix: 'Voix', 'Guitare acou': 'Guitares', 'Guitare élec': 'Guitares', Basse: 'Basse',
   Kick: 'Batterie', 'Caisse claire': 'Batterie', Charley: 'Batterie', Toms: 'Batterie', Overhead: 'Batterie',
 };
-const ELEM: Record<string, string> = { Kick: 'Kick', 'Caisse claire': 'Caisse claire', Charley: 'Charley', Toms: 'Toms', Overhead: 'Overheads' };
+const ELEM: Record<string, string> = { Kick: 'Grosse caisse', 'Caisse claire': 'Caisse claire', Charley: 'Charley', Toms: 'Toms', Overhead: 'Overheads' };
 
 /** Éléments de batterie, pour les retrouver vite. */
-export const DRUM_PARTS = ['Kick', 'Caisse claire', 'Charley', 'Toms', 'Overheads', 'Ride', 'Ambiance', 'Percus'];
+export const DRUM_PARTS = ['Grosse caisse', 'Caisse claire', 'Charley', 'Toms', 'Overheads', 'Ride', 'Ambiance', 'Percus'];
 
 type P = Omit<Preset, 'eq' | 'fx'> & { eq: [number, number, number][]; fx: [number, number, number, number] };
 const v = (family: Family, variant: string, desc: string, eq: [number, number, number][], lowCut: number | null, gate: number | null, comp: number | null, fx: [number, number, number, number], element?: string): P =>
@@ -55,7 +55,7 @@ const v = (family: Family, variant: string, desc: string, eq: [number, number, n
 
 /** Bibliothèque : les préréglages de base + des variantes par instrument. */
 export const LIBRARY: Preset[] = [
-  ...PRESETS.map((p) => ({ ...p, family: FAM[p.name], variant: FAM[p.name] === 'Batterie' ? 'Standard' : p.name === 'Voix' || p.name === 'Basse' ? 'Standard' : p.name.replace('Guitare a', 'A').replace('Guitare é', 'É') + ' · standard', desc: 'Point de départ équilibré', element: ELEM[p.name] })),
+  ...PRESETS.map((p) => ({ ...p, name: p.name === 'Kick' ? 'Grosse caisse (kick)' : p.name, family: FAM[p.name], variant: FAM[p.name] === 'Batterie' ? 'Standard' : p.name === 'Voix' || p.name === 'Basse' ? 'Standard' : p.name.replace('Guitare a', 'A').replace('Guitare é', 'É') + ' · standard', desc: 'Point de départ équilibré', element: ELEM[p.name] })),
   // VOIX
   v('Voix', 'Voix d’homme', 'Moins de boum, plus de présence', [[150, -3, 1], [350, -2, 1.4], [3000, 3, 1.2], [10000, 1, 1]], 100, null, -18, [-12, -20, OFF, OFF]),
   v('Voix', 'Voix de femme', 'Douce dans les aigus, sans dureté', [[200, -2, 1], [500, -1, 1.4], [3500, 2, 1.4], [11000, 2, 1]], 120, null, -18, [-11, -20, OFF, OFF]),
@@ -80,10 +80,10 @@ export const LIBRARY: Preset[] = [
   v('Basse', 'Boîtier direct (DI)', 'Branchée sans ampli', [[60, 2, 1], [250, -3, 1.4], [1000, 2, 1.2], [5000, -2, 1]], 35, null, -16, [OFF, OFF, OFF, OFF]),
   v('Basse', 'Contrebasse', 'Boisée, sans résonance qui gronde', [[90, 2, 1], [200, -3, 1.4], [1500, 2, 1.2], [6000, 0, 1]], 40, null, -18, [-24, OFF, OFF, OFF]),
   // BATTERIE
-  v('Batterie', 'Rock', 'Clic marqué, grave serré', [[60, 4, 1], [400, -8, 1], [4000, 5, 1.4], [10000, 0, 1]], 35, -30, -16, [OFF, OFF, OFF, OFF], 'Kick'),
-  v('Batterie', 'Jazz', 'Naturel, résonnant', [[70, 2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], 35, null, null, [OFF, OFF, OFF, OFF], 'Kick'),
-  v('Batterie', 'Métal', 'Très claquant, très serré', [[55, 3, 1], [350, -9, 1], [5000, 6, 1.4], [10000, 1, 1]], 40, -28, -18, [OFF, OFF, OFF, OFF], 'Kick'),
-  v('Batterie', 'Pop', 'Rond et propre', [[65, 4, 1], [300, -5, 1.2], [3000, 2, 1.4], [9000, 0, 1]], 35, -34, -16, [OFF, OFF, OFF, OFF], 'Kick'),
+  v('Batterie', 'Rock', 'Clic marqué, grave serré', [[60, 4, 1], [400, -8, 1], [4000, 5, 1.4], [10000, 0, 1]], 35, -30, -16, [OFF, OFF, OFF, OFF], 'Grosse caisse'),
+  v('Batterie', 'Jazz', 'Naturel, résonnant', [[70, 2, 1], [300, -2, 1.4], [2500, 1, 1.2], [9000, 0, 1]], 35, null, null, [OFF, OFF, OFF, OFF], 'Grosse caisse'),
+  v('Batterie', 'Métal', 'Très claquant, très serré', [[55, 3, 1], [350, -9, 1], [5000, 6, 1.4], [10000, 1, 1]], 40, -28, -18, [OFF, OFF, OFF, OFF], 'Grosse caisse'),
+  v('Batterie', 'Pop', 'Rond et propre', [[65, 4, 1], [300, -5, 1.2], [3000, 2, 1.4], [9000, 0, 1]], 35, -34, -16, [OFF, OFF, OFF, OFF], 'Grosse caisse'),
   v('Batterie', 'Sèche', 'Sans réverbe, gate serré', [[180, 2, 1], [500, -3, 1.4], [4000, 3, 1.2], [9000, 1, 1]], 90, -34, -14, [OFF, OFF, OFF, OFF], 'Caisse claire'),
   v('Batterie', 'Grasse', 'Plus de corps, réverbe', [[200, 3, 1], [600, -2, 1.4], [3000, 2, 1.2], [9000, 1, 1]], 80, -38, -16, [-12, OFF, OFF, OFF], 'Caisse claire'),
   v('Batterie', 'Brillante', 'Timbre bien présent', [[200, 0, 1], [450, -3, 1.4], [5000, 4, 1.2], [10000, 3, 1]], 100, -36, -16, [-16, OFF, OFF, OFF], 'Caisse claire'),
@@ -120,7 +120,7 @@ export function guessFamily(name: string): { family: Family; element?: string } 
   const t = name.trim().toLowerCase();
   if (!t) return null;
   const has = (...k: string[]) => k.some((x) => t.includes(x));
-  if (has('kick', 'grosse caisse', 'bd')) return { family: 'Batterie', element: 'Kick' };
+  if (has('kick', 'grosse', 'g.caisse', 'g caisse', 'bd') || /(^|[^a-z])gc([^a-z]|$)/.test(t)) return { family: 'Batterie', element: 'Grosse caisse' };
   if (has('caisse claire', 'snare', 'cc', 'sn')) return { family: 'Batterie', element: 'Caisse claire' };
   if (has('charley', 'hihat', 'hi-hat', 'hh')) return { family: 'Batterie', element: 'Charley' };
   if (has('tom', 'floor')) return { family: 'Batterie', element: 'Toms' };

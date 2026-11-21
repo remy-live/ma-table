@@ -9,6 +9,7 @@ import { EqThumb, PresetDots } from '../ui/EqThumb';
 import { Theme } from '../ui/theme';
 import { showTip } from '../ui/tip';
 import { useAnyTick } from '../ui/useTick';
+import { logChanges } from '../xair/changeLog';
 import { applyPreset, DRUM_PARTS, FAMILIES, Family, guessFamily, LIBRARY, Preset, presetFromChannel, presetPaths } from '../xair/presets';
 import { argFor, XAirClient } from '../xair/XAirClient';
 
@@ -50,6 +51,7 @@ export function PresetPanel({ client, ch, theme, name, wide, onApplied }: { clie
   const keep = () => {
     if (!trial) return;
     if (trial.side === 'avant') applyPreset(client, ch, trial.p);
+    logChanges(client, `Préréglage « ${title(trial.p)} » sur ${name}`, trial.before);
     showTip(`« ${title(trial.p)} » gardé sur ${name}`);
     onApplied?.(trial.p);
     setTrial(null);

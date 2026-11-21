@@ -29,6 +29,9 @@ import { EffectDetail } from './EffectDetail';
 import { FxNames, loadFxNames, saveFxNames } from '../xair/fxSlots';
 import { InputSheet } from './InputSheet';
 import { InputSourceSheet } from './InputSourceSheet';
+import { FindMicSheet } from './FindMicSheet';
+import { ChangesSheet } from './ChangesSheet';
+import { ChangeSet } from '../xair/changeLog';
 import { mixInfo } from './MixPicker';
 import { PresetPanel } from './PresetPanel';
 import { GatePanel, HpfPanel } from './CutGatePanels';
@@ -76,6 +79,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
   useEffect(() => { loadFxNames().then(setFxNames); }, []);
   const [inputOpen, setInputOpen] = useState(false);
   const [srcOpen, setSrcOpen] = useState(false);
+  const [find, setFind] = useState(false);
+  const [changed, setChanged] = useState<ChangeSet | null>(null);
 
   useEffect(() => {
     client.loadPaths([...channelDetailPaths(ch), insrcPath(ch), headampGainPath(ch), phantomPath(ch), ...Array.from({ length: BUS_COUNT }, (_, k) => chLevelPath(ch, { kind: 'bus', n: k + 1 })), chLevelPath(ch, MAIN)]);
@@ -186,6 +191,9 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
               </View>
               <Pressable onPress={() => setSrcOpen(true)} style={[styles.chip, { borderColor: theme.line2, borderWidth: 1 }]}>
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>Changer</Text>
+              </Pressable>
+              <Pressable onPress={() => setFind(true)} accessibilityLabel="Trouver ce micro" style={[styles.chip, { borderColor: theme.accent, borderWidth: 1 }]}>
+                <Text style={{ color: theme.accent, fontWeight: '800', fontSize: 12 }}>🔍 Trouver</Text>
               </Pressable>
             </View>
             <View style={{ gap: 4 }}>
@@ -352,6 +360,8 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
       <EffectDetail client={client} theme={theme} slot={fxOpen} names={fxNames} onNames={(n) => { setFxNames(n); saveFxNames(n); }} onClose={() => setFxOpen(null)} onOpen={setFxOpen} />
       <InputSheet client={client} ch={inputOpen ? ch : null} theme={theme} onClose={() => setInputOpen(false)} />
       <InputSourceSheet client={client} ch={srcOpen ? ch : null} theme={theme} onClose={() => setSrcOpen(false)} />
+      <FindMicSheet client={client} theme={theme} ch={ch} visible={find} onClose={() => setFind(false)} onSwapped={(s) => setChanged(s)} />
+      <ChangesSheet client={client} theme={theme} visible={!!changed} set={changed} onClose={() => setChanged(null)} />
     </View>
   );
 }

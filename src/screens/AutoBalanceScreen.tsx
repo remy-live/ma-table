@@ -14,6 +14,10 @@ import {
 } from '../xair/autoBalance';
 import { roleOf } from '../xair/autoBalance';
 import { setDemoStage } from '../xair/tableModel';
+import { plugColor, plugs } from '../xair/wiring';
+import { MiniTable } from '../ui/MiniTable';
+import { ChangeSet, changeSets, record } from '../xair/changeLog';
+import { ChangesSheet } from './ChangesSheet';
 import { swapChannels } from '../xair/clipboard';
 import { capture, restore, Snapshot } from '../xair/snapshot';
 import { addAuto } from '../store/sessions';
@@ -33,6 +37,11 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   const [manual, setManual] = useState(false);
   const [applyOn, setApplyOn] = useState<Record<number, boolean>>({});
   const redo = useRef<number | null>(null);
+  // « Ce qui a changé » : on note tout ce que la balance touche
+  const rec = useRef<ReturnType<typeof record> | null>(null);
+  const swaps = useRef<[number, number][]>([]);
+  const [changed, setChanged] = useState<ChangeSet | null>(null);
+  const endRecord = () => { const set = rec.current?.stop(swaps.current) ?? null; rec.current = null; swaps.current = []; return set; };
   useEffect(() => {
     if (!props.visible) return;
     const nm = namedChannels(client);
@@ -234,6 +243,9 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   };
 
   const begin = async () => {
+    rec.current?.cancel();
+    rec.current = record(client, mode === 'express' ? 'Balance express' : 'Balance auto');
+    swaps.current = [];
     const list = buildSteps(client, mode, pick);
     if (!list.length) {
       Alert.alert('Aucune voie nommée', 'Dis d’abord ce qui est branché (Aide-moi › Mode guidé, étape 1), pour que l’appli sache qui appeler.');
@@ -260,6 +272,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
 
   const close = () => {
     stop();
+    endRecord(); // gardé dans l'historique même sans « Appliquer » (les gains ont bougé)
     props.onClose();
   };
 
@@ -271,6 +284,8 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
         style: 'destructive',
         onPress: () => {
           stop();
+          rec.current?.cancel();
+          rec.current = null;
           if (R.current.undo) restore(client, R.current.undo);
           setApplied(false);
           setPhase('intro');
@@ -283,6 +298,8 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     plans.filter((p) => planOn[p.bus]).forEach((p) => applyReturn(client, p));
     if (master && masterOn) applyMaster(client, master);
     setApplied(true);
+    // on montre tout de suite ce qui a bougé, sur le dessin de la table
+    setTimeout(() => setChanged(endRecord()), 200);
   };
 
   const step = steps[idx];
@@ -403,7 +420,20 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1 }}>{step.who.toUpperCase()}</Text>
               <Text style={{ color: theme.text, fontSize: 30, fontWeight: '800', textAlign: 'center' }}>{step.what}</Text>
               <Text style={{ color: theme.text, fontSize: 18, textAlign: 'center', lineHeight: 25 }}>{step.say}</Text>
-              {step.ch && <Text style={{ color: theme.muted, fontSize: 12 }}>Prise {step.ch}</Text>}
+              {(() => {
+                // la table en petit : la prise concernée clignote
+                const P = plugs(client);
+                const plugOf = (c: number) => P.find((p) => p.chans.includes(c))?.n;
+                const targetsCh = step.ch ? [step.ch] : step.kind === 'silence' ? [] : steps.filter((x) => x.ch).map((x) => x.ch!);
+                const blink = targetsCh.map(plugOf).filter((n): n is number => !!n);
+                const map = Object.fromEntries(P.map((p) => [p.n, { label: p.name || undefined, color: p.chans.length ? plugColor(client, p, () => '') : undefined, dim: !!step.ch && !blink.includes(p.n) }]));
+                return (
+                  <View style={{ alignSelf: 'stretch', gap: 2 }}>
+                    <MiniTable plugs={map} blink={blink} maxWidth={440} />
+                    {step.ch && <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Prise {blink[0] ?? step.ch} · {chName(step.ch)}</Text>}
+                  </View>
+                );
+              })()}
               <View style={{ alignSelf: 'stretch', height: 14, borderRadius: 7, backgroundColor: theme.meterBg, overflow: 'hidden', marginTop: 6 }}>
                 <View style={{ width: `${Math.max(0, Math.min(100, ((live + 60) / 60) * 100))}%`, height: 14, backgroundColor: live > -3 ? theme.mute : live > -18 ? theme.ok : '#FCD34D' }} />
               </View>
@@ -447,6 +477,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               onPress={async () => {
                 const r = R.current;
                 await swapChannels(client, plug.from, plug.to);
+                swaps.current.push([Math.min(plug.from, plug.to), Math.max(plug.from, plug.to)]);
                 r.steps = swapInSteps(r.steps, r.idx, plug.from, plug.to);
                 setSteps(r.steps);
                 setPhase('run');
@@ -527,6 +558,11 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             <Pressable onPress={applyAll} disabled={applied} style={[styles.go, { backgroundColor: applied ? theme.track : theme.ok }]}>
               <Text style={{ color: applied ? theme.muted : '#052E1F', fontWeight: '800', fontSize: 16 }}>{applied ? '✓ Appliqué' : `Appliquer${results.some((x) => applyOn[x.ch] === false) ? ` · ${results.filter((x) => applyOn[x.ch] !== false).length} voie(s)` : ' ces réglages'}`}</Text>
             </Pressable>
+            {applied && (
+              <Pressable onPress={() => setChanged(changeSets()[0] ?? null)} style={[styles.go, { borderWidth: 1.5, borderColor: theme.accent }]}>
+                <Text style={{ color: theme.accent, fontWeight: '800' }}>👀 Voir ce qui a changé</Text>
+              </Pressable>
+            )}
             <Pressable onPress={undoAll} style={[styles.go, { borderWidth: 1, borderColor: theme.mute }]}>
               <Text style={{ color: theme.mute, fontWeight: '800' }}>Annuler tout</Text>
             </Pressable>
@@ -551,6 +587,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             </View>
           </ScrollView>
         )}
+        <ChangesSheet client={client} theme={theme} visible={!!changed} set={changed} onClose={() => setChanged(null)} />
       </View>
     </Modal>
   );

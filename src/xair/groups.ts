@@ -45,7 +45,8 @@ export function snapshot(client: XAirClient, members: number[], t: Target): Map<
 export function moveMembers(client: XAirClient, snap: Map<number, number>, t: Target, deltaDb: number) {
   const b = bases.get(snap);
   if (!b?.base) return;
-  const top = isFinite(b.base.top) ? b.base.top : -90;
+  const r = b.base.ref.filter((x): x is number => x !== null);
+  const top = isFinite(b.base.g) ? Math.max(...r) + b.base.g : -90;
   const next = groupAt(b.key, b.base, top + deltaDb);
   [...snap.keys()].forEach((ch, k) => client.set(chLevelPath(ch, t), f(next[k])));
 }

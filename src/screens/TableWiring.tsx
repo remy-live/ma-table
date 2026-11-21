@@ -5,7 +5,7 @@
 import { useMono } from '../ui/useMono';
 import { GroupBar } from '../ui/GroupBar';
 import { showTip } from '../ui/tip';
-import { groupMove, linkedCount } from '../xair/groupTrim';
+import { groupMove, groupTop, linkedCount } from '../xair/groupTrim';
 import { foldCore, linkSide, onSide, unlinkSide } from '../xair/wiring';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -14,7 +14,7 @@ import { f } from '../osc/osc';
 import { MonoSwitch } from '../ui/MonoSwitch';
 import { Theme } from '../ui/theme';
 import { useAnyTick } from '../ui/useTick';
-import { chLevelPath, FX_COUNT, meterIndex, MODEL, Target, targetId } from '../xair/addresses';
+import { chLevelPath, dcaFaderPath, FX_COUNT, meterIndex, MODEL, Target, targetId } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { fxType, fxTypePath } from '../xair/effects';
 import { SLOT_COLORS } from '../xair/fxSlots';
@@ -358,6 +358,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
             outColor={props.outColor}
             title={manyGroup ? manyGroup.name : `${manyPlugs.length} prise${manyPlugs.length > 1 ? 's' : ''} choisie${manyPlugs.length > 1 ? 's' : ''}`}
             color={manyGroup ? GROUP_COLORS[manyGroup.k - 1] : theme.text}
+            dca={manyGroup?.k}
             extra={manyGroup
               ? <Btn theme={theme} small kind="outline" label="▸ Déplier les prises" onPress={() => setOpen((o) => [...o, manyGroup.k])} />
               : <Btn theme={theme} small kind="ghost" label="Vider" onPress={() => setSel(null)} />}
@@ -391,7 +392,7 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
 /** Plusieurs prises à la fois (sélection ou groupe) : un bouton rond par sortie et par effet.
  *  Appui sur le nom : relier toutes (ou les délier si toutes y sont). Tourner : monte ou baisse
  *  toutes les prises reliées du même nombre de dB, l'équilibre entre elles est gardé. */
-export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title, color, extra }: { client: XAirClient; theme: Theme; wide: boolean; plugs: Plug[]; O: Outlet[]; outColor: (o: Outlet) => string; title: string; color: string; extra?: React.ReactNode }) {
+export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title, color, extra, dca }: { client: XAirClient; theme: Theme; wide: boolean; plugs: Plug[]; O: Outlet[]; outColor: (o: Outlet) => string; title: string; color: string; extra?: React.ReactNode; dca?: number }) {
   const chans = ps.flatMap((p) => p.chans);
   const targets: { t: Target; label: string; kicker?: string; color: string }[] = [
     ...O.map((o) => ({ t: o.t, label: o.name, color: outColor(o) })),
@@ -413,7 +414,9 @@ export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title,
             const vals = chans.map((ch) => Number(client.get(chLevelPath(ch, t)) ?? 0));
             const key = `${targetId(t)}|${chans.join(',')}`;
             const nOn = linkedCount(key, vals);
-            const top = Math.max(0, ...vals);
+            // façade d'un vrai groupe : on tourne le DCA de la table, les voies ne bougent pas
+            const useDca = !!dca && t.kind === 'main';
+            const top = useDca ? Number(client.get(dcaFaderPath(dca!)) ?? 0.75) : groupTop(key, vals);
             const all = chans.length > 0 && nOn === chans.length;
             return (
               <React.Fragment key={targetId(t)}>
@@ -423,10 +426,11 @@ export function ManyDrawer({ client, theme, wide, plugs: ps, O, outColor, title,
                   wide={wide}
                   value={top}
                   label={label}
-                  kicker={kicker ?? (nOn > 0 && !all ? `${nOn}/${chans.length}` : undefined)}
+                  kicker={kicker ?? (useDca ? 'groupe' : nOn > 0 && !all ? `${nOn}/${chans.length}` : undefined)}
                   color={c}
                   onToggle={() => chans.forEach((ch, k) => { if (all) client.set(chLevelPath(ch, t), f(0)); else if (vals[k] <= 0) client.set(chLevelPath(ch, t), f(dbToFader(kicker ? -14 : -10))); })}
                   onSet={(v) => {
+                    if (useDca) { client.set(dcaFaderPath(dca!), f(v)); return; }
                     // l'écart de chaque prise avec la plus forte est gardé, même passé par −∞
                     const next = groupMove(key, vals, v);
                     chans.forEach((ch, k) => { if (Math.abs(next[k] - vals[k]) > 0.0005) client.set(chLevelPath(ch, t), f(next[k])); });

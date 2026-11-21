@@ -6,6 +6,7 @@ import { HELP, showTip } from './tip';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
 import { LinkBadge } from './LinkBadge';
+import { KillButton } from './KillSwitch';
 import { XAirClient } from '../xair/XAirClient';
 
 export type Section = 'table' | 'effets' | 'branchements' | 'scene' | 'reglages';
@@ -68,6 +69,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         </Pressable>
       )}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
+      {props.client && <KillButton client={props.client} vertical={vertical} />}
       {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (
         <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>

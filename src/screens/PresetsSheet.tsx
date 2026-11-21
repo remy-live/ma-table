@@ -6,6 +6,7 @@ import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath } from '../xair/addresses';
+import { record } from '../xair/changeLog';
 import { applyPreset, DRUM_PARTS, FAMILIES, Family, LIBRARY, Preset, presetFromChannel, presetPaths } from '../xair/presets';
 import { XAirClient } from '../xair/XAirClient';
 import { EqThumb, PresetDots } from '../ui/EqThumb';
@@ -44,7 +45,9 @@ export function PresetsSheet(props: { client: XAirClient; theme: Theme; visible:
 
   const apply = () => {
     if (!sel || !targets.length) return;
+    const r = record(client, `Préréglage « ${sel.name} »`);
     targets.forEach((c) => applyPreset(client, c, sel));
+    r.stop();
     Alert.alert('Appliqué', `« ${sel.name} » sur ${targets.map(chName).join(', ')}. C’est un point de départ : ajuste à l’oreille.`);
   };
   const keep = async () => {
