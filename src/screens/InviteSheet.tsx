@@ -1,14 +1,21 @@
 // Inviter un musicien : d'abord des visages (un par retour), puis le QR code
 // expliqué en 3 images, et ses droits en tuiles.
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { load, save } from '../store/persist';
 import { QrCode } from '../ui/QrCode';
 import { Theme } from '../ui/theme';
 import { BUS_COUNT, busNamePath, CH_COUNT, chNamePath } from '../xair/addresses';
 import { ownersOf, roleOf } from '../xair/autoBalance';
-import { DEFAULT_RIGHTS, inviteLink, MonConfig, MonRights } from '../xair/monitor';
+import { DEFAULT_RIGHTS, inviteLink, LEVELS, levelOf, MonConfig, MonRights, rightsFor } from '../xair/monitor';
+import { myAddress, prepareInvite, registerInvite, remoteSupported, REMOTE_PORT, startRemote } from '../web/remoteServer';
+
+/** QR code « rejoindre ce Wi-Fi » (lu par l'appareil photo, iPhone et Android). */
+export function wifiQr(ssid: string, pass: string): string {
+  const e = (t: string) => t.replace(/([\\;,:"])/g, '\\$1');
+  return pass ? `WIFI:T:WPA;S:${e(ssid)};P:${e(pass)};;` : `WIFI:T:nopass;S:${e(ssid)};;`;
+}
 import { XAirClient } from '../xair/XAirClient';
 import { initials, MIX_COLORS } from './MixPicker';
 
@@ -32,6 +39,11 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
   const [rights, setRights] = useState<MonRights>(DEFAULT_RIGHTS);
   const [showCode, setShowCode] = useState(false);
   const [editMe, setEditMe] = useState(false);
+  const [mode, setMode] = useState<'wifi' | 'app' | 'web'>('app');
+  const [wifi, setWifi] = useState<{ ssid: string; pass: string }>({ ssid: '', pass: '' });
+  const [web, setWeb] = useState<{ url: string; err: string }>({ url: '', err: '' });
+  useEffect(() => { load<{ ssid: string; pass: string } | null>('wifiInvite', null).then((w) => { if (w) { setWifi(w); setMode('wifi'); } }); }, []);
+  const editWifi = (w: { ssid: string; pass: string }) => { setWifi(w); save('wifiInvite', w); };
   const host = client.hostAddress;
   const busName = (b: number) => String(client.get(busNamePath(b)) ?? '').trim();
   const chName = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
@@ -59,6 +71,21 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
   const sel = bus !== null ? people[bus - 1] : null;
   const cfg: MonConfig | null = sel ? { host, bus: sel.b, name: sel.name, me, rights } : null;
   const link = cfg ? inviteLink(cfg) : '';
+  // « Sans l'appli » : la tablette sert la page, le QR code mène à son adresse
+  useEffect(() => {
+    if (mode !== 'web' || !cfg) return;
+    if (!remoteSupported || host === 'demo') { setWeb({ url: `http://192.168.1.20:${REMOTE_PORT}/?k=demo`, err: 'Démo : sur la vraie table, la tablette sert la page « Mon retour » et ce QR code y mène.' }); return; }
+    let alive = true;
+    (async () => {
+      const ok = await startRemote(client);
+      const ip = await myAddress();
+      if (!alive) return;
+      if (!ok || !ip || ip === '0.0.0.0') { setWeb({ url: '', err: 'Impossible de partager la page : vérifie que ce téléphone est sur le Wi-Fi.' }); return; }
+      prepareInvite(client, cfg);
+      setWeb({ url: `http://${ip}:${REMOTE_PORT}/?k=${registerInvite(cfg)}`, err: '' });
+    })();
+    return () => { alive = false; };
+  }, [mode, cfg?.bus, JSON.stringify(cfg?.rights), cfg?.me.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleMe = (c: number) => setMe((m) => (m.includes(c) ? m.filter((x) => x !== c) : [...m, c].sort((a, b) => a - b)));
 
   return (
@@ -99,25 +126,67 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
           {sel && cfg && (
             <View style={{ flexDirection: wideI ? 'row' : 'column', gap: 12, alignItems: 'flex-start' }}>
               <View style={[styles.card, { flex: wideI ? 1 : undefined, alignSelf: 'stretch', backgroundColor: theme.panel, borderColor: sel.color, alignItems: 'center' }]}>
-                <QrCode value={link} size={200} />
-                {host === 'demo' && <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Démo : ce QR code est un exemple, il ne mène à aucune table. Sur la vraie table, le musicien le scanne et arrive sur son retour.</Text>}
-                <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', alignItems: 'center' }}>
-                  <Pic icon="📷" text="Il ouvre son appareil photo" theme={theme} />
-                  <Text style={{ color: theme.muted }}>›</Text>
-                  <Pic icon="📱" text="Il vise le code" theme={theme} />
-                  <Text style={{ color: theme.muted }}>›</Text>
-                  <Pic icon="🎧" text="Il règle son retour, rien d’autre" theme={theme} />
+                <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch' }}>
+                  {([['wifi', '① Wi-Fi'], ['app', '② Avec l’appli'], ['web', '② Sans l’appli']] as const).map(([m, l]) => (
+                    <Pressable key={m} onPress={() => setMode(m)} style={[styles.tab, mode === m ? { backgroundColor: sel.color, borderColor: sel.color } : { borderColor: theme.line2 }]}>
+                      <Text style={{ color: mode === m ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{l}</Text>
+                    </Pressable>
+                  ))}
                 </View>
-                <Pressable onPress={() => setShowCode((x) => !x)} style={{ padding: 4 }}>
-                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>{showCode ? 'Masquer le code à taper' : 'Pas d’appareil photo ? Le code à taper'}</Text>
-                </Pressable>
-                {showCode && (
-                  <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>
-                    Dans l’appli « Ma table » › Rejoindre, il tape <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{host} · {sel.b}</Text>
-                  </Text>
+                {mode === 'wifi' && (
+                  <>
+                    {wifi.ssid ? <QrCode value={wifiQr(wifi.ssid, wifi.pass)} size={200} /> : <Text style={{ color: theme.muted, fontSize: 13, textAlign: 'center' }}>Écris une fois le nom du Wi-Fi (celui de la table, ou celui où est reliée la tablette) : le musicien le rejoint en scannant, sans taper le mot de passe.</Text>}
+                    <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch' }}>
+                      <TextInput value={wifi.ssid} onChangeText={(t) => editWifi({ ...wifi, ssid: t })} placeholder="Nom du Wi-Fi (ex. XR18-1A2B3C)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+                      <TextInput value={wifi.pass} onChangeText={(t) => editWifi({ ...wifi, pass: t })} placeholder="Mot de passe" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', alignItems: 'center' }}>
+                      <Pic icon="📷" text="Il scanne avec l’appareil photo" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="📶" text="Son téléphone rejoint le Wi-Fi" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="②" text="Puis le code de l’étape 2" theme={theme} />
+                    </View>
+                  </>
+                )}
+                {mode === 'app' && (
+                  <>
+                    <QrCode value={link} size={200} />
+                    {host === 'demo' && <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>Démo : ce QR code est un exemple, il ne mène à aucune table. Sur la vraie table, le musicien le scanne et arrive sur son retour.</Text>}
+                    <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', alignItems: 'center' }}>
+                      <Pic icon="📷" text="Il ouvre son appareil photo" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="📱" text="Il vise le code" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="🎧" text="L’appli s’ouvre sur son retour" theme={theme} />
+                    </View>
+                    <Pressable onPress={() => setShowCode((x) => !x)} style={{ padding: 4 }}>
+                      <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>{showCode ? 'Masquer le code à taper' : 'Pas d’appareil photo ? Le code à taper'}</Text>
+                    </Pressable>
+                    {showCode && (
+                      <Text style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>
+                        Dans l’appli « Ma table » › Rejoindre, il tape <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{host} · {sel.b}</Text>
+                      </Text>
+                    )}
+                  </>
+                )}
+                {mode === 'web' && (
+                  <>
+                    {!!web.url && <QrCode value={web.url} size={200} />}
+                    {!!web.url && <Text selectable style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{web.url}</Text>}
+                    {!!web.err && <Text style={{ color: web.url ? theme.muted : '#FCA5A5', fontSize: 12, textAlign: 'center' }}>{web.err}</Text>}
+                    <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', alignItems: 'center' }}>
+                      <Pic icon="📶" text="Même Wi-Fi que cette tablette" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="🌐" text="Il scanne : la page s’ouvre" theme={theme} />
+                      <Text style={{ color: theme.muted }}>›</Text>
+                      <Pic icon="🎧" text="Il règle son retour, sans rien installer" theme={theme} />
+                    </View>
+                    <Text style={{ color: theme.muted, fontSize: 11, textAlign: 'center' }}>Garde l’appli ouverte sur cette tablette : c’est elle qui parle à la table pour lui.</Text>
+                  </>
                 )}
                 <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
-                  <Pressable onPress={() => Share.share({ message: `Ton retour sur la table : ${link}\nOu dans Ma table › Rejoindre : ${host} · ${sel.b}` })} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}>
+                  <Pressable onPress={() => Share.share({ message: mode === 'web' && web.url ? `Ton retour, sans rien installer (même Wi-Fi que la tablette) : ${web.url}` : `Ton retour sur la table : ${link}\nOu dans Ma table › Rejoindre : ${host} · ${sel.b}` })} style={[styles.btn, { borderColor: theme.line2, borderWidth: 1 }]}>
                     <Text style={{ color: theme.text, fontWeight: '700' }}>Envoyer le lien</Text>
                   </Pressable>
                   <Pressable onPress={() => props.onTryHere(cfg)} style={[styles.btn, { backgroundColor: theme.accent }]}>
@@ -147,6 +216,20 @@ export function InviteSheet(props: { client: XAirClient; theme: Theme; visible: 
                 )}
               </View>
 
+              <Text style={[styles.kicker, { color: theme.muted }]}>JUSQU’OÙ IL PEUT ALLER</Text>
+              <View style={styles.grid}>
+                {LEVELS.map((l) => {
+                  const on = levelOf(rights) === l.id;
+                  return (
+                    <Pressable key={l.id} onPress={() => setRights((r) => rightsFor(l.id, r))} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.face, { minHeight: 84, borderColor: on ? sel.color : theme.line, backgroundColor: on ? theme.deep : theme.panel }]}>
+                      <Text style={{ fontSize: 20 }}>{l.icon}</Text>
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', textAlign: 'center' }}>{l.label}</Text>
+                      <Text style={{ color: on ? sel.color : theme.muted, fontSize: 10, fontWeight: '700', textAlign: 'center' }}>{l.sub}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {rights.full && <Text style={{ color: '#FCD34D', fontSize: 12, fontWeight: '700' }}>⚠ Avec l’appli, il peut passer à toute la table (gains, effets, façade). Sans l’appli, la page reste limitée à son retour et ses voies.</Text>}
               <Text style={[styles.kicker, { color: theme.muted }]}>CE QU’IL PEUT FAIRE</Text>
               <View style={styles.grid}>
                 {RIGHTS.map(([k, icon, label, sub]) => {
@@ -192,5 +275,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#0B0D10', fontSize: 14, fontWeight: '800' },
   card: { borderWidth: 2, borderRadius: 20, padding: 14, gap: 10 },
   btn: { flex: 1, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, minHeight: 38, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  input: { flex: 1, minHeight: 42, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, fontSize: 13 },
   small: { minHeight: 36, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
 });

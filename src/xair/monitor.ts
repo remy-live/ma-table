@@ -36,9 +36,28 @@ export interface MonRights {
   save: boolean; // garder sa balance
   limiterOff: boolean; // pouvoir couper le protège-oreilles
   fx: boolean; // régler les retours d'effets dans son casque
+  chans?: boolean; // ses voies à lui : gain et coupure
+  full?: boolean; // toute la table (un ami technicien)
 }
 
-export const DEFAULT_RIGHTS: MonRights = { groups: true, save: true, limiterOff: false, fx: false };
+/** Les niveaux de confiance proposés à l'invitation. */
+export type MonLevel = 'retour' | 'effets' | 'voies' | 'tout';
+export const LEVELS: { id: MonLevel; icon: string; label: string; sub: string }[] = [
+  { id: 'retour', icon: '🎧', label: 'Son retour', sub: 'rien d’autre' },
+  { id: 'effets', icon: '✦', label: '+ ses effets', sub: 'réverbe dans son casque' },
+  { id: 'voies', icon: '🎚', label: '+ ses voies', sub: 'gain et coupure de ses instruments' },
+  { id: 'tout', icon: '🛠', label: 'Toute la table', sub: 'un ami technicien' },
+];
+export function rightsFor(level: MonLevel, keep: MonRights): MonRights {
+  const base = { groups: keep.groups, save: keep.save };
+  if (level === 'retour') return { ...base, fx: false, chans: false, full: false, limiterOff: keep.limiterOff };
+  if (level === 'effets') return { ...base, fx: true, chans: false, full: false, limiterOff: keep.limiterOff };
+  if (level === 'voies') return { ...base, fx: true, chans: true, full: false, limiterOff: keep.limiterOff };
+  return { groups: true, save: true, fx: true, chans: true, full: true, limiterOff: true };
+}
+export const levelOf = (r: MonRights): MonLevel => (r.full ? 'tout' : r.chans ? 'voies' : r.fx ? 'effets' : 'retour');
+
+export const DEFAULT_RIGHTS: MonRights = { groups: true, save: true, limiterOff: false, fx: false, chans: false, full: false };
 
 export interface MonConfig {
   host: string; // IP de la table, ou 'demo'
@@ -203,7 +222,7 @@ export const busMeter = (bus: number) => meterIndex.bus(bus);
 
 /** Lien d'invitation : matable://retour?ip=…&bus=…&nom=…&moi=4&d=gs */
 export function inviteLink(c: Omit<MonConfig, 'rights'> & { rights: MonRights }): string {
-  const d = (c.rights.groups ? 'g' : '') + (c.rights.save ? 's' : '') + (c.rights.limiterOff ? 'l' : '') + (c.rights.fx ? 'f' : '');
+  const d = (c.rights.groups ? 'g' : '') + (c.rights.save ? 's' : '') + (c.rights.limiterOff ? 'l' : '') + (c.rights.fx ? 'f' : '') + (c.rights.chans ? 'v' : '') + (c.rights.full ? 't' : '');
   const q = [`ip=${encodeURIComponent(c.host)}`, `bus=${c.bus}`, `nom=${encodeURIComponent(c.name)}`, `moi=${c.me.join('.')}`, `d=${d || '-'}`];
   return `matable://retour?${q.join('&')}`;
 }
@@ -224,7 +243,7 @@ export function parseInvite(url: string): MonConfig | null {
     bus,
     name: q.nom || `Retour ${bus}`,
     me: (q.moi ?? '').split('.').map(Number).filter((n) => n >= 1 && n <= CH_COUNT),
-    rights: { groups: d.includes('g'), save: d.includes('s'), limiterOff: d.includes('l'), fx: d.includes('f') },
+    rights: { groups: d.includes('g'), save: d.includes('s'), limiterOff: d.includes('l'), fx: d.includes('f'), chans: d.includes('v'), full: d.includes('t') },
   };
 }
 

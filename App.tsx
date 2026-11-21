@@ -234,6 +234,7 @@ export default function App() {
           theme={theme}
           owner={monitor.owner}
           onWho={() => setWho({ host: monitor.cfg.host, current: monitor.cfg })}
+          onFull={monitor.cfg.rights.full ? () => setMonitor(null) : undefined}
           onExit={() => {
             if (!monitor.owner) {
               save('monRetour', null);

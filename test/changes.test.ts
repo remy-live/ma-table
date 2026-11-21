@@ -52,3 +52,36 @@ test('Tout couper : rétablir ne rallume que ce qui était allumé', async () =>
     assert.ok(!isKilled());
   } finally { c.close(); sim.stop(); }
 });
+
+test('Invitation : niveaux de droits dans le lien', async () => {
+  const { inviteLink, parseInvite, rightsFor, levelOf, DEFAULT_RIGHTS } = await import('../src/xair/monitor');
+  const r = rightsFor('voies', DEFAULT_RIGHTS);
+  const back = parseInvite(inviteLink({ host: '192.168.1.5', bus: 2, name: 'Seb', me: [4], rights: r }))!;
+  assert.equal(levelOf(back.rights), 'voies');
+  assert.ok(back.rights.chans && back.rights.fx && !back.rights.full);
+  assert.equal(levelOf(parseInvite(inviteLink({ host: 'x', bus: 1, name: 'a', me: [], rights: rightsFor('tout', DEFAULT_RIGHTS) }))!.rights), 'tout');
+});
+
+test('Sans l’appli : la page ne règle que le retour invité', async () => {
+  const { handleRemote } = await import('../src/web/remoteApi');
+  const { DEFAULT_RIGHTS, sendPath } = await import('../src/xair/monitor');
+  const port = 10398;
+  const sim = await startSimulator({ port });
+  const c = new XAirClient(new NodeUdpTransport(), port);
+  try {
+    await c.connect('127.0.0.1');
+    await sleep(200);
+    c.set('/ch/01/config/name', { t: 's', v: 'Voix' });
+    const inv = new Map([['abc', { host: 'x', bus: 2, name: 'Seb', me: [1], rights: DEFAULT_RIGHTS }]]);
+    assert.ok(JSON.parse(handleRemote(c, inv, 'GET', '/api/state?k=zzz').body).ok === false); // mauvaise clé
+    const st = JSON.parse(handleRemote(c, inv, 'GET', '/api/state?k=abc').body);
+    assert.equal(st.bus, 2);
+    const k = st.sources.findIndex((s: { label: string }) => s.label === 'Voix');
+    handleRemote(c, inv, 'POST', `/api/do?k=abc&a=set&i=${k}&db=-6`);
+    assert.ok(Math.abs(Number(c.get(sendPath(1, 2))) - 0.6) < 0.02); // −6 dB dans le bus 2
+    const before = c.get('/headamp/01/gain');
+    handleRemote(c, inv, 'POST', '/api/do?k=abc&a=gain&ch=1&db=3'); // pas le droit : rien ne bouge
+    assert.equal(c.get('/headamp/01/gain'), before);
+    assert.match(handleRemote(c, inv, 'GET', '/').body, /Mon retour/);
+  } finally { c.close(); sim.stop(); }
+});

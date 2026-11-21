@@ -3,9 +3,11 @@
 // protège-oreilles, et sa balance à lui (gardée avec le numéro du bus).
 import { DragBar } from '../ui/DragBar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
-import { f } from '../osc/osc';
+import { f, i } from '../osc/osc';
+import { chNamePath, chOnPath, gainDbToF, headampGainPath } from '../xair/addresses';
+import { plugs } from '../xair/wiring';
 import { load, save } from '../store/persist';
 import { HSlider } from '../ui/HSlider';
 import { Theme } from '../ui/theme';
@@ -44,7 +46,7 @@ function useBusTick(client: XAirClient, bus: number) {
   return tick;
 }
 
-export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme: Theme; onExit: () => void; owner?: boolean; onWho?: () => void }) {
+export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme: Theme; onExit: () => void; owner?: boolean; onWho?: () => void; onFull?: () => void }) {
   const { client, cfg, theme } = props;
   const { bus, rights } = cfg;
   const tick = useBusTick(client, bus);
@@ -52,6 +54,7 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
   const [toast, setToast] = useState('');
   const [bal, setBal] = useState<MonBalance | null>(null);
   const [eco, setEco] = useState(false);
+  const [myCh, setMyCh] = useState(false);
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busName = String(useParam<string>(client, `/bus/${bus}/config/name`, '')) || `Retour ${bus}`;
   const master = Number(useParam<number>(client, busFaderPath(bus), 0.75));
@@ -223,6 +226,23 @@ export function MonitorScreen(props: { client: XAirClient; cfg: MonConfig; theme
         );
       })()}
 
+      {(rights.chans || rights.full) && (
+        <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 6 }}>
+          {rights.chans && cfg.me.length > 0 && (
+            <Pressable onPress={() => setMyCh(true)} style={[styles.foot, { borderColor: ME, backgroundColor: theme.panel }]}>
+              <Text style={[styles.footText, { color: theme.text }]}>🎚 Mes voies</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>gain et coupure de mes instruments</Text>
+            </Pressable>
+          )}
+          {rights.full && props.onFull && (
+            <Pressable onPress={props.onFull} style={[styles.foot, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
+              <Text style={[styles.footText, { color: theme.text }]}>🛠 Toute la table</Text>
+              <Text style={{ color: theme.muted, fontSize: 11 }}>l’appli complète, comme le sondier</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+      <MyChannels client={client} theme={theme} chans={cfg.me} visible={myCh} onClose={() => setMyCh(false)} />
       <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 14, marginTop: 6 }}>
         <Pressable onPress={toggleLim} accessibilityRole="switch" accessibilityState={{ checked: lim }} style={[styles.foot, { borderColor: lim ? ME : '#EF4444', backgroundColor: lim ? '#13261E' : '#2A1416' }]}>
           <Text style={[styles.footText, { color: theme.text }]}>Protège-oreilles</Text>
@@ -318,6 +338,7 @@ function Row(props: { theme: Theme; name: string; color: string; db: number; che
 }
 
 const styles = StyleSheet.create({
+  pmBtn: { width: 44, height: 42, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   root: { flex: 1, paddingTop: 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingBottom: 8 },
   avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
@@ -338,3 +359,41 @@ const styles = StyleSheet.create({
   save: { height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', left: 24, right: 24, top: 100, backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1, borderRadius: 12, padding: 10 },
 });
+
+/** « Mes voies » : gain et coupure des instruments du musicien (si le sondier l'a permis). */
+function MyChannels({ client, theme, chans, visible, onClose }: { client: XAirClient; theme: Theme; chans: number[]; visible: boolean; onClose: () => void }) {
+  const [, setT] = useState(0);
+  useEffect(() => {
+    if (!visible) return;
+    const off = client.on('*', (_v, p) => { if (p.startsWith('/headamp/') || p.endsWith('/mix/on')) setT((t) => t + 1); });
+    return () => { off(); };
+  }, [client, visible]);
+  const P = plugs(client);
+  const plugOf = (ch: number) => P.find((p) => p.chans.includes(ch))?.n ?? ch;
+  const gain = (ch: number) => Number(client.get(headampGainPath(plugOf(ch))) ?? 0) * 72 - 12;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 14 }}>
+        <View style={{ backgroundColor: theme.panel, borderRadius: 18, borderWidth: 1, borderColor: theme.line, padding: 14, gap: 10 }}>
+          <Text style={{ color: theme.text, fontSize: 19, fontWeight: '800' }}>🎚 Mes voies</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Le gain change le son partout (façade et tous les retours) : bouge-le doucement.</Text>
+          {chans.map((ch) => {
+            const on = Number(client.get(chOnPath(ch)) ?? 1) === 1;
+            const g = gain(ch);
+            const setG = (d: number) => client.set(headampGainPath(plugOf(ch)), f(gainDbToF(Math.max(-12, Math.min(60, g + d)))));
+            return (
+              <View key={ch} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontWeight: '800' }}>{String(client.get(chNamePath(ch)) ?? '') || `Voie ${ch}`}</Text>
+                <Pressable onPress={() => setG(-1)} style={[styles.pmBtn, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>−</Text></Pressable>
+                <Text style={{ width: 64, textAlign: 'center', color: theme.text, fontWeight: '800' }}>{`${g > 0 ? '+' : ''}${Math.round(g)} dB`}</Text>
+                <Pressable onPress={() => setG(1)} style={[styles.pmBtn, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>+</Text></Pressable>
+                <Pressable onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} style={[styles.pmBtn, { width: 78, borderColor: on ? theme.line2 : '#EF4444', backgroundColor: on ? undefined : '#7F1D1D' }]}><Text style={{ color: theme.text, fontWeight: '800', fontSize: 12 }}>{on ? 'Couper' : 'Coupée'}</Text></Pressable>
+              </View>
+            );
+          })}
+          <Pressable onPress={onClose} style={{ minHeight: 46, borderRadius: 12, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.onAccent, fontWeight: '800' }}>OK</Text></Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
