@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 #include <android/log.h>
 
 #define TAG "usbiso"
@@ -37,7 +38,9 @@ static int g_lasterr = 0;
 
 // Sorties « concert » : un WAV par voie choisie (ou par paire stéréo), écrit au fil de l'eau.
 #define MAXOUT 40
-typedef struct { FILE *f; char *buf; int a, b; long long bytes; } Out;
+// pk : petit fichier à côté, une crête (1 octet) toutes les PKN images, pour dessiner l'onde sans relire le son
+#define PKN 9600
+typedef struct { FILE *f; char *buf; int a, b; long long bytes; FILE *pk; float pkmax; int pkcnt; } Out;
 static Out g_outs[MAXOUT];
 static int g_nout = 0;
 static volatile int g_rate = 48000;
@@ -86,12 +89,19 @@ static void header(Out *o) {
   if (pos > 44) fseek(o->f, pos, SEEK_SET);
 }
 
+static int pkbyte(float m) {
+  if (m >= 0.999f) return 255; // 255 = a saturé
+  int v = (int)(sqrtf(m) * 254.0f);
+  return v < 0 ? 0 : v > 254 ? 254 : v;
+}
+
 static void headers(void) { for (int k = 0; k < g_nout; k++) if (g_outs[k].f) header(&g_outs[k]); }
 
 static void closeouts(void) {
   for (int k = 0; k < g_nout; k++) {
     Out *o = &g_outs[k];
     if (o->f) { header(o); fclose(o->f); o->f = NULL; }
+    if (o->pk) { if (o->pkcnt > 0) fputc(pkbyte(o->pkmax), o->pk); fclose(o->pk); o->pk = NULL; }
     free(o->buf); o->buf = NULL;
   }
   g_nout = 0;
@@ -181,6 +191,13 @@ static void demux(const unsigned char *d, int nfr) {
         const unsigned char *fr = d + (size_t)f * g_fb;
         memcpy(tmp + n, fr + o->a * g_bps, (size_t)g_bps); n += g_bps;
         if (o->b >= 0) { memcpy(tmp + n, fr + o->b * g_bps, (size_t)g_bps); n += g_bps; }
+        if (o->pk) {
+          float v = sample(fr + o->a * g_bps);
+          if (v < 0) v = -v;
+          if (o->b >= 0) { float w2 = sample(fr + o->b * g_bps); if (w2 < 0) w2 = -w2; if (w2 > v) v = w2; }
+          if (v > o->pkmax) o->pkmax = v;
+          if (++o->pkcnt >= PKN) { fputc(pkbyte(o->pkmax), o->pk); o->pkmax = 0; o->pkcnt = 0; }
+        }
       }
       if (fwrite(tmp, 1, (size_t)n, o->f) != (size_t)n) g_werr++;
       o->bytes += n;
@@ -204,7 +221,7 @@ static void *writer(void *arg) {
     __atomic_store_n(&g_tail, t + n, __ATOMIC_RELEASE);
     g_written += (long long)(n / g_fb);
     // toutes les ~10 s : en-têtes à jour (fichiers lisibles même après un arrêt brutal)
-    if (g_nout && g_written - g_lasthdr > 10LL * g_rate) { g_lasthdr = g_written; headers(); }
+    if (g_nout && g_written - g_lasthdr > 10LL * g_rate) { g_lasthdr = g_written; headers(); for (int k = 0; k < g_nout; k++) if (g_outs[k].pk) fflush(g_outs[k].pk); }
   }
   free(lin);
   return NULL;
@@ -277,6 +294,8 @@ JNIEXPORT jint JNICALL Java_fr_remy_usbaudio_UsbIso_start(JNIEnv *env, jclass cl
       char *t2 = strchr(t1 + 1, '\t');
       if (!t2) continue;
       *t2 = 0;
+      char *t3 = strchr(t2 + 1, '\t');
+      if (t3) *t3 = 0;
       int a = atoi(t1 + 1), b = atoi(t2 + 1);
       if (a < 0 || a >= nch || b >= nch) continue;
       Out *o = &g_outs[g_nout];
@@ -285,6 +304,7 @@ JNIEXPORT jint JNICALL Java_fr_remy_usbaudio_UsbIso_start(JNIEnv *env, jclass cl
       o->buf = (char *)malloc(1 << 17);
       if (o->buf) setvbuf(o->f, o->buf, _IOFBF, 1 << 17);
       o->a = a; o->b = b; o->bytes = 0;
+      o->pk = t3 && t3[1] ? fopen(t3 + 1, "wb") : NULL; o->pkmax = 0; o->pkcnt = 0;
       g_nout++;
       header(o);
       fseek(o->f, 44, SEEK_SET);

@@ -7,7 +7,8 @@ import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { autoTrim, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
-import { SessEntry, usbAudio } from '../xair/usbAudio';
+import { SessEntry, usbListen as usbAudio } from '../xair/usbAudio';
+import { ListenScreen } from './ListenScreen';
 import { XAirClient } from '../xair/XAirClient';
 
 const RED = '#DC2626';
@@ -109,7 +110,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
-        <View style={styles.head}>
+        <View style={[styles.head, entry ? { display: 'none' } : null]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>Enregistrer le concert</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>La tablette branchée en USB sur la table · un fichier par voie</Text>
@@ -120,7 +121,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
         {!usbAudio ? (
           <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>L’enregistrement se fait sur la tablette Android branchée à la table par le câble USB. Sur cet appareil, il n’est pas disponible.</Text>
         ) : entry ? (
-          <SessionDetail entry={entry} theme={theme} onBack={() => { usbAudio?.stopPlay(); setOpen(null); reload(); }} />
+          <ListenScreen entry={entry} theme={theme} onBack={() => { setOpen(null); reload(); }} />
         ) : (
           <>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
@@ -239,162 +240,6 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
         )}
       </View>
     </Modal>
-  );
-}
-
-const MIX_PREFIX = 'Mix';
-
-function SessionDetail({ entry, theme, onBack }: { entry: SessEntry; theme: Theme; onBack: () => void }) {
-  const meta: RecMeta | null = useMemo(() => parseMeta(entry.meta), [entry.meta]);
-  const [files, setFiles] = useState(entry.files);
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [trims, setTrims] = useState<Record<string, number>>({});
-  const [off, setOff] = useState<Record<string, boolean>>({});
-  const [song, setSong] = useState(-1); // -1 = tout le concert
-  const [prog, setProg] = useState<number | null>(null);
-  const [msg, setMsg] = useState('');
-
-  useEffect(() => {
-    const sub = usbAudio?.addListener('onMix', (e) => setProg(e.p));
-    return () => { sub?.remove(); };
-  }, []);
-
-  const refresh = () => setFiles(usbAudio?.sessList().find((e) => e.id === entry.id)?.files ?? []);
-  const isMix = (n: string) => n.startsWith(MIX_PREFIX);
-  const trackOf = (fileName: string) => meta?.tracks.find((t) => `${t.file}.wav` === fileName) ?? null;
-  // les pistes à mixer : tout sauf la façade et les mix déjà faits
-  const sources = files.filter((f) => !isMix(f.name) && !trackOf(f.name)?.stereo);
-  const facadeFile = files.find((f) => trackOf(f.name)?.stereo && meta?.facade) ?? null;
-  const markers = meta?.markers ?? [];
-  const total = meta?.seconds ?? 0;
-  const label = (n: string) => trackOf(n)?.name ?? n.replace(/\.wav$/, '');
-  const trimOf = (n: string) => trims[n] ?? autoTrim(label(n));
-
-  const play = (path: string, sec = 0) => {
-    try { usbAudio?.playAt(path, Math.round(sec * 1000)); setPlaying(path); } catch { setMsg('Lecture impossible sur cette tablette.'); }
-  };
-  const stopPlay = () => { usbAudio?.stopPlay(); setPlaying(null); };
-
-  const doMix = async () => {
-    if (!usbAudio) return;
-    const use = sources.filter((f) => !off[f.name]);
-    if (!use.length) { setMsg('Aucune piste à mixer.'); return; }
-    const from = song >= 0 ? markers[song]?.t ?? 0 : 0;
-    const to = song >= 0 ? markers[song + 1]?.t ?? 0 : 0;
-    const outName = song >= 0 ? `${MIX_PREFIX} ${markers[song]?.label ?? 'morceau'}.wav` : `${MIX_PREFIX} du concert.wav`;
-    setMsg(''); setProg(0); stopPlay();
-    const r = await usbAudio.mix({ tracks: use.map((f) => ({ path: f.path, trim: trimOf(f.name), pan: trackOf(f.name)?.pan ?? 0, auto: true })), out: `${entry.dir}/${outName}`, from, to });
-    setProg(null);
-    if (!r.ok) { setMsg(`Mixage impossible : ${r.error}`); return; }
-    const silent = use.filter((_, k) => r.gains?.[k] == null).map((f) => label(f.name));
-    setMsg(`✓ ${outName} est prêt.${silent.length ? ` Pistes vides ignorées : ${silent.join(', ')}.` : ''}`);
-    refresh();
-    if (r.path) play(r.path);
-  };
-
-  const share = async (path: string) => {
-    const ok = await usbAudio?.share(path).catch(() => false);
-    if (!ok) setMsg('Partage impossible ici : le fichier est dans Musique › Ma table (appli Fichiers).');
-  };
-
-  const del = () => Alert.alert('Supprimer cet enregistrement ?', `${entry.id} · tous ses fichiers seront effacés de la tablette.`, [
-    { text: 'Annuler', style: 'cancel' },
-    { text: 'Supprimer', style: 'destructive', onPress: () => { stopPlay(); usbAudio?.sessDelete(entry.id); onBack(); } },
-  ]);
-
-  const listen = files.find((f) => isMix(f.name) && f.name.includes('concert')) ?? facadeFile ?? null;
-
-  const row = (f: { name: string; path: string; size: number }, extra?: React.ReactNode) => (
-    <View key={f.path} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
-      <Pressable onPress={() => (playing === f.path ? stopPlay() : play(f.path))} style={[styles.play, { borderColor: theme.line2, backgroundColor: playing === f.path ? theme.accent : 'transparent' }]} accessibilityLabel={`Écouter ${label(f.name)}`}>
-        <Text style={{ color: playing === f.path ? theme.onAccent : theme.text, fontSize: 16 }}>{playing === f.path ? '■' : '▶'}</Text>
-      </Pressable>
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{isMix(f.name) ? f.name.replace(/\.wav$/, '') : label(f.name)}</Text>
-        <Text style={{ color: theme.muted, fontSize: 11 }}>{gb(f.size)}</Text>
-      </View>
-      {extra}
-    </View>
-  );
-
-  return (
-    <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 30 }}>
-      <Pressable onPress={onBack} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 15, fontWeight: '800' }}>‹ Mes enregistrements</Text></Pressable>
-      <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>{entry.id}</Text>
-      {!!meta?.reason && <Text style={{ color: '#FCA5A5', fontSize: 13 }}>Arrêté tout seul : {meta.reason}.</Text>}
-      {meta?.holes != null && (
-        <Text style={{ color: meta.holes ? '#FACC15' : theme.muted, fontSize: 12 }}>
-          {meta.holes ? `⚠ ${meta.holes} trou${meta.holes > 1 ? 's' : ''} pendant la prise (la tablette n’a pas suivi, jusqu’à ${meta.maxGapMs} ms) : il peut y avoir des clics.` : `Prise propre : aucun trou (attente la plus longue ${meta.maxGapMs} ms).`}
-          {meta.clips?.some((c) => c > 0) ? ' Des voies ont saturé à l’entrée : ça grésille sur ces pistes-là.' : ''}
-        </Text>
-      )}
-      {!!msg && <Text style={{ color: '#FCD34D', fontSize: 13 }}>{msg}</Text>}
-
-      {(files.some((f) => isMix(f.name)) || facadeFile) && (
-        <View style={[styles.box, { borderColor: theme.accent, backgroundColor: theme.deep }]}>
-          <Text style={[styles.kicker, { color: theme.muted }]}>À ÉCOUTER</Text>
-          {facadeFile && row(facadeFile, <Pressable onPress={() => share(facadeFile.path)} style={[styles.mini, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Partager</Text></Pressable>)}
-          {files.filter((f) => isMix(f.name)).map((f) => row(f, (
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <Pressable onPress={() => share(f.path)} style={[styles.mini, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Partager</Text></Pressable>
-              <Pressable onPress={() => { stopPlay(); usbAudio?.fileDelete(f.path); refresh(); }} style={[styles.mini, { borderColor: theme.line2 }]} accessibilityLabel="Supprimer ce mix"><Text style={{ color: theme.muted, fontSize: 12 }}>✕</Text></Pressable>
-            </View>
-          )))}
-        </View>
-      )}
-
-      {markers.length > 0 && (
-        <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
-          <Text style={[styles.kicker, { color: theme.muted }]}>LES MORCEAUX</Text>
-          {!listen && <Text style={{ color: theme.muted, fontSize: 12 }}>Fabrique d’abord le mix du concert (plus bas) pour écouter morceau par morceau.</Text>}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {markers.map((m, k) => (
-              <Pressable key={k} disabled={!listen} onPress={() => listen && play(listen.path, m.t)} style={[styles.mini, { borderColor: theme.line2, opacity: listen ? 1 : 0.5 }]}>
-                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>▶ {m.label} · {fmtTime(m.t)}{markers[k + 1] || total ? ` (${fmtTime((markers[k + 1]?.t ?? total) - m.t)})` : ''}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
-      <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
-        <Text style={[styles.kicker, { color: theme.muted }]}>MIXAGE AUTOMATIQUE</Text>
-        <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>L’appli met chaque piste à un niveau cohérent (voix un peu devant) et garde tes panoramiques. Écoute, retouche avec − / +, et refais-le autant que tu veux : les pistes d’origine ne changent pas.</Text>
-        {sources.map((f) => row(f, (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Pressable onPress={() => setTrims((t) => ({ ...t, [f.name]: trimOf(f.name) - 2 }))} style={[styles.pm, { borderColor: theme.line2 }]} accessibilityLabel={`Moins de ${label(f.name)}`}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
-            <Text style={{ width: 52, textAlign: 'center', color: off[f.name] ? theme.muted : theme.text, fontSize: 12, fontWeight: '700' }}>{off[f.name] ? 'coupée' : `${trimOf(f.name) > 0 ? '+' : ''}${trimOf(f.name)} dB`}</Text>
-            <Pressable onPress={() => setTrims((t) => ({ ...t, [f.name]: trimOf(f.name) + 2 }))} style={[styles.pm, { borderColor: theme.line2 }]} accessibilityLabel={`Plus de ${label(f.name)}`}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
-            <Pressable onPress={() => setOff((o) => ({ ...o, [f.name]: !o[f.name] }))} style={[styles.pm, { borderColor: off[f.name] ? theme.mute : theme.line2, backgroundColor: off[f.name] ? theme.mute : 'transparent' }]} accessibilityLabel={`Couper ${label(f.name)} dans le mix`}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>M</Text></Pressable>
-          </View>
-        )))}
-        {markers.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {[-1, ...markers.map((_, k) => k)].map((k) => (
-              <Pressable key={k} onPress={() => setSong(k)} style={[styles.mini, { borderColor: song === k ? theme.accent : theme.line2, backgroundColor: song === k ? theme.accent : 'transparent' }]}>
-                <Text style={{ color: song === k ? theme.onAccent : theme.text, fontSize: 12, fontWeight: '800' }}>{k < 0 ? 'Tout le concert' : markers[k].label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-        {prog == null ? (
-          <Pressable onPress={doMix} style={[styles.go, { backgroundColor: theme.accent }]}>
-            <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 16 }}>🎚 Fabriquer le mix{song >= 0 ? ` · ${markers[song]?.label}` : ''}</Text>
-          </Pressable>
-        ) : (
-          <View style={{ gap: 6 }}>
-            <View style={{ height: 12, borderRadius: 6, backgroundColor: theme.line }}><View style={{ width: `${Math.round(prog * 100)}%`, height: 12, borderRadius: 6, backgroundColor: theme.accent }} /></View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ flex: 1, color: theme.muted, fontSize: 12 }}>Mixage… {Math.round(prog * 100)} % (un concert entier prend quelques minutes)</Text>
-              <Pressable onPress={() => usbAudio?.mixCancel()} style={[styles.mini, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 12 }}>Annuler</Text></Pressable>
-            </View>
-          </View>
-        )}
-      </View>
-
-      <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Dossier : {entry.public ? `Musique › Ma table › ${entry.id}` : entry.dir}</Text>
-      <Pressable onPress={del} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: '#FCA5A5', fontSize: 14, fontWeight: '700' }}>Supprimer cet enregistrement</Text></Pressable>
-    </ScrollView>
   );
 }
 

@@ -40,6 +40,8 @@ class UsbAudioModule : Module() {
   @Volatile private var recInfo: Map<String, Any?> = emptyMap()
   @Volatile private var recStopPromise: Promise? = null
   @Volatile private var mixing = false
+  private var live: LivePlayer? = null
+  private var liveEngine: MixEngine? = null
 
   @Volatile private var stopFlag = false
   @Volatile private var running = false
@@ -84,7 +86,7 @@ class UsbAudioModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("UsbAudio")
-    Events("onLevels", "onRec", "onMix")
+    Events("onLevels", "onRec", "onMix", "onPlay")
 
     Function("info") {
       mapOf(
@@ -326,7 +328,7 @@ class UsbAudioModule : Module() {
           if (!ud.ensurePermission(d)) throw IllegalStateException("permission USB refusée")
           val (dir, pub) = RecFiles.sessionDir(ctx(), name)
           val files = ArrayList<String>()
-          se = ud.open(d, null) { s ->
+          se = ud.open(d, null, { wav -> Peaks.sidecar(ctx(), File(wav)).absolutePath }) { s ->
             tracks.mapNotNull { t ->
               val a = num(t, "a", -1); val b = num(t, "b", -1)
               if (a < 0 || a >= s.channels || b >= s.channels) null else {
@@ -459,7 +461,75 @@ class UsbAudioModule : Module() {
       }.start()
     }
 
-    Function("mixCancel") { Mixer.cancel = true }
+    Function("mixCancel") { Mixer.cancel = true; Exporter.cancel = true }
+
+    // ---- Écoute : ondes, lecteur multipiste en direct, export avec les retouches ----
+
+    // L'onde d'un fichier : une crête toutes les 0,2 s, en base64 (255 = a saturé).
+    AsyncFunction("peaks") { path: String, promise: Promise ->
+      Thread {
+        try {
+          val f = File(path)
+          var last = 0L
+          val data = Peaks.get(ctx(), f) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 300) { last = now; sendEvent("onMix", mapOf("p" to p, "peaks" to path)) }
+          }
+          val w = Mixer.Wav(f)
+          promise.resolve(mapOf("ok" to true, "data" to android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP), "bucket" to Peaks.PKN.toDouble() / w.rate, "seconds" to w.frames.toDouble() / w.rate, "channels" to w.channels))
+        } catch (e: Throwable) {
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        }
+      }.start()
+    }
+
+    Function("playerOpen") { paths: List<String> ->
+      try {
+        player?.release(); player = null
+        live?.close(); live = null
+        val e = MixEngine(paths)
+        liveEngine = e
+        live = LivePlayer(e) { t, playing, ended -> sendEvent("onPlay", mapOf("t" to t, "playing" to playing, "ended" to ended)) }
+        mapOf("ok" to true, "rate" to e.rate, "seconds" to e.total.toDouble() / e.rate)
+      } catch (e: Throwable) {
+        mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))
+      }
+    }
+
+    Function("playerSet") { o: Map<String, Any?> -> liveEngine?.params = mixParams(o); true }
+    Function("playerPlay") { on: Boolean -> live?.playing = on; true }
+    Function("playerSeek") { sec: Double -> live?.seek(sec); true }
+    Function("playerClose") { live?.close(); live = null; liveEngine = null; true }
+
+    // Le mix tel qu'on l'entend (ou un passage) → fichier WAV ou M4A.
+    AsyncFunction("mixExport") { o: Map<String, Any?>, promise: Promise ->
+      if (mixing) { promise.resolve(mapOf("ok" to false, "error" to "un export est déjà en cours")); return@AsyncFunction }
+      @Suppress("UNCHECKED_CAST")
+      val paths = (o["paths"] as? List<String>) ?: emptyList()
+      val out = File((o["out"] as? String) ?: "")
+      val m4a = o["m4a"] == true
+      val from = (o["from"] as? Number)?.toDouble() ?: 0.0
+      val to = (o["to"] as? Number)?.toDouble() ?: 0.0
+      mixing = true
+      Thread {
+        try {
+          val e = MixEngine(paths)
+          e.params = mixParams(o)
+          var last = 0L
+          val r = Exporter.run(e, out, m4a, from, to) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
+          }
+          try { android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(out.absolutePath), null, null) } catch (e2: Throwable) {}
+          promise.resolve(r)
+        } catch (e: Throwable) {
+          try { out.delete() } catch (e2: Throwable) {}
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        } finally {
+          mixing = false
+        }
+      }.start()
+    }
 
     Function("playAt") { path: String, ms: Int ->
       player?.release()
@@ -475,10 +545,11 @@ class UsbAudioModule : Module() {
     // Partager un fichier (par le catalogue de musique d'Android).
     AsyncFunction("share") { path: String, promise: Promise ->
       try {
-        android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(path), arrayOf("audio/x-wav")) { _, uri ->
+        val mime = if (path.endsWith(".m4a")) "audio/mp4" else "audio/x-wav"
+        android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(path), arrayOf(mime)) { _, uri ->
           try {
             if (uri == null) { promise.resolve(false) } else {
-              val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("audio/x-wav")
+              val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime)
                 .putExtra(android.content.Intent.EXTRA_STREAM, uri).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
               val ch = android.content.Intent.createChooser(send, "Partager").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
               ctx().startActivity(ch)
@@ -508,6 +579,18 @@ class UsbAudioModule : Module() {
     Function("clear") {
       File(ctx().filesDir, "usb-test").deleteRecursively()
     }
+  }
+
+  private fun dbl(x: Any?, d: Double = 0.0): Double = (x as? Number)?.toDouble() ?: d
+
+  @Suppress("UNCHECKED_CAST")
+  private fun mixParams(o: Map<String, Any?>): MixEngine.Params {
+    val gains = ((o["gains"] as? List<Any?>) ?: emptyList()).map { dbl(it, 1.0).toFloat() }.toFloatArray()
+    val pans = ((o["pans"] as? List<Any?>) ?: emptyList()).map { dbl(it).toFloat() }.toFloatArray()
+    val kept = ((o["kept"] as? List<Any?>) ?: emptyList()).map { dbl(it) }.toDoubleArray()
+    val regs = ((o["regs"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Reg(dbl(it["a"]), dbl(it["b"]), dbl(it["g"], 1.0).toFloat(), dbl(it["k"], -1.0).toInt()) }
+    val fades = ((o["fades"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Fade(dbl(it["a"]), dbl(it["b"]), it["rising"] == true) }
+    return MixEngine.Params(gains, pans, dbl(o["master"], 1.0).toFloat(), kept, regs, fades)
   }
 
   private fun num(o: Map<String, Any?>, k: String, d: Int): Int = (o[k] as? Number)?.toInt() ?: d

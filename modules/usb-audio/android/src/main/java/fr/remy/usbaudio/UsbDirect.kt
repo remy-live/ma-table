@@ -143,7 +143,7 @@ class UsbDirect(private val ctx: Context) {
 
   /** Ouvre, réclame l'interface (en écartant le pilote du système) et lance la lecture. */
   /** `spec` : pour chaque fichier à écrire, (chemin, voie A, voie B ou -1) ; reçoit le nombre de voies de la table. */
-  fun open(d: UsbDevice, raw: File?, spec: ((Stream) -> List<Triple<String, Int, Int>>)? = null): Session {
+  fun open(d: UsbDevice, raw: File?, peakPath: ((String) -> String)? = null, spec: ((Stream) -> List<Triple<String, Int, Int>>)? = null): Session {
     val conn = um.openDevice(d) ?: throw IllegalStateException("impossible d’ouvrir la table (permission ?)")
     val s = parse(conn.rawDescriptors ?: ByteArray(0), d) ?: run { conn.close(); throw IllegalStateException("pas d’entrée son trouvée dans les descripteurs") }
     if (s.channels <= 0 || s.subslot !in 2..4) { conn.close(); throw IllegalStateException("format inattendu : ${s.channels} voies, ${s.subslot} octets") }
@@ -153,7 +153,7 @@ class UsbDirect(private val ctx: Context) {
     if (active == null || !conn.claimInterface(active, true)) { conn.close(); throw IllegalStateException("interface ${s.ifNum} occupée") }
     val r = rate(conn, s)
     if (!conn.setInterface(active)) { conn.releaseInterface(active); conn.close(); throw IllegalStateException("réglage alt ${s.alt} refusé") }
-    val lines = spec?.invoke(s)?.joinToString("\n") { "${it.first}\t${it.second}\t${it.third}" } ?: ""
+    val lines = spec?.invoke(s)?.joinToString("\n") { "${it.first}\t${it.second}\t${it.third}\t${peakPath?.invoke(it.first) ?: ""}" } ?: ""
     val res = UsbIso.start(conn.fileDescriptor, s.ep, s.maxPacket, s.channels, s.subslot, raw?.absolutePath ?: "", if (r > 0) r else 48000, lines)
     if (res < 0) {
       idle?.let { conn.setInterface(it) }

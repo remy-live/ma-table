@@ -16,7 +16,9 @@ export interface SessFile { name: string; path: string; size: number }
 export interface SessEntry { id: string; dir: string; public: boolean; modified: number; meta: string; files: SessFile[] }
 export interface MixResult { ok: boolean; error?: string; path?: string; gains?: (number | null)[]; peakDb?: number; seconds?: number }
 
-type Native = {
+export interface EngineParams { gains: number[]; pans: number[]; master: number; kept: number[]; regs: { a: number; b: number; g: number; k: number }[]; fades: { a: number; b: number; rising: boolean }[] }
+
+export type Native = {
   recStart(o: { name: string; tracks: { file: string; a: number; b: number }[] }): Promise<{ ok: boolean; error: string; id?: string; dir?: string; public?: boolean; channels?: number; bits?: number; rate?: number; files?: string[] }>;
   recStop(): Promise<RecSummary | null>;
   recState(): { on: boolean; id: string; dir: string };
@@ -27,6 +29,13 @@ type Native = {
   fileDelete(path: string): boolean;
   mix(o: { tracks: { path: string; trim: number; pan: number; auto: boolean }[]; out: string; from?: number; to?: number }): Promise<MixResult>;
   mixCancel(): void;
+  peaks(path: string): Promise<{ ok: boolean; error?: string; data?: string; bucket?: number; seconds?: number; channels?: number }>;
+  playerOpen(paths: string[]): { ok: boolean; error?: string; rate?: number; seconds?: number };
+  playerSet(o: EngineParams): boolean;
+  playerPlay(on: boolean): boolean;
+  playerSeek(sec: number): boolean;
+  playerClose(): boolean;
+  mixExport(o: EngineParams & { paths: string[]; out: string; m4a: boolean; from?: number; to?: number }): Promise<MixResult>;
   playAt(path: string, ms: number): boolean;
   share(path: string): Promise<boolean>;
   info(): { model: string; maker: string; android: string; sdk: number; outRate: string; dir: string };
@@ -42,10 +51,16 @@ type Native = {
   clear(): boolean;
   addListener(ev: 'onLevels', cb: (e: { peaks: number[]; t: number }) => void): { remove(): void };
   addListener(ev: 'onRec', cb: (e: RecEvent) => void): { remove(): void };
-  addListener(ev: 'onMix', cb: (e: { p: number }) => void): { remove(): void };
+  addListener(ev: 'onMix', cb: (e: { p: number; peaks?: string }) => void): { remove(): void };
+  addListener(ev: 'onPlay', cb: (e: { t: number; playing: boolean; ended: boolean }) => void): { remove(): void };
 };
 
 export const usbAudio: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('UsbAudio') : null;
+
+/** Ce dont l'enregistreur et l'écran d'écoute ont besoin. Sur le web (démo) : un faux concert, pour essayer l'écran. */
+export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'fileDelete' | 'share' | 'peaks' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixCancel' | 'addListener'>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const usbListen: ListenNative | null = usbAudio ?? (Platform.OS === 'web' ? (require('./usbAudioDemo') as { demoUsb: ListenNative }).demoUsb : null);
 
 /** Sources Android : 1 = micro (le plus sûr pour l'USB), 9 = non traité (sans correction automatique). */
 export const SRC_MIC = 1;

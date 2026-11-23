@@ -5,12 +5,12 @@ import { i } from '../osc/osc';
 import { load, save } from '../store/persist';
 import { chNamePath, chOnPath, fToPan, MODEL, panPath } from './addresses';
 import { recognize } from './smartName';
-import { RecSummary, usbAudio } from './usbAudio';
+import { RecSummary, usbListen as usbAudio } from './usbAudio';
 import { XAirClient } from './XAirClient';
 
 export interface RecTrack { ch: number; name: string; file: string; stereo?: boolean; pan: number }
 export interface Marker { t: number; label: string }
-export interface RecMeta { name: string; startedAt: number; tracks: RecTrack[]; markers: Marker[]; facade: boolean; seconds?: number; rate?: number; clips?: number[]; peakDb?: number[]; reason?: string; holes?: number; maxGapMs?: number; usbErrors?: number }
+export interface RecMeta { name: string; startedAt: number; tracks: RecTrack[]; markers: Marker[]; facade: boolean; seconds?: number; rate?: number; clips?: number[]; peakDb?: number[]; reason?: string; holes?: number; maxGapMs?: number; usbErrors?: number; mix?: import('./listen').MixState }
 export interface RecState { on: boolean; starting: boolean; id: string; dir: string; isPublic: boolean; t: number; peaks: number[]; clips: number[]; hot: number[]; usbErrors: number; writeErrors: number; free: number; meta: RecMeta | null; error: string; last: { id: string; reason: string; seconds: number } | null }
 
 const empty = (): RecState => ({ on: false, starting: false, id: '', dir: '', isPublic: true, t: 0, peaks: [], clips: [], hot: [], usbErrors: 0, writeErrors: 0, free: 0, meta: null, error: '', last: null });

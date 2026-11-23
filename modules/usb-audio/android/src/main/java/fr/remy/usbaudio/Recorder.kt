@@ -83,7 +83,7 @@ object RecFiles {
     for ((root, pub) in listOf(Pair(publicRoot(), true), Pair(privateRoot(ctx), false))) {
       val dirs = try { root.listFiles { f -> f.isDirectory } } catch (e: Throwable) { null } ?: continue
       for (d in dirs) {
-        val wavs = (d.listFiles { f -> f.isFile && f.name.endsWith(".wav") } ?: emptyArray()).sortedBy { it.name }
+        val wavs = (d.listFiles { f -> f.isFile && (f.name.endsWith(".wav") || f.name.endsWith(".m4a")) } ?: emptyArray()).sortedBy { it.name }
         if (wavs.isEmpty()) continue
         val meta = File(metaDir(ctx), d.name + ".json")
         out.add(mapOf(
