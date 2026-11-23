@@ -29,6 +29,7 @@ import { useAnyTick } from '../ui/useTick';
 import { GroupBar } from '../ui/GroupBar';
 import { OrganizeOverlay } from '../ui/OrganizeOverlay';
 import { HELP, showTip } from '../ui/tip';
+import { changeLevel, useLevel } from '../ui/words';
 
 const CHANNELSF = () => allChannels();
 
@@ -102,7 +103,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [drag, setDrag] = useState<{ ch: number; dx: number } | null>(null);
   const [undoN, setUndoN] = useState(client.undoCount);
   useEffect(() => client.onUndoChange(setUndoN), [client]);
-  const stripW = STRIP_WIDTHS[props.stripWidth ?? 'normal'];
+  const stripW0 = STRIP_WIDTHS[props.stripWidth ?? 'normal'];
   const [virtual, setVirtual] = useState<Record<string, number>>({});
   const [openGroups, setOpenGroups] = useState<number[]>([]);
   const [order, setOrder] = useState<number[]>(CHANNELSF());
@@ -155,7 +156,11 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const [bodyH, setBodyH] = useState(0);
   const [listW, setListW] = useState(0);
   const faderH = Math.max(260, bodyH - 12); // la tranche tient entièrement dans la zone : rien de coupé, tout reste cliquable // hauteur totale d'une tranche ; le fader prend le reste
-  const [view, setView] = useState<StripView>('full');
+  const lvl = useLevel();
+  const simple = lvl.simple;
+  const [viewRaw, setView] = useState<StripView>('full');
+  // mode simple : toujours les tranches, réduites à l'essentiel
+  const view: StripView = simple ? 'full' : viewRaw;
   useEffect(() => { load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []);
   const VIEWS: { id: StripView; label: string; icon: string }[] = [
     { id: 'full', label: 'Complète', icon: '▥' },
@@ -205,6 +210,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   }
 
   // Vue compacte : toutes les tranches tiennent dans la largeur (elles s'affinent au besoin).
+  const stripW = simple ? Math.max(stripW0, 104) : stripW0;
   const fitW = view === 'compact' && listW > 0 ? Math.max(60, Math.min(stripW, Math.floor((listW - 20 - (items.length - 1) * 6) / Math.max(1, items.length)))) : 0;
   const chW = fitW || stripW;
   const grpW = fitW || 92;
@@ -352,6 +358,22 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       </Pressable>
     </>
   );
+  const undoBtn = (
+    <Pressable onPress={() => { const n = client.undo(); say(n ? `Annulé (${n} réglage${n > 1 ? 's' : ''})` : 'Rien à annuler'); }} disabled={!undoN} onLongPress={() => showTip(HELP.undo)} accessibilityLabel="Annuler le dernier geste" style={[styles.hbtn, { height: 40, borderColor: theme.line2, opacity: undoN ? 1 : 0.4, paddingHorizontal: 12, alignItems: 'center', flexDirection: 'row', gap: 6 }]}>
+      <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>↶</Text>
+      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>Annuler</Text>
+    </Pressable>
+  );
+  // mode simple : deux boutons seulement
+  const simpleTools = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {undoBtn}
+      <View style={{ flex: 1 }} />
+      <Pressable onPress={() => changeLevel({ simple: false })} onLongPress={() => showTip('Mode simple : seulement le nom, le volume, Couper et Solo. « Tout afficher » montre le gain, l’égaliseur, les effets, les vues et le rangement. On y revient dans Réglages.')} accessibilityLabel="Tout afficher : quitter le mode simple" style={[styles.hbtn, { height: 40, borderColor: theme.accent, paddingHorizontal: 12, alignItems: 'center' }]}>
+        <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '800' }}>Tout afficher</Text>
+      </Pressable>
+    </View>
+  );
   const rangerItem = (icon: string, label: string, sub: string, onPress: () => void, disabled?: boolean) => (
     <Pressable onPress={() => { setRangerOpen(false); onPress(); }} disabled={disabled} style={[styles.rangerItem, { borderColor: theme.line2, backgroundColor: theme.deep }, disabled && { opacity: 0.35 }]}>
       <Text style={{ fontSize: 20, color: theme.accent, fontWeight: '900', width: 26, textAlign: 'center' }}>{icon}</Text>
@@ -386,23 +408,26 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <View style={styles.header}>
           <View style={[styles.dot, { backgroundColor: dot, marginRight: 2 }]} accessibilityLabel={`Table ${status}`} />
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {simple && <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '800' }}>Pour qui ?</Text>}
             <View style={{ flexShrink: 1 }}>{chips}</View>
-            {mixTools}
+            {!simple && mixTools}
           </View>
-          {rightTools}
+          {simple ? simpleTools : rightTools}
         </View>
       ) : (
         // téléphone : « qui écoute » sur une ligne, les outils sur une autre
         <View style={{ paddingHorizontal: 10, paddingBottom: 6, gap: 6 }}>
+          {simple && <Text style={{ color: theme.muted, fontSize: lvl.big ? 15 : 13, fontWeight: '800' }}>Pour qui je règle le son ?</Text>}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={[styles.dot, { backgroundColor: dot }]} accessibilityLabel={`Table ${status}`} />
             <View style={{ flex: 1 }}>{chips}</View>
           </View>
+          {simple ? simpleTools : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {mixTools}
             <View style={{ flex: 1 }} />
             {rightTools}
-          </View>
+          </View>)}
         </View>
       )}
       <SoloBar client={client} theme={theme} />
@@ -445,6 +470,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
                   <Strip
                     width={chW}
                     view={view}
+                    simple={simple}
                     client={client}
                     ch={it.ch}
                     target={target}

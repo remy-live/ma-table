@@ -25,7 +25,7 @@ export function ScreenHeader(props: { theme: Theme; title: string; sub?: string;
     <View style={[styles.header, props.style]}>
       <View style={{ flex: 1, minWidth: 160 }}>
         <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>{props.title}</Text>
-        {!!props.sub && <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 12 }}>{props.sub}</Text>}
+        {!!props.sub && <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 13 }}>{props.sub}</Text>}
       </View>
       {props.children}
     </View>

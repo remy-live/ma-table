@@ -31,6 +31,8 @@ import { PresetsSheet } from './PresetsSheet';
 import { FindMicSheet } from './FindMicSheet';
 import { ChangesSheet } from './ChangesSheet';
 import { ChangeSet } from '../xair/changeLog';
+import { explain, useLevel, word, words2 } from '../ui/words';
+import { showTip } from '../ui/tip';
 import { SmartRenameSheet } from './SmartRenameSheet';
 
 export interface DrawerActions {
@@ -100,7 +102,7 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
             <Btn theme={theme} small kind="outline" icon="🔍" label="Trouver ce micro" onPress={() => setFind(true)} />
             <Groups client={client} theme={theme} ch={ch} />
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              {props.actions?.onDetail && <Btn theme={theme} small icon="〰" label="Égaliseur" onPress={() => props.actions!.onDetail!(ch)} style={styles.act} />}
+              {props.actions?.onDetail && <Btn theme={theme} small icon="〰" label={word('eq')} onPress={() => props.actions!.onDetail!(ch)} style={styles.act} />}
               <Btn theme={theme} small icon="★" label="Préréglages" onPress={() => (props.actions?.onDetail ? props.actions.onDetail(ch, 'preset') : setPresets(true))} style={styles.act} />
               {props.actions?.onCopy && <Btn theme={theme} small icon="⧉" label="Copier les réglages" onPress={() => props.actions!.onCopy!(ch)} style={styles.act} />}
             </View>
@@ -176,20 +178,33 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
   const isBass = /bass|kick|grosse/i.test(nm);
   const advised = !hp && /voix|chant|vocal|guit|chœur|choeur|overhead|charley|hat/i.test(nm);
   const cutHz = /voix|chant|vocal|chœur|choeur/i.test(nm) ? 100 : isBass ? 40 : 80;
-  const T = ({ label, active, bg, onPress }: { label: string; active: boolean; bg: string; onPress: () => void }) => (
-    <Pressable onPress={onPress} accessibilityRole="switch" accessibilityState={{ checked: active }} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2 }]}>
-      <Text style={{ color: active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
-    </Pressable>
-  );
+  const lvl = useLevel();
+  const [more, setMore] = useState(false);
+  // mot simple en grand, mot technique en petit ; appui long = l'explication
+  const T = ({ k, extra, active, bg, onPress }: { k: string; extra?: string; active: boolean; bg: string; onPress: () => void }) => {
+    const w = words2(k);
+    const ink = active ? (bg === theme.text ? theme.bg : '#FFFFFF') : theme.text;
+    return (
+      <Pressable onPress={onPress} onLongPress={() => showTip(explain(k))} accessibilityRole="switch" accessibilityState={{ checked: active }} accessibilityLabel={`${w.main}${w.sub ? ` (${w.sub})` : ''}`} style={[styles.tg, { backgroundColor: active ? bg : theme.deep, borderColor: active ? bg : theme.line2, height: undefined, minHeight: 44, paddingVertical: 5 }]}>
+        <Text style={{ color: ink, fontWeight: '800', fontSize: lvl.big ? 14 : 12 }}>{w.main}{extra ?? ''}</Text>
+        {!!w.sub && <Text style={{ color: ink, opacity: 0.7, fontWeight: '700', fontSize: lvl.big ? 11 : 10 }}>{w.sub}</Text>}
+      </Pressable>
+    );
+  };
+  const showPhase = !lvl.simple || inv || more;
   return (
     <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+      <T k="mute" extra={on ? '' : ' ✓'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
+      <T k="solo" extra={solo ? ' ✓' : ''} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
+      <T k="hpf" extra={hp ? ` ${Math.round(fToHpfHz(Number(client.get(hpfPath(ch)) ?? 0)))} Hz` : advised ? ' ★' : ''} active={hp} bg="#2563EB" onPress={() => { if (hp) client.set(hpOnPath(ch), i(0)); else { client.set(hpfPath(ch), f(hpfHzToF(cutHz))); client.set(hpOnPath(ch), i(1)); } }} />
       {hasPreamp && (
-        <T label={p48 ? '48 V allumé' : '48 V'} active={p48} bg="#DC2626" onPress={() => (p48 ? client.set(phantomPath(ch), i(0)) : Alert.alert('Activer le 48 V ?', 'Seulement pour un micro statique ou une DI active. Baisse le volume avant, ça peut claquer.', [{ text: 'Annuler', style: 'cancel' }, { text: 'Activer', onPress: () => client.set(phantomPath(ch), i(1)) }]))} />
+        <T k="phantom" extra={p48 ? ' ✓' : ''} active={p48} bg="#DC2626" onPress={() => (p48 ? client.set(phantomPath(ch), i(0)) : Alert.alert('Activer le 48 V ?', 'Seulement pour un micro statique ou une DI active. Baisse le volume avant, ça peut claquer.', [{ text: 'Annuler', style: 'cancel' }, { text: 'Activer', onPress: () => client.set(phantomPath(ch), i(1)) }]))} />
       )}
-      <T label="Phase Ø" active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
-      <T label={on ? 'Couper' : 'Voie coupée'} active={!on} bg={theme.mute} onPress={() => client.set(chOnPath(ch), i(on ? 0 : 1))} />
-      <T label={hp ? `Coupe-bas ${Math.round(fToHpfHz(Number(client.get(hpfPath(ch)) ?? 0)))} Hz` : advised ? 'Coupe-bas ★' : 'Coupe-bas'} active={hp} bg="#2563EB" onPress={() => { if (hp) client.set(hpOnPath(ch), i(0)); else { client.set(hpfPath(ch), f(hpfHzToF(cutHz))); client.set(hpOnPath(ch), i(1)); } }} />
-      <T label={solo ? '🎧 Solo ✓' : '🎧 Solo'} active={solo} bg="#CA8A04" onPress={() => client.set(soloPath(ch), i(solo ? 0 : 1))} />
+      {showPhase ? (
+        <T k="phase" extra={inv ? ' ✓' : ''} active={inv} bg={theme.text} onPress={() => client.set(invertPath(ch), i(inv ? 0 : 1))} />
+      ) : (
+        <Pressable onPress={() => setMore(true)} style={[styles.tg, { borderColor: theme.line, backgroundColor: 'transparent' }]}><Text style={{ color: theme.muted, fontWeight: '700', fontSize: 12 }}>Autres…</Text></Pressable>
+      )}
     </View>
   );
 }

@@ -13,6 +13,8 @@ import { ConnectionScreen } from './ConnectionScreen';
 export type StripWidth = 'compact' | 'normal' | 'large';
 export const STRIP_WIDTHS: Record<StripWidth, number> = { compact: 80, normal: 92, large: 116 };
 
+import { WordMode } from '../ui/words';
+
 export interface Prefs {
   immersive: boolean;
   navRoom?: NavRoom;
@@ -21,6 +23,52 @@ export interface Prefs {
   dayTheme?: string;
   haptics: boolean;
   width: StripWidth;
+  /** mode simple (débutant) : l'écran Table n'affiche que l'essentiel */
+  simple?: boolean;
+  /** les mots : simple + technique, technique seul, simple seul */
+  words?: WordMode;
+  /** gros texte */
+  big?: boolean;
+  /** a déjà choisi « Je débute / Je connais » */
+  levelChosen?: boolean;
+}
+
+/** Mode simple, les mots (simple / technique), gros texte. */
+function LevelBox({ theme, prefs, set, compact }: { theme: Theme; prefs: Prefs; set: (p: Partial<Prefs>) => void; compact?: boolean }) {
+  const words = prefs.words ?? 'double';
+  const ex = words === 'technique' ? 'AUX 2 · gate · 48V' : words === 'simple' ? 'Retour de Seb · Anti-bruit' : 'Retour de Seb · AUX 2';
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={[styles.kicker, { color: theme.muted }]}>MON NIVEAU</Text>
+      <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>Mode simple</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Table : le nom, le volume, Couper et Solo. Le reste derrière « Réglages ».</Text>
+          </View>
+          <Switch value={!!prefs.simple} onValueChange={(v) => set({ simple: v, levelChosen: true })} accessibilityLabel="Mode simple" />
+        </View>
+        <View style={{ borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 8, gap: 6 }}>
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>Les mots</Text>
+          <View style={{ flexDirection: compact ? 'column' : 'row', gap: 6 }}>
+            {([['double', 'Simple + technique'], ['technique', 'Technique'], ['simple', 'Simple']] as const).map(([w, l]) => {
+              const on = words === w;
+              return (
+                <Pressable key={w} onPress={() => set({ words: w })} accessibilityState={{ selected: on }} style={{ flex: compact ? undefined : 1, minHeight: 40, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.accent : 'transparent' }}>
+                  <Text style={{ color: on ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12, textAlign: 'center' }}>{l}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Exemple : {ex}. Appui long sur un bouton = son explication.</Text>
+        </View>
+        <View style={[styles.row, { borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 8 }]}>
+          <Text style={{ flex: 1, color: theme.text, fontWeight: '800', fontSize: 14 }}>Gros texte</Text>
+          <Switch value={!!prefs.big} onValueChange={(v) => set({ big: v })} accessibilityLabel="Gros texte" />
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs: Prefs; onPrefs: (p: Prefs) => void; onDisconnect: () => void }) {
@@ -54,6 +102,7 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
           </View>
         </View>
         <View style={{ flex: 1, gap: 8 }}>
+          <LevelBox theme={theme} prefs={prefs} set={set} compact />
           <Text style={[styles.kicker, { color: theme.muted }]}>CONFORT</Text>
           <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <View style={styles.row}>
@@ -102,6 +151,7 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
       ) : (
         <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 12, paddingBottom: 40 }}>
+          <LevelBox theme={theme} prefs={prefs} set={set} />
           <Text style={[styles.kicker, { color: theme.muted }]}>DESIGN · touche pour essayer</Text>
           <View style={styles.grid}>
             {THEME_ORDER.map((id) => {

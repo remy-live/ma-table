@@ -6,7 +6,7 @@ import { XAirClient } from '../xair/XAirClient';
 import { Theme } from './theme';
 import { showTip } from './tip';
 
-export function LinkBadge({ client, theme, small }: { client: XAirClient; theme: Theme; small?: boolean }) {
+export function LinkBadge({ client, theme, small, row }: { client: XAirClient; theme: Theme; small?: boolean; row?: boolean }) {
   const [lk, setLk] = useState(client.link());
   const [silent, setSilent] = useState(0);
   useEffect(() => {
@@ -18,11 +18,11 @@ export function LinkBadge({ client, theme, small }: { client: XAirClient; theme:
   const word = silent > 6 ? 'coupée' : bars >= 3 ? 'bonne' : bars === 2 ? 'moyenne' : 'faible';
   const tip = () => showTip(`Liaison avec la table : ${word}.${lk.ms !== null ? ` Réponse en ${lk.ms} ms` : ''}${lk.lost ? `, ${lk.lost} % de messages perdus` : ''}. ${bars >= 3 ? 'Tout va bien.' : 'Rapproche-toi de la table, ou éloigne le téléphone/la tablette des enceintes et des murs.'}`);
   return (
-    <Pressable onPress={tip} onLongPress={tip} accessibilityLabel={`Liaison ${word}`} style={{ alignItems: 'center', gap: 3, paddingVertical: 4 }}>
+    <Pressable onPress={tip} onLongPress={tip} accessibilityLabel={`Liaison ${word}`} style={{ alignItems: 'center', gap: row ? 6 : 3, paddingVertical: 4, flexDirection: row ? 'row' : 'column' }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 16 }}>
         {[0, 1, 2, 3].map((k) => <View key={k} style={{ width: 4, height: 5 + k * 3.5, borderRadius: 1, backgroundColor: k < bars ? c : theme.line2 }} />)}
       </View>
-      {!small && <Text style={{ color: c, fontSize: 10, fontWeight: '800' }}>{word}</Text>}
+      {(!small || row) && <Text style={{ color: c, fontSize: row ? 12 : 10, fontWeight: '800' }}>{row ? `liaison ${word}` : word}</Text>}
     </Pressable>
   );
 }

@@ -28,7 +28,12 @@ import { WhoAmIScreen } from './src/screens/WhoAmIScreen';
 import { Tutorial } from './src/screens/Tutorial';
 import { FirstRun } from './src/screens/FirstRun';
 import { LarsenWatch } from './src/screens/LarsenWatch';
-import { KillBanner } from './src/ui/KillSwitch';
+import { KillBanner, KillButton } from './src/ui/KillSwitch';
+import { LinkBadge } from './src/ui/LinkBadge';
+import { setLevel, setLevelSaver } from './src/ui/words';
+import { installBigText } from './src/ui/bigText';
+
+installBigText();
 import { LinkBanner } from './src/ui/LinkBanner';
 import { blankTable, safetyBackup, startPeriodicBackup } from './src/store/sessions';
 import { journal } from './src/store/journal';
@@ -39,7 +44,7 @@ import { Prefs, SettingsScreen } from './src/screens/SettingsScreen';
 import { WiringScreen } from './src/screens/WiringScreen';
 import { EffectsHub } from './src/screens/EffectsHub';
 import { HelpSheet } from './src/screens/HelpSheet';
-import { NavBar, Section } from './src/ui/NavBar';
+import { MoreSheet, NavBar, Section } from './src/ui/NavBar';
 import { SessionsScreen } from './src/screens/SessionsScreen';
 import { load } from './src/store/persist';
 import { setHaptics } from './src/ui/haptics';
@@ -64,8 +69,13 @@ export default function App() {
     setPrefsState(p);
     setHaptics(p.haptics);
     setImmersive(p.immersive !== false);
+    setLevel({ simple: !!p.simple, words: p.words ?? 'double', big: !!p.big, chosen: !!p.levelChosen });
     save('prefs', p);
   };
+  // un écran demande à changer de niveau (mode simple, mots, gros texte)
+  const prefsRef = React.useRef(prefs);
+  prefsRef.current = prefs;
+  useEffect(() => { setLevelSaver((l) => setPrefs({ ...prefsRef.current, ...(l.simple !== undefined ? { simple: l.simple } : {}), ...(l.words ? { words: l.words } : {}), ...(l.big !== undefined ? { big: l.big } : {}), levelChosen: true })); return () => setLevelSaver(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locked, setLocked] = useState(false);
   const [monitor, setMonitor] = useState<{ cfg: MonConfig; owner: boolean } | null>(null);
   const [invite, setInvite] = useState<MonConfig | null>(null);
@@ -86,6 +96,7 @@ export default function App() {
       setPrefsState(merged);
       setHaptics(merged.haptics !== false);
       setImmersive(merged.immersive !== false);
+      setLevel({ simple: !!merged.simple, words: merged.words ?? 'double', big: !!merged.big, chosen: !!merged.levelChosen });
     });
     // Toute erreur JavaScript finit dans le journal de débogage.
     const EU = (global as unknown as { ErrorUtils?: { getGlobalHandler(): (e: unknown, fatal?: boolean) => void; setGlobalHandler(h: (e: unknown, fatal?: boolean) => void): void } }).ErrorUtils;
@@ -163,6 +174,7 @@ export default function App() {
   };
 
   const [navHidden, setNavHidden] = useState(false);
+  const [more, setMore] = useState(false);
   // fichier de démo : la barre de débogage pilote la démo (table imitée, larsen, liaison)
   const clientRef = React.useRef<XAirClient | null>(null);
   clientRef.current = client;
@@ -260,7 +272,7 @@ export default function App() {
     setTab('table');
   };
   const body = (
-    <View key={`corps${modelTick}`} style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
+    <View key={`corps${modelTick}${prefs.big ? 'G' : ''}${prefs.words ?? ''}`} style={{ flex: 1, paddingBottom: wide ? 8 : 0 }}>
       {tab === 'table' && <MixerScreen client={client} theme={theme} stripWidth={prefs.width} onOpenEffects={(c) => { setFxCh(c); setTab('effets'); }} />}
       {tab === 'effets' && <EffectsHub client={client} theme={theme} focusCh={fxCh} />}
       {tab === 'branchements' && <WiringScreen client={client} theme={theme} visible embedded onClose={() => setTab('table')} onFull={setNavHidden} />}
@@ -272,8 +284,15 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
       {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} />}
-      {body}
-      {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} />}
+      {!wide && !(navHidden && tab === 'branchements') && (
+        <View key="haut" style={{ height: 68, paddingTop: 36, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 5 }}>
+          <LinkBadge client={client} theme={theme} small row />
+          <KillButton client={client} pill />
+        </View>
+      )}
+      {wide ? body : <View key="corps-tel" style={{ flex: 1, marginTop: navHidden && tab === 'branchements' ? 0 : -36 }}>{body}</View>}
+      {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMore={() => (locked ? go('table') : setMore(true))} />}
+      <MoreSheet theme={theme} visible={more} current={tab} onGo={go} onMixes={() => setMixes(true)} onQuit={disconnect} onClose={() => setMore(false)} />
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}

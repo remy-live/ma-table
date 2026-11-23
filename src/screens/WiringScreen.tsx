@@ -15,6 +15,7 @@ import { Shell } from '../ui/Shell';
 import { busNamePath, chNamePath, meterIndex, MODEL, panPath } from '../xair/addresses';
 import { useLevels } from '../xair/useMeter';
 import { colorOf } from '../xair/smartName';
+import { getLevel } from '../ui/words';
 import { connect, disconnect, foldCore, likeMain, link, unlink, nudge, Outlet, outlets, outletXY, PANEL_H, panelW, Plug, plugs, plugXY, toAllReturns, wireD, wirePaths, wires, wireWidth, wiringPaths, plugColor as plugColorOf } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { MIX_COLORS } from './MixPicker';
@@ -52,7 +53,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
   useEffect(() => { onFull?.(full); }, [full, onFull]);
   useEffect(() => () => onFull?.(false), [onFull]);
   const VIEWS: readonly (readonly [View3, string])[] = [[cables, 'Câbles'], ['bulles', 'Bulles'], ['scene', 'Scène']];
-  useEffect(() => { load<string>('vueBranchements', 'arriere').then((v) => setView(v === 'bulles' || v === 'scene' ? v : cables)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load<string | null>('vueBranchements', null).then((v) => setView(v === null && getLevel().simple ? 'scene' : v === 'bulles' || v === 'scene' ? v : cables)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<Sel>(null);
   const [multi, setMulti] = useState(false);
   const [toast, setToast] = useState('');
@@ -126,7 +127,7 @@ export function WiringScreen(props: { client: XAirClient; theme: Theme; visible:
           {!props.embedded && <Btn theme={theme} kind="primary" label="Terminé" onPress={props.onClose} />}
           </View>
         ) : (
-        <ScreenHeader theme={theme} title="Branchements" sub={view === 'scene' ? undefined : view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche les prises à prendre ensemble, puis glisse-en une vers une sortie' : 'Glisse d’une prise à une sortie · appui = voir'}>
+        <ScreenHeader theme={theme} title="Branchements" sub={view === 'scene' ? undefined : view === 'bulles' ? 'Une bulle = un son dans une oreille' : multi ? 'Touche plusieurs prises, puis glisse' : 'Glisse une prise vers une sortie'}>
           {view !== 'bulles' && view !== 'scene' && (
             <Pressable onPress={() => { const m = !multi; setMulti(m); if (m && sel?.kind === 'plug') setSel({ kind: 'many', ns: [sel.n] }); if (!m && sel?.kind === 'many') setSel(null); }} accessibilityRole="switch" accessibilityState={{ checked: multi }}
               style={[styles.small, { height: 44, borderWidth: 2, borderColor: multi ? theme.accent : theme.line2, backgroundColor: multi ? theme.accent : 'transparent' }]}>

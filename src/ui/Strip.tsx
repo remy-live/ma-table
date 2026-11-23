@@ -19,6 +19,7 @@ import { Knob } from './Knob';
 import { tick } from './haptics';
 import { f } from '../osc/osc';
 import { HELP, showTip } from './tip';
+import { explain, getLevel } from './words';
 import { Theme } from './theme';
 import { SLOT_COLORS } from '../xair/fxSlots';
 
@@ -56,6 +57,8 @@ interface StripProps {
   dim?: boolean;
   width?: number;
   view?: StripView;
+  /** mode simple : nom, volume, couper, solo — le reste derrière « Réglages » */
+  simple?: boolean;
   onSelect: (ch: number) => void;
   onRename: (ch: number) => void;
   /** mode « Sélectionner » : la voie est cochée (undefined = pas en sélection) */
@@ -109,7 +112,7 @@ export function Strip(p: StripProps) {
           <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{p.pasteLabel ?? 'Coller ici'}</Text>
         </Pressable>
       )}
-      {p.view !== 'compact' && (<>
+      {p.view !== 'compact' && !p.simple && (<>
       <Pressable
         onPress={() => p.onOpenInput(ch)}
         onLongPress={() => showTip(HELP.plug)}
@@ -162,7 +165,7 @@ export function Strip(p: StripProps) {
       </Pressable>
 
       <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'stretch' }}>
-        <MuteButton muted={muted} onPress={toggleMute} theme={theme} narrow={narrow} half />
+        <MuteButton muted={muted} onPress={toggleMute} theme={theme} narrow={narrow} half simple={p.simple} />
         <SoloButton on={solo} onPress={toggleSolo} theme={theme} narrow={narrow} name={name} />
       </View>
       <AutoFader
@@ -177,6 +180,11 @@ export function Strip(p: StripProps) {
       />
       <Text style={[styles.db, { color: theme.muted }]}>{formatDb(level)}</Text>
 
+      {p.simple ? (
+        <Pressable onPress={() => p.onOpenInput(ch)} onLongPress={() => showTip('Réglages de la voie : force du micro (gain), graves/aigus (EQ), effets, anti-bruit…')} accessibilityRole="button" accessibilityLabel={`Réglages de ${name}`} style={{ height: 42, width: '100%', borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center', borderColor: theme.line2, backgroundColor: theme.deep }}>
+          <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>Réglages ›</Text>
+        </Pressable>
+      ) : (
       <View style={{ flexDirection: narrow ? 'column' : 'row', gap: 4, width: '100%', alignItems: 'stretch' }}>
         <SmallBtn label="EQ" on={eqOn} onColor="#F59E0B" theme={theme} onPress={() => p.onOpenDetail(ch)} a11y={`Égaliseur de ${name}`} narrow={narrow} />
         <Pressable onPress={() => (p.onOpenFx ?? p.onOpenDetail)(ch)} onLongPress={() => showTip(HELP.fx)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Effets de ${name}`} style={[narrow ? styles.smallN : styles.small, narrow && { height: 40 }, { borderColor: fxOn ? theme.line2 : theme.line, backgroundColor: theme.deep, flexDirection: 'row', flexWrap: 'wrap', gap: 3, padding: narrow ? 3 : 6 }]}>
@@ -188,6 +196,7 @@ export function Strip(p: StripProps) {
           })}
         </Pressable>
       </View>
+      )}
     </View>
   );
 }
@@ -352,24 +361,24 @@ function SmallBtn(props: { label: string; on: boolean; onColor: string; theme: T
 /** Solo : écouter cette voie seule au casque, sans rien couper pour le public. */
 function SoloButton({ on, onPress, theme, narrow, name }: { on: boolean; onPress: () => void; theme: Theme; narrow?: boolean; name: string }) {
   return (
-    <Pressable onPress={onPress} onLongPress={() => showTip(HELP.solo)} accessibilityRole="switch" accessibilityState={{ checked: on }} accessibilityLabel={on ? `Arrêter le solo de ${name}` : `Écouter ${name} seul au casque`}
+    <Pressable onPress={onPress} onLongPress={() => showTip(explain('solo'))} accessibilityRole="switch" accessibilityState={{ checked: on }} accessibilityLabel={on ? `Arrêter le solo de ${name}` : `Écouter ${name} seul au casque`}
       style={[styles.mute, { flex: 1, width: undefined }, on ? { backgroundColor: '#FACC15' } : { borderColor: theme.line, borderWidth: 1 }]}>
       <Text style={{ color: on ? '#1A1204' : theme.muted, fontWeight: '800', fontSize: narrow ? 10 : 11 }}>{narrow ? 'S' : 'SOLO'}</Text>
     </Pressable>
   );
 }
 
-function MuteButton({ muted, onPress, theme, narrow, half }: { muted: boolean; onPress: () => void; theme: Theme; narrow?: boolean; half?: boolean }) {
+function MuteButton({ muted, onPress, theme, narrow, half, simple }: { muted: boolean; onPress: () => void; theme: Theme; narrow?: boolean; half?: boolean; simple?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={() => showTip(HELP.mute)}
+      onLongPress={() => showTip(explain('mute'))}
       accessibilityRole="button"
       accessibilityState={{ selected: muted }}
       accessibilityLabel={muted ? 'Réactiver' : 'Couper'}
       style={[styles.mute, half ? { flex: 1, width: undefined } : narrow && { width: '100%' }, muted ? { backgroundColor: theme.mute } : { borderColor: theme.line, borderWidth: 1 }]}
     >
-      <Text style={{ color: muted ? theme.onMute : theme.muted, fontWeight: '800', fontSize: 11 }}>{half && narrow ? 'M' : 'MUTE'}</Text>
+      <Text style={{ color: muted ? theme.onMute : theme.muted, fontWeight: '800', fontSize: 11 }}>{half && narrow ? 'M' : simple && getLevel().words !== 'technique' ? (muted ? 'Coupée' : 'Couper') : 'MUTE'}</Text>
     </Pressable>
   );
 }

@@ -12,7 +12,7 @@ export function useKilled() {
   return k;
 }
 
-export function KillButton({ client, vertical }: { client: XAirClient; vertical?: boolean }) {
+export function KillButton({ client, vertical, pill }: { client: XAirClient; vertical?: boolean; pill?: boolean }) {
   const killed = useKilled();
   const [press, setPress] = useState(false);
   const c = killed ? '#FFFFFF' : '#F87171';
@@ -24,14 +24,14 @@ export function KillButton({ client, vertical }: { client: XAirClient; vertical?
       onPressIn={() => setPress(true)}
       onPressOut={() => setPress(false)}
       accessibilityLabel={killed ? 'Rétablir le son' : 'Tout couper (appui long)'}
-      style={[vertical ? styles.item : styles.itemSmall, { borderColor: '#B91C1C', borderWidth: 1.5, backgroundColor: killed ? '#DC2626' : press ? '#7F1D1D' : '#2A1214' }]}
+      style={[pill ? styles.pill : vertical ? styles.item : styles.itemSmall, { borderColor: '#B91C1C', borderWidth: 1.5, backgroundColor: killed ? '#DC2626' : press ? '#7F1D1D' : '#2A1214' }]}
     >
-      <Svg width={vertical ? 24 : 20} height={vertical ? 24 : 20} viewBox="0 0 24 24">
+      <Svg width={pill ? 16 : vertical ? 24 : 20} height={pill ? 16 : vertical ? 24 : 20} viewBox="0 0 24 24">
         <Path d="M4 9h4l5-4v14l-5-4H4z" stroke={c} strokeWidth={2} fill="none" strokeLinejoin="round" />
         <Line x1={16} y1={9} x2={21} y2={14} stroke={c} strokeWidth={2} strokeLinecap="round" />
         <Line x1={21} y1={9} x2={16} y2={14} stroke={c} strokeWidth={2} strokeLinecap="round" />
       </Svg>
-      <Text numberOfLines={1} style={{ color: c, fontSize: vertical ? 11 : 9, fontWeight: '800' }}>{killed ? 'Rétablir' : 'Tout couper'}</Text>
+      <Text numberOfLines={1} style={{ color: c, fontSize: pill ? 12 : vertical ? 11 : 9, fontWeight: '800' }}>{killed ? 'Rétablir' : 'Tout couper'}</Text>
     </Pressable>
   );
 }
@@ -52,6 +52,7 @@ export function KillBanner({ client }: { client: XAirClient }) {
 
 const styles = StyleSheet.create({
   item: { width: 84, height: 62, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  pill: { height: 30, borderRadius: 15, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemSmall: { flex: 1, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
   wrap: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', zIndex: 50 },
   banner: { marginTop: 8, backgroundColor: '#DC2626', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 2, borderColor: '#FCA5A5' },

@@ -33,6 +33,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [last, setLast] = useState<string | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const [dbgOpen, setDbgOpen] = useState(false);
+  const [adv, setAdv] = useState(false);
   const [mine, setMine] = useState<MyTable | null>(null);
   const wide = useWindowDimensions().width >= 900;
   useEffect(() => { load<MyTable | null>('maTable', null).then(setMine); }, []);
@@ -173,22 +174,8 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     else Linking.openSettings();
   };
 
-  return (
-    <View style={{ flex: 1 }}>
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40, flexGrow: 1, justifyContent: 'center' }]} keyboardShouldPersistTaps="handled">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={[styles.logo, { backgroundColor: theme.accent }]}>
-          {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 6, height: 34 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: theme.text }]}>Ma table</Text>
-          <Text style={{ color: theme.muted, fontSize: 13 }}>{BUILD_VERSION === 'dev' ? 'version de développement' : `v${BUILD_VERSION}`}</Text>
-        </View>
-        <Pressable onPress={() => setDbgOpen(true)} style={[styles.small, { borderColor: theme.line2 }]}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Débogage</Text></Pressable>
-      </View>
-
-      <View style={{ flexDirection: wide ? 'row' : 'column', gap: 14 }}>
-        <View style={{ flex: 1, gap: 12 }}>
+  const colA = (
+        <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
           {/* TA TABLE */}
           {mine && (
             <Pressable onPress={() => connect(mine.ip)} disabled={busy} style={[styles.hero, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
@@ -233,32 +220,11 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               <Text style={{ color: theme.accent, fontWeight: '800' }}>Sondier ›</Text>
             </Pressable>
           ))}
-          <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
-            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche adresse par adresse…' : 'Chercher sur mon partage de connexion'}</Text>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
-          </Pressable>
-          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
-            <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              {([['osc', 'Behringer · Midas'], ['ui', 'Soundcraft Ui']] as const).map(([k, label]) => (
-                <Pressable key={k} onPress={() => setBrand(k)} accessibilityRole="radio" accessibilityState={{ selected: brand === k }}
-                  style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', borderWidth: 2, borderColor: brand === k ? theme.accent : theme.line2, backgroundColor: brand === k ? theme.accent : 'transparent' }}>
-                  <Text style={{ color: brand === k ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {brand === 'ui' && <Text style={{ color: theme.muted, fontSize: 11 }}>Ui12 · Ui16 · Ui24R. Sur son propre Wi-Fi, la table est souvent en 10.10.1.1.</Text>}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput value={ip} onChangeText={setIp} placeholder={brand === 'ui' ? '10.10.1.1' : '192.168.1.1'} placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
-              <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
-                <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
-              </Pressable>
-            </View>
-          </View>
 
         </View>
-
-        <View style={{ flex: 1, gap: 12 }}>
+  );
+  const colB = (
+        <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
           {wide && <Text style={[styles.kicker, { color: theme.muted }]}>PAS ENCORE RELIÉ ?</Text>}
           {/* WI-FI */}
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 10 }]}>
@@ -329,8 +295,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </Pressable>
           </View>
         </View>
-
-        <View style={{ flex: 1, gap: 12 }}>
+  );
+  const colC = (
+        <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
+          <Pressable onPress={() => connect('demo', true)} accessibilityLabel="Essayer sans table" style={[styles.card, { borderColor: theme.ok, borderWidth: 2, backgroundColor: theme.panel, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+            <Text style={{ fontSize: 28 }}>▶️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>Essayer sans table</Text>
+              <Text style={{ color: theme.muted, fontSize: 13 }}>Une table imaginaire pour découvrir l’appli. Rien n’est envoyé.</Text>
+            </View>
+          </Pressable>
 
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
@@ -365,6 +339,34 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.muted, fontSize: 18 }}>›</Text>
           </Pressable>
           <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={null} />
+          <Pressable onPress={() => setAdv((v) => !v)} accessibilityState={{ expanded: adv }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}>
+            <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '800', flex: 1 }}>⚙ Avancé : adresse IP, partage de connexion, démos, débogage</Text>
+            <Text style={{ color: theme.muted, fontSize: 16 }}>{adv ? '▴' : '▾'}</Text>
+          </Pressable>
+          {adv && (<>
+          <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche adresse par adresse…' : 'Chercher sur mon partage de connexion'}</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
+          </Pressable>
+          <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+            <Text style={[styles.kicker, { color: theme.muted }]}>PAR ADRESSE IP</Text>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              {([['osc', 'Behringer · Midas'], ['ui', 'Soundcraft Ui']] as const).map(([k, label]) => (
+                <Pressable key={k} onPress={() => setBrand(k)} accessibilityRole="radio" accessibilityState={{ selected: brand === k }}
+                  style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', borderWidth: 2, borderColor: brand === k ? theme.accent : theme.line2, backgroundColor: brand === k ? theme.accent : 'transparent' }}>
+                  <Text style={{ color: brand === k ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {brand === 'ui' && <Text style={{ color: theme.muted, fontSize: 11 }}>Ui12 · Ui16 · Ui24R. Sur son propre Wi-Fi, la table est souvent en 10.10.1.1.</Text>}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput value={ip} onChangeText={setIp} placeholder={brand === 'ui' ? '10.10.1.1' : '192.168.1.1'} placeholderTextColor={theme.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
+              <Pressable onPress={() => ip && connect(ip.trim())} style={[styles.go, { backgroundColor: theme.accent, opacity: ip ? 1 : 0.5 }]}>
+                <Text style={{ color: theme.onAccent, fontWeight: '700', fontSize: 16 }}>Connecter</Text>
+              </Pressable>
+            </View>
+          </View>
+
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Table imitée par la démo :</Text>
             {DEMO_MODELS.map((m) => (
@@ -375,10 +377,6 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             ))}
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable onPress={() => connect('demo', true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
-              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo sans table</Text>
-              <Text style={{ color: theme.muted, fontSize: 11 }}>rien n’est envoyé</Text>
-            </Pressable>
             <Pressable onPress={() => connect('demo', true, undefined, false, false, undefined, true)} style={[styles.card, { flex: 1, borderColor: theme.line2 }]}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Démo vide</Text>
               <Text style={{ color: theme.muted, fontSize: 11 }}>table neuve · tes sauvegardes ne bougent pas</Text>
@@ -388,7 +386,26 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               <Text style={{ color: theme.muted, fontSize: 11 }}>le mode « Mon retour »</Text>
             </Pressable>
           </View>
+          <Pressable onPress={() => setDbgOpen(true)} style={[styles.small, { borderColor: theme.line2, alignSelf: 'flex-start' }]}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Débogage · {BUILD_VERSION === 'dev' ? 'version de développement' : `v${BUILD_VERSION}`}</Text></Pressable>
+          </>)}
         </View>
+  );
+  return (
+    <View style={{ flex: 1 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 40, flexGrow: 1, justifyContent: 'center' }]} keyboardShouldPersistTaps="handled">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={[styles.logo, { backgroundColor: theme.accent }]}>
+          {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 6, height: 34 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: theme.text }]}>Ma table</Text>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>Pilote ta table de mixage, simplement</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: wide ? 'row' : 'column', gap: 14 }}>
+        {/* téléphone sans table en vue : d'abord les deux étapes Wi-Fi */}
+        {!wide && !mine && found.length === 0 ? <>{colB}{colA}{colC}</> : <>{colA}{colB}{colC}</>}
       </View>
 
       {busy && <ActivityIndicator color={theme.accent} style={{ marginTop: 12 }} />}

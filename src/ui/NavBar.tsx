@@ -1,12 +1,13 @@
 // Navigation : barre à gauche sur tablette, en bas sur téléphone.
 // Cinq sections claires + le bouton « Aide-moi » (assistants).
 import React from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { HELP, showTip } from './tip';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
 import { LinkBadge } from './LinkBadge';
 import { KillButton } from './KillSwitch';
+import { getLevel } from './words';
 import { XAirClient } from '../xair/XAirClient';
 
 export type Section = 'table' | 'effets' | 'branchements' | 'scene' | 'reglages';
@@ -35,7 +36,47 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mi
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void }) {
+/** « Plus » (téléphone) : ce qui ne tient pas dans les quatre onglets. */
+export function MoreSheet(props: { theme: Theme; visible: boolean; current: Section; onGo: (s: Section) => void; onMixes: () => void; onQuit: () => void; onClose: () => void }) {
+  const { theme } = props;
+  const rows: [Section | 'mixages' | 'quitter', string, string][] = [
+    ['effets', 'Effets', 'Réverbe, écho… et qui les utilise'],
+    ['branchements', 'Branchements', 'Qui entend quoi : câbles, bulles, scène'],
+    ['mixages', 'Mes mixages', 'Nouveau mixage, modèles, reprendre un ancien'],
+    ['reglages', 'Réglages', 'Mode simple, les mots, l’apparence, la connexion'],
+    ['quitter', 'Quitter la table', 'Revenir à l’accueil (la table garde son mix)'],
+  ];
+  const press = (id: Section | 'mixages' | 'quitter') => {
+    props.onClose();
+    if (id === 'mixages') props.onMixes();
+    else if (id === 'quitter') Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }]);
+    else props.onGo(id);
+  };
+  return (
+    <Modal visible={props.visible} transparent animationType="fade" onRequestClose={props.onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }} onPress={props.onClose}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: theme.panel, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: theme.line, padding: 14, paddingBottom: 22, gap: 8 }}>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800', paddingHorizontal: 4 }}>Plus</Text>
+          {rows.map(([id, label, sub]) => {
+            const on = props.current === id;
+            return (
+              <Pressable key={id} onPress={() => press(id)} accessibilityLabel={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 62, borderRadius: 14, borderWidth: 1, borderColor: on ? theme.accent : theme.line, backgroundColor: theme.deep, paddingHorizontal: 14 }}>
+                <Icon id={id} color={on ? theme.accent : id === 'quitter' ? '#F87171' : theme.text} size={26} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: id === 'quitter' ? '#F87171' : theme.text, fontSize: 17, fontWeight: '800' }}>{label}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 13 }}>{sub}</Text>
+                </View>
+                <Text style={{ color: theme.muted, fontSize: 20 }}>›</Text>
+              </Pressable>
+            );
+          })}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void }) {
   const { theme, vertical } = props;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
@@ -44,6 +85,27 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
     }
     props.onGo(s);
   };
+  // Téléphone : quatre grands onglets, le reste est rangé dans « Plus »
+  if (!vertical) {
+    const big = getLevel().big;
+    const inMore = props.current !== 'table' && props.current !== 'scene';
+    const tab = (key: string, icon: React.ReactNode, label: string, on: boolean, onPress: () => void, tip: string, special?: boolean) => (
+      <Pressable key={key} onPress={onPress} onLongPress={() => showTip(tip)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label}
+        style={[styles.tab4, special ? { backgroundColor: '#13261E', borderColor: '#1F6F4A', borderWidth: 1 } : on && { backgroundColor: theme.panel }]}>
+        {icon}
+        <Text style={{ color: special ? '#A7F3D0' : on ? theme.accent : theme.muted, fontSize: big ? 14 : 12, fontWeight: '800' }}>{label}</Text>
+      </Pressable>
+    );
+    const col = (on: boolean, dim?: boolean) => (on ? theme.accent : dim ? theme.line2 : theme.muted);
+    return (
+      <View style={[styles.bar, { backgroundColor: theme.deep, borderColor: theme.line }]}>
+        {tab('table', <Icon id="table" color={col(props.current === 'table', props.locked)} size={24} />, 'Table', props.current === 'table', () => go('table'), HELP.table)}
+        {tab('scene', <Icon id="scene" color={col(props.current === 'scene')} size={24} />, 'Concert', props.current === 'scene', () => go('scene'), HELP.concert)}
+        {tab('aide', <Icon id="aide" color="#6EE7B7" size={24} />, 'Aide', false, props.onHelp, HELP.aide, true)}
+        {tab('plus', <Text style={{ color: col(inMore, props.locked), fontSize: 20, fontWeight: '900', lineHeight: 24 }}>•••</Text>, 'Plus', inMore, () => props.onMore?.(), 'Plus : effets, branchements, mixages, réglages, quitter.')}
+      </View>
+    );
+  }
   return (
     <View style={[vertical ? styles.rail : styles.bar, { backgroundColor: theme.deep, borderColor: theme.line }]}>
       <Pressable onPress={props.onHelp} onLongPress={() => showTip(HELP.aide)} accessibilityLabel="Aide-moi : balance automatique, mode guidé" style={[vertical ? styles.help : styles.helpSmall, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
@@ -70,6 +132,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
       )}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.client && <KillButton client={props.client} vertical={vertical} />}
+      {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (
         <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
@@ -85,6 +148,7 @@ const styles = StyleSheet.create({
   rail: { width: 96, borderRightWidth: 1, paddingTop: 40, paddingBottom: 16, alignItems: 'center', gap: 6 },
   bar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 8, paddingTop: 6, paddingHorizontal: 4, gap: 2 },
   item: { width: 84, height: 70, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  tab4: { flex: 1, height: 58, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2 },
   itemSmall: { flex: 1, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
   help: { width: 84, height: 70, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 12 },
   helpSmall: { flex: 1, height: 56, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },

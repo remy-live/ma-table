@@ -11,6 +11,7 @@ import { chColorOf } from '../xair/smartName';
 import { MIX_COLORS } from './MixPicker';
 import { InviteSheet } from './InviteSheet';
 import { MonConfig } from '../xair/monitor';
+import { changeLevel, useLevel } from '../ui/words';
 
 const ICON: Record<string, string> = { solo: '🎤', duo: '👥', rock: '🎸', acou: '🪕', dj: '🎧', talk: '🗣' };
 const STEP_NAMES = ['Ton modèle', 'Brancher', 'Inviter'];
@@ -24,6 +25,9 @@ export function FirstRun(props: { client: XAirClient; theme: Theme; visible: boo
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState(false);
+  // la toute première question : débutant ou habitué ?
+  const lvl = useLevel();
+  const ask = !lvl.chosen;
   useEffect(() => { if (props.visible) { setStep(0); setPick('keep'); } }, [props.visible]);
 
   const next = async () => {
@@ -54,6 +58,22 @@ export function FirstRun(props: { client: XAirClient; theme: Theme; visible: boo
     <Modal visible={props.visible && !invite} animationType="fade" transparent onRequestClose={props.onClose}>
       <View style={styles.back}>
         <View style={[styles.sheet, { backgroundColor: theme.panel, borderColor: theme.line, maxWidth: wide ? 1100 : 560, maxHeight: height - 24 }]}>
+          {ask && (
+            <View style={{ gap: 12 }}>
+              <Text style={[styles.h, { color: theme.text }]}>Bienvenue ! Tu connais les tables de mixage ?</Text>
+              <Text style={{ color: theme.muted, fontSize: 14 }}>L’appli s’adapte. Tu pourras changer d’avis à tout moment dans Réglages.</Text>
+              {([[true, '🌱', 'Je débute', 'L’essentiel seulement : le nom, le volume, Couper. Des mots simples, avec le mot technique à côté pour apprendre.'], [false, '🎛', 'Je connais', 'Tout est affiché : gain, égaliseur, effets, vues, rangement.']] as const).map(([simple, icon, t, d]) => (
+                <Pressable key={t} onPress={() => changeLevel({ simple })} accessibilityLabel={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 2, borderColor: simple ? theme.ok : theme.line2, borderRadius: 18, padding: 16, backgroundColor: theme.deep }}>
+                  <Text style={{ fontSize: 36 }}>{icon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>{t}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 19 }}>{d}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {!ask && (<>
           {/* les 3 étapes */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {STEP_NAMES.map((s, k) => (
@@ -78,7 +98,7 @@ export function FirstRun(props: { client: XAirClient; theme: Theme; visible: boo
                       <Text style={{ fontSize: wide ? 24 : 18 }}>{ICON[t.icon] ?? '🎛'}</Text>
                       <View style={{ flex: 1 }}>
                         <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '900', fontSize: wide ? 15 : 13 }}>{t.name}</Text>
-                        <Text numberOfLines={wide ? 2 : 1} style={{ color: theme.muted, fontSize: 11 }}>{t.desc}</Text>
+                        <Text numberOfLines={2} style={{ color: theme.muted, fontSize: 12 }}>{t.desc}</Text>
                       </View>
                     </Pressable>
                   );
@@ -143,6 +163,7 @@ export function FirstRun(props: { client: XAirClient; theme: Theme; visible: boo
               <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 15 }}>{busy ? '…' : step === 0 ? (pick === 'keep' ? 'Suivant ›' : `Préparer « ${TEMPLATES.find((t) => t.key === pick)?.name} » ›`) : step === 1 ? 'C’est branché ›' : 'C’est parti !'}</Text>
             </Pressable>
           </View>
+          </>)}
         </View>
       </View>
     </Modal>

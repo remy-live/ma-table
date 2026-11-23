@@ -21,6 +21,8 @@ import { Btn, ScreenHeader, Segmented } from '../ui/kit';
 import { EffectDetail } from './EffectDetail';
 import { FxSaveSheet, SaveMode } from './FxSaveSheet';
 import { useAnyTick } from '../ui/useTick';
+import { useLevel, word } from '../ui/words';
+import { EffectsAdvisor } from './EffectsAdvisor';
 
 type V = 'fx' | 'ch' | 'grid';
 const SLOTS = Array.from({ length: FX_COUNT }, (_, k) => k + 1);
@@ -36,6 +38,9 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
   const [adding, setAdding] = useState<number | null>(null);
   const [saveMode, setSaveMode] = useState<SaveMode | null>(null);
   const { width } = useWindowDimensions();
+  const lvl = useLevel();
+  const [showAll, setShowAll] = useState(false);
+  const [advisor, setAdvisor] = useState(false);
   useEffect(() => { client.loadPaths(fxPaths()); loadFxNames().then(setNames); }, [client]);
   useEffect(() => { if (focusCh) { setView('ch'); setSelCh(focusCh); } }, [focusCh]);
   const setNamesSave = (n: FxNames) => { setNames(n); saveFxNames(n); };
@@ -61,6 +66,67 @@ export function EffectsHub({ client, theme, focusCh }: { client: XAirClient; the
     return <FxVisual kind={t.kind} color={SLOT_COLORS[k - 1]} a={g(0)} b={g(1)} c={g(2)} width={w} height={h} bg={theme.meterBg} />;
   };
   const cardW = Math.max(200, Math.floor((width - (width >= 900 ? 96 : 0) - 28 - 3 * 12) / 4));
+
+  // Mode simple : « Réverbe sur : Voix, Caisse claire », une dose par voie
+  if (lvl.simple && !showAll) {
+    const allCh = Array.from({ length: CH_COUNT }, (_, k) => k + 1).filter((c) => String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? ''));
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScreenHeader theme={theme} title="Effets" sub="De la réverbe ou de l’écho sur une voie : un peu, c’est souvent assez." />
+        <ScrollView contentContainerStyle={{ padding: 14, paddingTop: 4, gap: 12, paddingBottom: 30 }}>
+          <Pressable onPress={() => setAdvisor(true)} style={{ minHeight: 56, borderRadius: 16, backgroundColor: '#C084FC', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#1E0B2E', fontSize: 16, fontWeight: '900' }}>✨ Proposer des effets pour mes voies</Text>
+          </Pressable>
+          {Array.from({ length: FX_COUNT }, (_, j) => j + 1).map((k) => {
+            const us = users(client, k);
+            const c = SLOT_COLORS[k - 1];
+            const t = fxType(Number(client.get(fxTypePath(k)) ?? 0));
+            const free = allCh.filter((x) => !us.includes(x));
+            return (
+              <View key={k} style={[styles.card, { backgroundColor: theme.panel, borderColor: us.length ? c : theme.line }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                  <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', flex: 1 }}>{t.fr}</Text>
+                  <Text style={{ color: c, fontSize: 12, fontWeight: '800' }}>{word('fx', { narrow: true, mode: 'technique' })} {k}</Text>
+                </View>
+                {us.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Personne ne l’utilise.</Text>}
+                {us.map((ch) => {
+                  const v = Number(client.get(sendPath(ch, k)) ?? 0);
+                  const db = faderToDb(v);
+                  return (
+                    <View key={ch} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: chColor(client, ch) }} />
+                      <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '700' }}>{chName(client, ch)}</Text>
+                      <Pressable onPress={() => bump(ch, k, -3)} accessibilityLabel={`Moins d’effet sur ${chName(client, ch)}`} style={[styles.pmS, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>−</Text></Pressable>
+                      <Text style={{ width: 62, textAlign: 'center', color: theme.text, fontWeight: '800', fontSize: 13 }}>{db < -30 ? 'un peu' : db < -15 ? 'moyen' : 'beaucoup'}</Text>
+                      <Pressable onPress={() => bump(ch, k, 3)} accessibilityLabel={`Plus d’effet sur ${chName(client, ch)}`} style={[styles.pmS, { borderColor: c }]}><Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>+</Text></Pressable>
+                      <Pressable onPress={() => client.set(sendPath(ch, k), f(0))} accessibilityLabel={`Enlever l’effet de ${chName(client, ch)}`} style={[styles.pmS, { borderColor: theme.line }]}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '900' }}>✕</Text></Pressable>
+                    </View>
+                  );
+                })}
+                <Pressable onPress={() => setAdding(adding === k ? null : k)} style={[styles.add, { borderColor: c }]}>
+                  <Text style={{ color: c, fontWeight: '800' }}>{adding === k ? 'Fermer' : '+ Ajouter une voie'}</Text>
+                </Pressable>
+                {adding === k && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {free.map((ch) => (
+                      <Pressable key={ch} onPress={() => { client.set(sendPath(ch, k), f(dbToFader(-14))); setAdding(null); }} style={{ borderWidth: 1, borderColor: theme.line2, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
+                        <Text style={{ color: theme.text, fontWeight: '700' }}>{chName(client, ch)}</Text>
+                      </Pressable>
+                    ))}
+                    {free.length === 0 && <Text style={{ color: theme.muted }}>Toutes les voies nommées l’utilisent déjà.</Text>}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+          <Pressable onPress={() => setShowAll(true)} style={{ alignSelf: 'center', padding: 10 }}>
+            <Text style={{ color: theme.accent, fontWeight: '800' }}>Régler les effets en détail ›</Text>
+          </Pressable>
+        </ScrollView>
+        <EffectsAdvisor client={client} theme={theme} visible={advisor} onClose={() => setAdvisor(false)} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -222,6 +288,7 @@ const styles = StyleSheet.create({
   saveAll: { height: 44, paddingHorizontal: 14, borderRadius: 12, justifyContent: 'center' },
   seg: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3 },
   segBtn: { height: 40, paddingHorizontal: 14, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  pmS: { width: 42, height: 40, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   card: { borderWidth: 2, borderRadius: 20, padding: 12, gap: 10 },
   kicker: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   user: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40 },
