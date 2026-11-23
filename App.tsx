@@ -296,8 +296,8 @@ export default function App() {
       {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMore={() => (locked ? go('table') : setMore(true))} />}
       <MoreSheet theme={theme} visible={more} current={tab} onGo={go} onMixes={() => setMixes(true)} onQuit={disconnect} onClose={() => setMore(false)} />
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
-      {/* pendant un enregistrement : pastille visible sur tous les écrans (sauf Concert, qui a son bandeau) */}
-      {tab !== 'scene' && <RecPill wide={wide} onOpen={() => setRecOpen(true)} />}
+      {/* pendant un enregistrement : la télécommande flotte sur tous les écrans */}
+      {!recOpen && <RecPill wide={wide} onOpen={() => setRecOpen(true)} />}
       <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}

@@ -1,8 +1,8 @@
 // « Enregistrer le concert » : la tablette, branchée en USB sur la table, écrit un
 // fichier par voie choisie (+ la façade en stéréo). Après coup : réécouter,
 // repères de morceaux, mixage automatique retouchable, partage.
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
@@ -59,21 +59,44 @@ export function RecCard({ theme, onOpen }: { theme: Theme; onOpen: () => void })
   );
 }
 
-/** Petite pastille rouge posée par-dessus les autres écrans pendant qu'on enregistre. */
+/**
+ * La télécommande d'enregistrement : posée par-dessus tous les écrans pendant la prise.
+ * Durée, morceau en cours, « Morceau suivant », arrêt. On la déplace avec sa poignée.
+ */
 export function RecPill({ wide, onOpen }: { wide: boolean; onOpen: () => void }) {
   const st = useRec();
+  const pos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const last = useRef({ x: 0, y: 0 });
+  const pan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderMove: (_e, g) => pos.setValue({ x: last.current.x + g.dx, y: last.current.y + g.dy }),
+    onPanResponderRelease: (_e, g) => { last.current = { x: last.current.x + g.dx, y: last.current.y + g.dy }; },
+  })).current;
   if (!st.on) return null;
-  const warn = st.hot.length > 0 || st.writeErrors > 0;
+  const hotNames = st.hot.map((k) => st.meta?.tracks.find((t) => t.ch === k || (t.stereo && t.ch + 1 === k))?.name).filter(Boolean);
+  const warn = hotNames.length > 0 || st.writeErrors > 0;
+  const stop = () => Alert.alert('Arrêter l’enregistrement ?', 'Les fichiers sont gardés.', [
+    { text: 'Continuer', style: 'cancel' },
+    { text: 'Arrêter', style: 'destructive', onPress: () => { stopRec(); } },
+  ]);
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', top: wide ? 6 : 40, left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
-      <View style={{ flexDirection: 'row', borderRadius: 999, overflow: 'hidden', borderWidth: 1.5, borderColor: RED, backgroundColor: '#2A1010' }}>
-        <Pressable onPress={onOpen} accessibilityLabel="Enregistrement en cours : ouvrir" style={{ minHeight: 36, paddingHorizontal: 12, justifyContent: 'center' }}>
-          <Text style={{ color: warn ? '#FACC15' : '#FCA5A5', fontWeight: '900', fontSize: 13 }}>{warn ? '⚠' : '⏺'} {fmtTime(st.t)} · {currentSong()?.label ?? ''}</Text>
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: wide ? 10 : 44, left: 0, right: 0, alignItems: 'center', zIndex: 50, elevation: 50 }}>
+      <Animated.View style={{ transform: pos.getTranslateTransform(), flexDirection: 'row', alignItems: 'stretch', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: RED, backgroundColor: '#2A1010', elevation: 12 }}>
+        <View {...pan.panHandlers} accessibilityLabel="Déplacer la télécommande" style={{ width: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#3A1515' }}>
+          <Text style={{ color: '#FCA5A5', fontSize: 16 }}>⠿</Text>
+        </View>
+        <Pressable onPress={onOpen} accessibilityLabel="Enregistrement en cours : ouvrir" style={{ minHeight: 52, paddingHorizontal: 12, justifyContent: 'center', maxWidth: wide ? 300 : 150 }}>
+          <Text numberOfLines={1} style={{ color: '#FCA5A5', fontWeight: '900', fontSize: 16 }}>⏺ {fmtTime(st.t)}</Text>
+          <Text numberOfLines={1} style={{ color: warn ? '#FACC15' : '#E8EAED', fontSize: 11, fontWeight: '700' }}>{st.writeErrors > 0 ? '⚠ écriture impossible' : hotNames.length ? `⚠ sature : ${hotNames.join(', ')}` : currentSong()?.label ?? ''}</Text>
         </Pressable>
-        <Pressable onPress={mark} accessibilityLabel="Morceau suivant" style={{ minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: RED }}>
-          <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>suivant ›</Text>
+        <Pressable onPress={mark} accessibilityLabel="Morceau suivant" style={{ minHeight: 52, paddingHorizontal: 14, justifyContent: 'center', backgroundColor: RED }}>
+          <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 14 }}>Morceau suivant ›</Text>
         </Pressable>
-      </View>
+        <Pressable onPress={stop} accessibilityLabel="Arrêter l’enregistrement" style={{ width: 52, minHeight: 52, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 18, height: 18, borderRadius: 3, backgroundColor: '#FCA5A5' }} />
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }

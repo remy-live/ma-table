@@ -47,13 +47,29 @@ type Cb = (e: never) => void;
 const subs: Record<string, Set<Cb>> = {};
 const fire = (ev: string, e: unknown) => subs[ev]?.forEach((cb) => (cb as (x: unknown) => void)(e));
 let pos = 0, playing = false, iv: ReturnType<typeof setInterval> | null = null;
+let recT = 0, recIv: ReturnType<typeof setInterval> | null = null;
 
 export const demoUsb: ListenNative = {
-  recStart: async () => ({ ok: false, error: 'En démo, pas de table branchée en USB : va voir « Mes enregistrements » pour essayer l’écoute.' }),
-  recStop: async () => null,
+  // faux enregistrement : le temps avance, les barres bougent, rien n'est écrit
+  recStart: async (o) => {
+    recT = 0;
+    if (recIv) clearInterval(recIv);
+    recIv = setInterval(() => {
+      recT += 0.25;
+      const peaks = Array.from({ length: 18 }, (_, k) => (k < 7 || k > 15 ? -60 + 50 * rnd(Math.floor(recT * 4), k) : -120));
+      fire('onRec', { t: recT, peaks, clips: Array(18).fill(0), usbErrors: 0, writeErrors: 0, alive: true, free: 96e9 } as RecEvent);
+    }, 250);
+    return { ok: true, error: '', id: o.name + ' (démo)', dir: '/demo/' + o.name, public: true, channels: 18, bits: 24, rate: 48000, files: [] };
+  },
+  recStop: async () => {
+    if (recIv) clearInterval(recIv);
+    recIv = null;
+    fire('onRec', { ended: true } as RecEvent);
+    return null;
+  },
   recFree: () => ({ free: 96e9, public: true }),
   sessList: (): SessEntry[] => [{ id: ID, dir: DIR, public: true, modified: Date.now(), meta, files: [...files, ...extra].map((name) => ({ name, path: `${DIR}/${name}`, size: name.endsWith('.m4a') ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) }],
-  metaSave: (_id, json) => { meta = json; return true; },
+  metaSave: (id, json) => { if (id === ID) meta = json; return true; },
   sessDelete: () => false,
   fileDelete: (path) => { extra = extra.filter((n) => `${DIR}/${n}` !== path); return true; },
   share: async () => true,

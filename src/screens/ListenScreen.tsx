@@ -37,9 +37,52 @@ function SeekArea({ onSeek, style, children }: { onSeek: (f: number) => void; st
       onLayout={(e) => { w.current = Math.max(1, e.nativeEvent.layout.width); }}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
       onResponderGrant={(e) => { x0.current = e.nativeEvent.pageX - e.nativeEvent.locationX; at(e); }}
       onResponderMove={at}
       accessibilityLabel="Glisser pour se déplacer dans l’enregistrement"
+    >
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Une onde : toucher = se placer ; glisser = sélectionner un passage ;
+ * attraper un bord de la sélection = l'ajuster. `edges` = les bords actuels (0..1) s'il y a une sélection.
+ */
+function DragArea({ onTap, onDrag, edges, style, children }: { onTap: (f: number) => void; onDrag: (a: number, b: number) => void; edges: [number, number] | null; style?: object | object[]; children?: React.ReactNode }) {
+  const w = useRef(1);
+  const x0 = useRef(0);
+  const anchor = useRef(0);
+  const start = useRef(0);
+  const moved = useRef(false);
+  const fOf = (e: GestureResponderEvent) => Math.max(0, Math.min(1, (e.nativeEvent.pageX - x0.current) / w.current));
+  return (
+    <View
+      style={style}
+      onLayout={(e) => { w.current = Math.max(1, e.nativeEvent.layout.width); }}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
+      onResponderGrant={(e) => {
+        x0.current = e.nativeEvent.pageX - e.nativeEvent.locationX;
+        const f = fOf(e);
+        start.current = f; moved.current = false; anchor.current = f;
+        const near = 22 / w.current; // un bord se rattrape à ~22 px près
+        if (edges) {
+          if (Math.abs(f - edges[0]) < near && Math.abs(f - edges[0]) <= Math.abs(f - edges[1])) { anchor.current = edges[1]; moved.current = true; }
+          else if (Math.abs(f - edges[1]) < near) { anchor.current = edges[0]; moved.current = true; }
+        }
+      }}
+      onResponderMove={(e) => {
+        const f = fOf(e);
+        if (!moved.current && Math.abs(f - start.current) * w.current < 10) return;
+        moved.current = true;
+        onDrag(Math.min(anchor.current, f), Math.max(anchor.current, f));
+      }}
+      onResponderRelease={(e) => { if (!moved.current) onTap(fOf(e)); }}
+      accessibilityLabel="Toucher pour se placer, glisser pour sélectionner un passage"
     >
       {children}
     </View>
@@ -65,6 +108,8 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const [total, setTotal] = useState(meta0.seconds ?? 0);
   const [loading, setLoading] = useState('Préparation des ondes…');
   const [sharing, setSharing] = useState<Scope | null>(null);
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [pick, setPick] = useState<Record<string, boolean>>({});
   const [prog, setProg] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,7 +262,12 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const laneOverlays = (
     <>
       {view === 'all' && markers.slice(1).map((m, i) => <View key={i} pointerEvents="none" style={[styles.vline, { left: pct(m.t / T), backgroundColor: theme.line2 }]} />)}
-      {selBand && <View pointerEvents="none" style={[styles.selBand, selBand]} />}
+      {selBand && (
+        <View pointerEvents="none" style={[styles.selBand, selBand]}>
+          <View style={[styles.grip, { left: -7 }]} />
+          <View style={[styles.grip, { right: -7 }]} />
+        </View>
+      )}
       {headShow && <View pointerEvents="none" style={[styles.head, { left: pct((t - va) / vd) }]} />}
     </>
   );
@@ -253,7 +303,9 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
         )}
         {small('↶', undo, 'Annuler la dernière retouche')}
         {small('↷', doRedo, 'Rétablir')}
-        <Pressable onPress={() => setSharing(view === 'song' && markers.length > 1 ? 'song' : 'all')} style={[styles.act, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>Partager</Text></Pressable>
+        {tracks.length > 0 && !onFacade && (
+          <Pressable onPress={() => { setPick(Object.fromEntries(tracks.map((x, i) => [x.file.name, !mix.mute[x.file.name] && levels[i].auto != null]))); setAutoOpen(true); }} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 13, fontWeight: '900' }}>🎚 Mix automatique</Text></Pressable>
+        )}
       </View>
 
       {!!loading ? (
@@ -317,10 +369,10 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
           {/* LES PISTES */}
           {onFacade && facade ? (
             <View style={{ flex: 1, gap: 6 }}>
-              <SeekArea onSeek={(f) => go(va + f * vd)} style={[styles.lane, { flex: 1, borderColor: theme.line, backgroundColor: theme.deep }]}>
+              <DragArea onTap={(f) => go(va + f * vd)} onDrag={(a, b) => setSel({ a: va + a * vd, b: Math.max(va + a * vd + 0.3, va + b * vd) })} edges={selBand && sel ? [(sel.a - va) / vd, (sel.b - va) / vd] : null} style={[styles.lane, { flex: 1, borderColor: theme.line, backgroundColor: theme.deep }]}>
                 <Bars data={facadeBars} color={theme.accent} />
                 {laneOverlays}
-              </SeekArea>
+              </DragArea>
               <Text style={{ color: theme.muted, fontSize: 12 }}>Ici on ne dose pas les pistes : c’est le mélange de la table. Les coupes, les fondus et le volume s’appliquent quand même. Passe sur « Mon mix » pour régler chaque piste.</Text>
             </View>
           ) : (
@@ -343,10 +395,10 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
                   </View>
                 );
                 const lane = (
-                  <SeekArea onSeek={(f) => go(va + f * vd)} style={[styles.lane, wide ? { flex: 1 } : { height: laneH }, { borderColor: theme.line, backgroundColor: theme.deep }]}>
+                  <DragArea onTap={(f) => go(va + f * vd)} onDrag={(a, b) => setSel({ a: va + a * vd, b: Math.max(va + a * vd + 0.3, va + b * vd) })} edges={selBand && sel ? [(sel.a - va) / vd, (sel.b - va) / vd] : null} style={[styles.lane, wide ? { flex: 1 } : { height: laneH }, { borderColor: theme.line, backgroundColor: theme.deep }]}>
                     <Bars data={laneBars[i]} color={x.color} dim={L.silenced} />
                     {laneOverlays}
-                  </SeekArea>
+                  </DragArea>
                 );
                 return wide
                   ? <View key={x.file.name} style={{ flex: 1, minHeight: 50, maxHeight: 84, flexDirection: 'row', gap: 10 }}>{panel}{lane}</View>
@@ -382,17 +434,60 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
                   <Text style={{ color: '#FCD34D', fontSize: 13, fontWeight: '700' }}>{clip.name} a saturé à {fmtTime(clip.t)} · y aller</Text>
                 </Pressable>
               )}
-              <Text style={{ flex: 1, minWidth: 160, color: theme.muted, fontSize: 12 }}>{changed ? 'Tu entends tes retouches tout de suite. Les pistes d’origine ne changent jamais.' : 'Pour retoucher un passage : place-toi, puis « [ Début ici » et « Fin ici ] ».'}</Text>
+              <Text style={{ flex: 1, minWidth: 160, color: theme.muted, fontSize: 12 }}>{changed ? 'Tu entends tes retouches tout de suite. Les pistes d’origine ne changent jamais.' : 'Pour retoucher un passage : glisse le doigt sur une onde. Les bords bleus se rattrapent pour ajuster.'}</Text>
+              <Pressable onPress={() => setSel({ a: markers[g]?.t ?? 0, b: songEnd(g) })} style={[styles.act, { borderWidth: 1, borderColor: BLUE, backgroundColor: '#14202E' }]}><Text style={{ color: '#BFDBFE', fontSize: 13, fontWeight: '800' }}>Sélectionner ce morceau</Text></Pressable>
               <View style={[styles.panel, { borderColor: theme.line, backgroundColor: theme.panel, paddingHorizontal: 6 }]}>
                 <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', paddingHorizontal: 4 }}>Volume du mix</Text>
                 {small('−', () => setMix((m) => ({ ...m, master: Math.max(-12, m.master - 1) })), 'Baisser le volume du mix')}
                 <Text style={{ width: 46, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '800' }}>{mix.master > 0 ? '+' : ''}{mix.master} dB</Text>
                 {small('+', () => setMix((m) => ({ ...m, master: Math.min(12, m.master + 1) })), 'Monter le volume du mix')}
               </View>
-              {changed && <Pressable onPress={() => { setMix(emptyMix()); setRedo([]); setSolo(null); say('Retour au mix automatique, sans coupe ni retouche'); }} style={[styles.act, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Tout remettre à zéro</Text></Pressable>}
+              <Pressable onPress={() => setSharing(view === 'song' && markers.length > 1 ? 'song' : 'all')} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>Exporter · partager</Text></Pressable>
             </View>
           )}
         </>
+      )}
+
+      {/* MIX AUTOMATIQUE : quelles pistes, puis l'appli met tout au même niveau */}
+      {autoOpen && (
+        <Pressable onPress={() => setAutoOpen(false)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
+          <Pressable onPress={() => {}} style={[styles.sheet, { width: 460, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Mix automatique</Text>
+            <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Coche les pistes à garder. L’appli les met à peu près au même niveau (la voix un peu devant), avec tes panoramiques. Ensuite tu écoutes et tu retouches avec − / +.</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {tracks.map((x, i) => {
+                const empty = levels[i].auto == null;
+                const on = !!pick[x.file.name] && !empty;
+                return (
+                  <Pressable key={x.file.name} disabled={empty} onPress={() => setPick((p) => ({ ...p, [x.file.name]: !p[x.file.name] }))} accessibilityState={{ checked: on }} style={{ width: '48.5%', minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 10, borderColor: on ? x.color : theme.line2, backgroundColor: on ? theme.deep : 'transparent', opacity: empty ? 0.5 : 1 }}>
+                    <Text style={{ fontSize: 16, color: theme.text }}>{on ? '☑' : '☐'}</Text>
+                    <Text numberOfLines={1} style={{ flex: 1, color: on ? theme.text : theme.muted, fontSize: 14, fontWeight: on ? '800' : '500' }}>{x.name}{empty ? ' (vide)' : ''}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={() => setPick(Object.fromEntries(tracks.map((x) => [x.file.name, true])))} style={[styles.act, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Tout cocher</Text></Pressable>
+              <View style={{ flex: 1 }} />
+              <Pressable onPress={() => setAutoOpen(false)} style={[styles.act]}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>Annuler</Text></Pressable>
+            </View>
+            <Pressable
+              onPress={() => {
+                const n = tracks.filter((x, i) => pick[x.file.name] && levels[i].auto != null).length;
+                if (!n) { say('Coche au moins une piste'); return; }
+                setMix((m) => ({ ...m, trims: {}, master: 0, mute: Object.fromEntries(tracks.filter((x) => !pick[x.file.name]).map((x) => [x.file.name, true])) }));
+                setSolo(null); setAutoOpen(false);
+                go(markers[g]?.t ?? 0);
+                usbListen?.playerPlay(true); setPlaying(true);
+                say(`Mix automatique sur ${n} piste${n > 1 ? 's' : ''} · écoute, puis retouche avec − / +`);
+              }}
+              style={[styles.fmt, { alignItems: 'center', borderColor: theme.accent, backgroundColor: theme.accent }]}
+            >
+              <Text style={{ color: theme.onAccent, fontSize: 16, fontWeight: '900' }}>Équilibrer et écouter ▶</Text>
+            </Pressable>
+            {mix.edits.length > 0 && <Pressable onPress={() => { setMix(emptyMix()); setRedo([]); setSolo(null); setAutoOpen(false); say('Tout est remis à zéro : ni coupe ni retouche'); }} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '700' }}>Enlever aussi les {mix.edits.length} coupes et retouches</Text></Pressable>}
+          </Pressable>
+        </Pressable>
       )}
 
       {/* PARTAGER : quoi, dans quel format, et les fichiers déjà faits */}
@@ -462,6 +557,7 @@ const styles = StyleSheet.create({
   vline: { position: 'absolute', top: 0, bottom: 0, width: 1 },
   head: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: '#FFFFFF' },
   selBand: { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(96,165,250,0.22)', borderLeftWidth: 2, borderRightWidth: 2, borderColor: BLUE },
+  grip: { position: 'absolute', top: '50%', marginTop: -11, width: 12, height: 22, borderRadius: 4, backgroundColor: BLUE },
   selBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingLeft: 12, paddingRight: 4, minHeight: 56, backgroundColor: '#14202E', borderWidth: 2, borderRadius: 14 },
   sheet: { width: 380, maxWidth: '92%', borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
   fmt: { minHeight: 58, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, justifyContent: 'center' },
