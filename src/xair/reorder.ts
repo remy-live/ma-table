@@ -9,11 +9,11 @@ import { BUS_COUNT, channelDetailPaths, CH_COUNT, chLevelPath, chNamePath, insrc
 import { ch2 } from './levels';
 import { argFor, XAirClient } from './XAirClient';
 
-/** Le routage par voie n'existe (sûrement) que sur les X Air. */
-export const reorderSupported = () => MODEL.family === 'xair';
+/** Le routage par voie existe sur les X Air et les X32 / M32 (pas sur les Soundcraft Ui 12/16). */
+export const reorderSupported = () => MODEL.family === 'xair' || MODEL.family === 'x32';
 
 /** Nombre de voies qu'on range (les voies micro/ligne ; pas les entrées Aux stéréo). */
-export const reorderCount = () => Math.min(CH_COUNT, 16);
+export const reorderCount = () => Math.min(CH_COUNT, MODEL.family === 'x32' ? 32 : 16);
 
 /** Tout ce qui appartient à la voie (et pas à la prise). */
 export function slotPaths(ch: number): string[] {

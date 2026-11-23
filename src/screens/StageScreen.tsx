@@ -182,10 +182,10 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
             <Text style={[styles.kicker, { color: '#FCA5A5' }]}>EN CAS DE PROBLÈME</Text>
             <RescueButton client={client} theme={theme} />
             {locked && lrOn ? (
-              <HoldButton label="⏸ Pause : couper la façade" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 46 }} />
+              <HoldButton label="⏸ Pause : couper le son du public (façade)" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 46 }} />
             ) : (
             <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { minHeight: 46, borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
-              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 14 }}>{lrOn ? '⏸ Pause : couper la façade' : '▶ Remettre le son'}</Text>
+              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 14 }}>{lrOn ? '⏸ Pause : couper le son du public (façade)' : '▶ Remettre le son'}</Text>
               <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 10 }}>les retours des musiciens continuent</Text>
             </Pressable>
             )}
@@ -258,9 +258,9 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
             <Step n="!" title="En cas de problème" theme={theme} color="#EF4444" />
             <RescueButton client={client} theme={theme} />
-            {locked && lrOn ? <HoldButton label="⏸ Pause : couper la façade" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 60 }} /> : (
+            {locked && lrOn ? <HoldButton label="⏸ Pause : couper le son du public (façade)" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 60 }} /> : (
             <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
-              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? '⏸ Pause : couper la façade' : '▶ Remettre le son'}</Text>
+              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? '⏸ Pause : couper le son du public (façade)' : '▶ Remettre le son'}</Text>
               <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 11 }}>les retours des musiciens continuent</Text>
             </Pressable>
             )}

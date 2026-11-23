@@ -551,7 +551,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                     {p.name} · AUX {p.bus}
                   </Text>
                   <Text style={{ color: theme.muted, fontSize: 12 }}>
-                    {p.owners.length ? `Plus fort : ${p.owners.map(chName).join(', ')}` : 'Comme la façade'} · la voix pour tout le monde{!p.empty ? ' · ⚠ remplace son réglage actuel' : ''}
+                    {p.owners.length ? `Plus fort : ${p.owners.map(chName).join(', ')}` : 'Comme le public (façade)'} · la voix pour tout le monde{!p.empty ? ' · ⚠ remplace son réglage actuel' : ''}
                   </Text>
                 </View>
                 <Switch value={!!planOn[p.bus]} onValueChange={(v) => setPlanOn((o) => ({ ...o, [p.bus]: v }))} />

@@ -19,6 +19,7 @@ import { setDemoStage } from '../xair/tableModel';
 import { plugs } from '../xair/wiring';
 import { XAirClient } from '../xair/XAirClient';
 import { ChangesSheet } from './ChangesSheet';
+import { LarsenSheet } from './LarsenSheet';
 import { LR_TARGET, MAX_TRIM, trimFor } from '../xair/venueTrim';
 
 const TUTTI_S = 20;
@@ -32,6 +33,7 @@ export function VenueQuick({ client, theme, visible, onClose }: { client: XAirCl
   const [name, setName] = useState('');
   const [saved, setSaved] = useState(false);
   const [changed, setChanged] = useState<ChangeSet | null>(null);
+  const [larsen, setLarsen] = useState(false);
   const rec = useRef<ReturnType<typeof record> | null>(null);
   const samples = useRef<Map<number, number[]>>(new Map());
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -168,7 +170,10 @@ export function VenueQuick({ client, theme, visible, onClose }: { client: XAirCl
           {phase === 'done' && (
             <>
               {lines.map((l) => <Text key={l} style={{ color: theme.text, fontSize: 14 }}>• {l}</Text>)}
-              <Text style={{ color: theme.muted, fontSize: 12 }}>Un retour qui siffle dans cette salle ? Ouvre-le dans Concert : « Chasser le larsen » trouve et creuse la fréquence.</Text>
+              <Pressable onPress={() => setLarsen(true)} style={[styles.go, { borderWidth: 1.5, borderColor: '#F87171' }]}>
+                <Text style={{ color: '#F87171', fontWeight: '800' }}>🔔 Ça siffle dans cette salle ? Chasser le sifflement (larsen)</Text>
+              </Pressable>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>Pour la façade ici. Pour un retour qui siffle : choisis ce retour dans Table, puis « Siffle ? ».</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TextInput value={name} onChangeText={setName} placeholder="Nom de la salle (ex. Salle des fêtes)" placeholderTextColor={theme.muted} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
                 <Pressable disabled={!name.trim() || saved} onPress={keepVenue} style={[styles.go, { paddingHorizontal: 14, backgroundColor: theme.accent, opacity: name.trim() && !saved ? 1 : 0.5 }]}>
@@ -180,6 +185,7 @@ export function VenueQuick({ client, theme, visible, onClose }: { client: XAirCl
           )}
         </View>
         <ChangesSheet client={client} theme={theme} visible={!!changed} set={changed} onClose={() => setChanged(null)} />
+        {larsen && <LarsenSheet client={client} theme={theme} bus="main" name="le public" onClose={() => setLarsen(false)} />}
       </View>
     </Modal>
   );

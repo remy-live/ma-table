@@ -338,8 +338,8 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
         <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>⧉</Text>
         <Text style={{ color: theme.muted, fontSize: 9, fontWeight: '800' }}>Copier</Text>
       </Pressable>
-      {target.kind === 'bus' && (
-        <Pressable onPress={() => setLarsen(true)} onLongPress={() => showTip('Ça siffle ? Repère la note qui siffle dans ce retour et la creuse, sans toucher au public.')} accessibilityLabel="Ça siffle ?" style={[styles.iconBtn, { borderColor: '#F87171' }]}>
+      {(target.kind === 'bus' || target.kind === 'main') && (
+        <Pressable onPress={() => setLarsen(true)} onLongPress={() => showTip('Ça siffle (larsen) ? Repère la note qui siffle dans ce mélange et la creuse, sans toucher aux autres.')} accessibilityLabel="Ça siffle ?" style={[styles.iconBtn, { borderColor: '#F87171' }]}>
           <Text style={{ fontSize: 16 }}>🔔</Text>
           <Text style={{ color: '#FCA5A5', fontSize: 9, fontWeight: '800' }}>Siffle ?</Text>
         </Pressable>
@@ -423,11 +423,10 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
             <View style={{ flex: 1 }}>{chips}</View>
           </View>
           {simple ? simpleTools : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {mixTools}
-            <View style={{ flex: 1 }} />
-            {rightTools}
-          </View>)}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexGrow: 1, justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{mixTools}</View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{rightTools}</View>
+          </ScrollView>)}
         </View>
       )}
       <SoloBar client={client} theme={theme} />
@@ -562,7 +561,7 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
       <GroupsSheet client={client} theme={theme} visible={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <CopySettingsSheet client={client} theme={theme} visible={copySet !== null} from={copySet || null} to={copyTo} onClose={() => { setCopySet(null); setCopyTo([]); }} />
       <CopyMixSheet client={client} theme={theme} visible={copyOpen} dst={target} onClose={() => setCopyOpen(false)} onDone={say} />
-      {larsen && <LarsenSheet client={client} theme={theme} bus={target.kind === 'bus' ? target.n : null} name={label(target)} onClose={() => setLarsen(false)} />}
+      {larsen && <LarsenSheet client={client} theme={theme} bus={target.kind === 'bus' ? target.n : target.kind === 'main' ? 'main' : null} name={label(target)} onClose={() => setLarsen(false)} />}
       <MixPickerSheet client={client} target={target} theme={theme} visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(t) => { setTarget(t); setPickerOpen(false); }} />
       <InputSourceSheet client={client} ch={srcCh} theme={theme} onClose={() => setSrcCh(null)} />
     </View>

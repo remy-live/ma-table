@@ -10,13 +10,18 @@ import { Theme } from '../ui/theme';
 import { eqGainToF, hzToF, qToF } from '../xair/addresses';
 import { argFor, XAirClient } from '../xair/XAirClient';
 
-const busEq = (bus: number, band: number, k: 'type' | 'f' | 'g' | 'q') => `/bus/${bus}/eq/${band}/${k}`;
-const busEqOn = (bus: number) => `/bus/${bus}/eq/on`;
+/** Un retour (1..6) ou la façade ('main' : l'égaliseur général, celui du public). */
+export type LarsenWhere = number | 'main';
+const root = (bus: LarsenWhere) => (bus === 'main' ? '/lr' : `/bus/${bus}`);
+const busEq = (bus: LarsenWhere, band: number, k: 'type' | 'f' | 'g' | 'q') => `${root(bus)}/eq/${band}/${k}`;
+const busEqOn = (bus: LarsenWhere) => `${root(bus)}/eq/on`;
+/** Sélection de l'analyseur : 21..26 = retours 1..6, 31 = façade (à vérifier sur la table). */
+const rtaIdx = (bus: LarsenWhere) => (bus === 'main' ? 31 : 20 + bus);
 const bandHz = (k: number) => 20 * Math.pow(1000, k / 99);
 const hzText = (hz: number) => (hz >= 1000 ? `${(hz / 1000).toFixed(1).replace('.0', '').replace('.', ',')} kHz` : `${Math.round(hz)} Hz`);
 const NOTCH_BANDS = [5, 4, 3]; // bandes de l'égaliseur du retour utilisées pour creuser
 
-export function LarsenSheet({ client, theme, bus, name, onClose }: { client: XAirClient; theme: Theme; bus: number | null; name: string; onClose: () => void }) {
+export function LarsenSheet({ client, theme, bus, name, onClose }: { client: XAirClient; theme: Theme; bus: LarsenWhere | null; name: string; onClose: () => void }) {
   const [spec, setSpec] = useState<number[] | null>(null);
   const [peak, setPeak] = useState<{ k: number; over: number } | null>(null);
   const [cuts, setCuts] = useState<number[]>([]); // fréquences déjà creusées
@@ -31,7 +36,7 @@ export function LarsenSheet({ client, theme, bus, name, onClose }: { client: XAi
     saved.current = new Map();
     const paths = [busEqOn(bus), ...NOTCH_BANDS.flatMap((b) => (['type', 'f', 'g', 'q'] as const).map((k) => busEq(bus, b, k)))];
     client.loadPaths(paths).then(() => paths.forEach((p) => saved.current.set(p, client.get(p))));
-    client.startRta(undefined, 20 + bus); // l'analyseur écoute ce retour (21..26 = retours 1..6)
+    client.startRta(undefined, rtaIdx(bus));
     let last = 0;
     const off = client.onRta((d) => {
       // on garde le maximum qui retombe lentement : un sifflement reste visible
@@ -78,7 +83,7 @@ export function LarsenSheet({ client, theme, bus, name, onClose }: { client: XAi
       <Pressable style={styles.back} onPress={onClose}>
         <Pressable onPress={() => {}} style={[styles.sheet, { backgroundColor: theme.panel, borderColor: peak ? '#F87171' : theme.line }]}>
           <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>🔔 Ça siffle dans « {name} » ?</Text>
-          <Text style={{ color: theme.muted, fontSize: 13 }}>Laisse siffler une seconde : l’appli repère la note qui dépasse et la creuse dans ce retour seulement. Le public n’est pas touché.</Text>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>Laisse siffler une seconde : l’appli repère la note qui dépasse et la creuse {bus === 'main' ? 'dans le son du public (façade), sans toucher aux retours.' : 'dans ce retour seulement. Le public n’est pas touché.'}</Text>
           <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
             <Rect x={0} y={0} width={W} height={H} rx={12} fill={theme.meterBg} />
             {[100, 1000, 10000].map((hz) => { const k = (Math.log(hz / 20) / Math.log(1000)) * 99; return <React.Fragment key={hz}><Line x1={x(k)} y1={8} x2={x(k)} y2={H - 18} stroke={theme.line} /><SvgText x={x(k)} y={H - 4} fontSize={11} textAnchor="middle" fill={theme.muted}>{hzText(hz)}</SvgText></React.Fragment>; })}
@@ -90,7 +95,7 @@ export function LarsenSheet({ client, theme, bus, name, onClose }: { client: XAi
           {!spec && <Text style={{ color: theme.muted, fontSize: 12 }}>En attente du spectre de la table…</Text>}
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
             <Pressable onPress={cut} disabled={!peak} style={[styles.btn, { flex: 2, backgroundColor: peak ? '#F87171' : theme.line }]}>
-              <Text style={{ color: peak ? '#1F0707' : theme.muted, fontWeight: '900', fontSize: 15 }}>{peak ? `Creuser ${hzText(bandHz(peak.k))} dans ce retour` : 'Pas de sifflement repéré'}</Text>
+              <Text style={{ color: peak ? '#1F0707' : theme.muted, fontWeight: '900', fontSize: 15 }}>{peak ? `Creuser ${hzText(bandHz(peak.k))} ${bus === 'main' ? 'pour le public' : 'dans ce retour'}` : 'Pas de sifflement repéré'}</Text>
             </Pressable>
             {cuts.length > 0 && <Pressable onPress={undoAll} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>Annuler ({cuts.length})</Text></Pressable>}
             <Pressable onPress={onClose} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>Fermer</Text></Pressable>

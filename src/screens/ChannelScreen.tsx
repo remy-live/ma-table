@@ -202,7 +202,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
                 <View style={{ width: `${Math.round(meter.level * 100)}%`, height: 14, backgroundColor: meter.db > -3 ? theme.mute : meter.db > -18 ? theme.ok : '#FCD34D' }} />
               </View>
               <Text style={{ color: meter.db > -3 ? theme.mute : meter.db > -18 ? theme.ok : theme.muted, fontSize: 11, fontWeight: '700' }}>
-                {meter.db < -55 ? 'Rien n’arrive' : meter.db > -3 ? 'Niveau d’entrée : trop fort, baisse le gain' : meter.db > -18 ? 'Niveau d’entrée : parfait' : 'Niveau d’entrée : un peu faible'}
+                {meter.db < -55 ? 'Rien n’arrive' : meter.db > -3 ? 'Niveau d’entrée : trop fort, baisse la force du micro (gain)' : meter.db > -18 ? 'Niveau d’entrée : parfait' : 'Niveau d’entrée : un peu faible'}
               </Text>
             </View>
             <Pressable onPress={() => setInputOpen(true)} style={[styles.wide, { backgroundColor: theme.accent }]}>

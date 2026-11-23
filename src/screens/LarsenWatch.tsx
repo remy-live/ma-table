@@ -32,7 +32,7 @@ export function LarsenWatch({ client, theme, top = 10 }: { client: XAirClient; t
 
   if (!hit && hunt === null) return null;
   const tg = hit ? targetOf(hit.idx) : null;
-  const name = !tg ? '' : tg.kind === 'main' ? 'la façade' : `« ${String(client.get(busNamePath((tg as { n: number }).n)) ?? '') || `Retour ${(tg as { n: number }).n}`} »`;
+  const name = !tg ? '' : tg.kind === 'main' ? 'le son du public (façade)' : `« ${String(client.get(busNamePath((tg as { n: number }).n)) ?? '') || `Retour ${(tg as { n: number }).n}`} »`;
   const lower = () => {
     if (!tg || !hit) return;
     const p = outPath(tg);

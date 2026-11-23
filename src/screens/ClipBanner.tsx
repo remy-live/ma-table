@@ -33,7 +33,7 @@ export function ClipBanner(props: { client: XAirClient; onOpen: (ch: number) => 
   return (
     <View style={{ marginHorizontal: 12, marginBottom: 6, backgroundColor: '#2A1414', borderColor: '#7F1D1D', borderWidth: 1, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text style={{ color: '#FCA5A5', flex: 1, fontSize: 13, fontWeight: '700' }}>
-        {name} sature à l’entrée{show.length > 1 ? ` (+${show.length - 1})` : ''} : baisse le gain
+        {name} sature à l’entrée{show.length > 1 ? ` (+${show.length - 1})` : ''} : baisse la force du micro (gain)
       </Text>
       <Pressable onPress={() => props.onOpen(c)} style={{ height: 36, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#EF4444', justifyContent: 'center' }}>
         <Text style={{ color: '#1A0505', fontWeight: '800', fontSize: 12 }}>Régler</Text>

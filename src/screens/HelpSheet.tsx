@@ -22,13 +22,14 @@ type Which = 'magie' | 'auto' | 'guide' | 'check' | 'tuto' | 'verif' | 'change' 
 type Group = 'installe' | 'comprends' | 'souci';
 
 const GROUPS: { id: Group; icon: string; title: string; sub: string; color: string; items: [Exclude<Which, null>, string, string][] }[] = [
-  { id: 'installe', icon: '🎬', title: 'Je m’installe', sub: 'Brancher, régler les niveaux, préparer la salle', color: '#22C55E', items: [
-    ['magie', '🪄 Qui branche quoi', 'Qui joue quoi, qui veut un retour : l’appli range prises et retours'],
-    ['auto', '🎚 Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle les niveaux'],
-    ['salle', '🏠 Nouvelle salle', 'Reprendre une salle déjà faite et l’ajuster en une minute'],
-    ['effets', '✨ Proposer des effets', 'Réverbe et écho conseillés, à écouter avant de garder'],
+  { id: 'installe', icon: '🎬', title: 'Je m’installe', sub: 'Dans l’ordre : brancher, régler les niveaux, les effets, vérifier', color: '#22C55E', items: [
+    ['magie', '① Qui branche quoi 🪄', 'Qui joue quoi, qui veut un retour : l’appli range prises et retours'],
+    ['auto', '② Balance automatique 🎚', 'Chacun son tour, puis tous ensemble : l’appli règle les niveaux'],
+    ['effets', '③ Proposer des effets ✨', 'Réverbe et écho conseillés, à écouter avant de garder'],
+    ['check', '④ Avant le concert ✅', 'La check-list : connexion, noms, retours, sauvegarde'],
+    ['salle', '🏠 Autre salle, mêmes musiciens', 'Reprendre une salle déjà faite et l’ajuster en une minute'],
     ['ranger', '🔀 Réorganiser les voies', 'Voix d’abord, batterie à la fin… sans toucher aux câbles'],
-    ['guide', '👣 Pas à pas complet', 'Toute l’installation d’un concert, étape par étape'],
+    ['guide', '👣 Tout faire à la main, pas à pas', 'Nommer, grouper, relier les retours soi-même, étape par étape'],
   ] },
   { id: 'comprends', icon: '💡', title: 'Je comprends', sub: 'À quoi sert chaque chose, et les mots de la table', color: '#60A5FA', items: [
     ['visite', '🧭 Visite de la table', 'Prises, public, retours, effets : avec tes vrais noms'],
@@ -37,7 +38,6 @@ const GROUPS: { id: Group; icon: string; title: string; sub: string; color: stri
   ] },
   { id: 'souci', icon: '🛟', title: 'J’ai un souci', sub: 'Vérifier, retrouver un micro, revenir en arrière', color: '#F59E0B', items: [
     ['change', '👀 Ce qui a changé', 'Ce que l’appli a réglé, sur le dessin de la table · annuler'],
-    ['check', '✅ Avant le concert', 'La check-list : connexion, noms, retours, sauvegarde'],
     ['verif', '🔧 Vérifier ma table', 'L’appli essaie chaque fonction et dit ce qui marche'],
   ] },
 ];

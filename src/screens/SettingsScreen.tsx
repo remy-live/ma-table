@@ -184,7 +184,7 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>Vibration au passage du 0 dB</Text>
-                <Text style={{ color: theme.muted, fontSize: 12 }}>Comme le cran d’un vrai potentiomètre, sur les faders et le gain.</Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>Comme le cran d’un vrai potentiomètre, sur les curseurs de volume (faders) et la force du micro (gain).</Text>
               </View>
               <Switch value={prefs.haptics} onValueChange={(v) => props.onPrefs({ ...prefs, haptics: v })} />
             </View>
