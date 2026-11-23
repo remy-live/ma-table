@@ -27,8 +27,7 @@ import { HoldButton } from '../ui/HoldButton';
 import { useLevels } from '../xair/useMeter';
 import { meterIndex } from '../xair/addresses';
 import { StagePlanSheet } from './StagePlanSheet';
-import { RecBar, RecorderSheet } from './RecorderSheet';
-import { recAvailable } from '../xair/recorder';
+import { RecCard, RecorderSheet } from './RecorderSheet';
 
 
 function useGroups(client: XAirClient): Group[] {
@@ -181,6 +180,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
               <Btn theme={theme} small icon="↺" label="Revenir" a11y="Revenir à l’enregistrement" disabled={!snap || !changed || locked} onPress={askRestore} style={{ flex: 1 }} />
             </View>
           </View>
+          <RecCard theme={theme} onOpen={() => setRecOpen(true)} />
           <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
             <Text style={[styles.kicker, { color: '#FCA5A5' }]}>EN CAS DE PROBLÈME</Text>
             <RescueButton client={client} theme={theme} />
@@ -194,14 +194,12 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
             )}
           </View>
           <ClipHistoryCard client={client} theme={theme} onOpen={setGainCh} />
-          <RecBar theme={theme} onOpen={() => setRecOpen(true)} />
           <View style={{ flex: 1 }} />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {toolBtn('📱 Inviter', 'il règle son retour', () => setInvite(true), { bg: '#13261E', bd: '#1F6F4A', fg: '#A7F3D0', sub: '#6EE7B7' })}
             {toolBtn('✅ Check-list', 'tout est prêt ?', () => setCheckOpen(true))}
             {toolBtn('🗺 Plan de scène', 'qui est branché où', () => setPlanOpen(true))}
             {toolBtn('📓 Journal', 'qui a changé quoi', () => setJournalOpen(true))}
-            {recAvailable() && toolBtn('⏺ Enregistrer', 'le concert, piste par piste', () => setRecOpen(true), { bg: '#2A1010', bd: '#7F1D1D', fg: '#FCA5A5', sub: '#FCA5A5' })}
           </View>
         </View>
         {/* à droite : plus fort / moins fort, les tuiles prennent toute la place */}
@@ -275,6 +273,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
 
         <ClipHistoryCard client={client} theme={theme} onOpen={setGainCh} />
 
+        <RecCard theme={theme} onOpen={() => setRecOpen(true)} />
+
         {/* 2. PENDANT */}
         <View style={[styles.card, { backgroundColor: theme.panel, borderColor: mixColor(mix) }]}>
           <Step n={2} title="Pendant : plus fort / moins fort" theme={theme} />
@@ -306,8 +306,6 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           </View>
         </View>
 
-        <RecBar theme={theme} onOpen={() => setRecOpen(true)} />
-
         {/* 4. OUTILS */}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Pressable onPress={() => setInvite(true)} style={[styles.card, styles.tool, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
@@ -326,12 +324,6 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>📓 Journal</Text>
             <Text style={{ color: theme.muted, fontSize: 11 }}>qui a changé quoi, et quand</Text>
           </Pressable>
-          {recAvailable() && (
-            <Pressable onPress={() => setRecOpen(true)} style={[styles.card, styles.tool, { backgroundColor: '#2A1010', borderColor: '#7F1D1D' }]}>
-              <Text style={{ color: '#FCA5A5', fontSize: 15, fontWeight: '800' }}>⏺ Enregistrer le concert</Text>
-              <Text style={{ color: '#FCA5A5', fontSize: 11 }}>par le câble USB · un fichier par voie</Text>
-            </Pressable>
-          )}
         </View>
       </ScrollView>
       <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => { setSessOpen(false); reload(); }} />

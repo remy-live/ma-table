@@ -42,6 +42,23 @@ export function RecBar({ theme, onOpen }: { theme: Theme; onOpen: () => void }) 
   );
 }
 
+/** Dans Concert : le gros bouton rouge « Enregistrer le concert » ; pendant la prise, il devient le bandeau. */
+export function RecCard({ theme, onOpen }: { theme: Theme; onOpen: () => void }) {
+  const st = useRec();
+  if (!usbAudio) return null;
+  if (st.on) return <RecBar theme={theme} onOpen={onOpen} />;
+  return (
+    <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="Enregistrer le son du concert" style={{ minHeight: 64, borderRadius: 16, backgroundColor: RED, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 }}>
+      <View style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 3, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF' }} /></View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '900' }}>Enregistrer le concert</Text>
+        <Text numberOfLines={1} style={{ color: '#FEE2E2', fontSize: 11, fontWeight: '600' }}>le son, piste par piste · réécouter, mixer, partager</Text>
+      </View>
+      <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '900' }}>›</Text>
+    </Pressable>
+  );
+}
+
 /** Petite pastille rouge posée par-dessus les autres écrans pendant qu'on enregistre. */
 export function RecPill({ wide, onOpen }: { wide: boolean; onOpen: () => void }) {
   const st = useRec();
