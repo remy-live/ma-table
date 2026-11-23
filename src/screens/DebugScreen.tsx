@@ -8,10 +8,12 @@ import { APP_VERSION, runDiagnostic } from '../debug/diagnostic';
 import { DemoModelPicker } from './ConnectionScreen';
 import { XAirClient } from '../xair/XAirClient';
 import { Theme } from '../ui/theme';
+import { UsbTestSheet } from './UsbTestSheet';
 
 const COLORS: Record<string, string> = { info: '#9AA3AD', warn: '#FBBF24', error: '#F87171', out: '#60A5FA', in: '#34D399' };
 
 export function DebugScreen({ client, theme, visible, onClose }: { client: XAirClient | null; theme: Theme; visible: boolean; onClose: () => void }) {
+  const [usb, setUsb] = useState(false);
   const platform = `${Platform.OS} ${String(Platform.Version)}`;
   const [entries, setEntries] = useState<Entry[]>(getEntries());
   const [showTraffic, setShowTraffic] = useState(false);
@@ -93,6 +95,12 @@ export function DebugScreen({ client, theme, visible, onClose }: { client: XAirC
           </Pressable>
         </View>
         {!!busy && <Text style={{ color: theme.accent, fontSize: 13, paddingHorizontal: 16 }}>{busy}</Text>}
+        <View style={styles.row}>
+          <Pressable onPress={() => setUsb(true)} style={[styles.btn, { backgroundColor: '#3B0D0D', borderColor: '#DC2626', borderWidth: 1.5 }]}>
+            <Text style={{ color: '#FCA5A5', fontWeight: '800', fontSize: 13 }}>🎙 Tester l’enregistrement USB</Text>
+          </Pressable>
+        </View>
+        <UsbTestSheet client={client} theme={theme} visible={usb} onClose={() => setUsb(false)} />
 
         <View style={[styles.row, { alignItems: 'center' }]}>
           <TextInput
