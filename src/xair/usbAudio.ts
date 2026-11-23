@@ -7,7 +7,8 @@ export interface UsbInput { id: number; type: string; product: string; address: 
 export interface UsbHostDevice { name: string; vendor: number; productId: number; product: string; maker: string; interfaces: { id: number; alt: number; cls: number; sub: number; proto: number; eps: { addr: number; in: boolean; type: number; max: number }[] }[] }
 export interface ProbeOpts { deviceId: number; ch: number; float: boolean; rate: number; src: number; positional: boolean }
 export interface ProbeResult { ok: boolean; error: string; frames?: number; routed?: string; channels?: number; rate?: number; peakDb?: number }
-export interface RecordResult { dir: string; files: string[]; frames: number; expected: number; seconds: number; rate: number; channels: number; routed: string; shortReads: number; readErrors: number; peakDb: number[]; rmsDb: number[]; clips: number[] }
+export interface DirectProbe { ok: boolean; error: string; product?: string; ifNum?: number; alt?: number; ep?: number; maxPacket?: number; channels?: number; subslot?: number; bits?: number; uac?: number; rate?: number; frames?: number; expected?: number; pktErrors?: number; urbErrors?: number; empty?: number; reaped?: number; odd?: number; submitErrors?: number; lastErrno?: number; peakDb?: number[] }
+export interface RecordResult { bits?: number; dir: string; files: string[]; frames: number; expected: number; seconds: number; rate: number; channels: number; routed: string; shortReads: number; readErrors: number; peakDb: number[]; rmsDb: number[]; clips: number[] }
 
 type Native = {
   info(): { model: string; maker: string; android: string; sdk: number; outRate: string; dir: string };
@@ -16,6 +17,8 @@ type Native = {
   probe(o: ProbeOpts): Promise<ProbeResult>;
   record(o: ProbeOpts & { seconds: number }): Promise<RecordResult>;
   stop(): void;
+  directProbe(): Promise<DirectProbe>;
+  directRecord(o: { seconds: number }): Promise<RecordResult>;
   play(path: string): boolean;
   stopPlay(): void;
   clear(): boolean;

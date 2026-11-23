@@ -211,6 +211,96 @@ class UsbAudioModule : Module() {
 
     Function("stop") { stopFlag = true }
 
+    // ---- Lecture directe (quand Android ne propose pas la table comme entrée son) ----
+
+    // Permission USB, descripteurs, fréquence, et 1 s de lecture pour voir si le son arrive.
+    AsyncFunction("directProbe") { promise: Promise ->
+      if (running) { promise.reject("BUSY", "Un enregistrement est déjà en cours", null); return@AsyncFunction }
+      running = true
+      Thread {
+        try {
+          val ud = UsbDirect(ctx())
+          val d = ud.findDevice()
+          if (d == null) { promise.resolve(mapOf("ok" to false, "error" to "aucune carte son USB vue")); return@Thread }
+          if (!ud.ensurePermission(d)) { promise.resolve(mapOf("ok" to false, "error" to "permission USB refusée")); return@Thread }
+          val dir = File(ctx().filesDir, "usb-test").apply { mkdirs() }
+          val raw = File(dir, "probe.raw")
+          val se = ud.open(d, raw)
+          val t0 = System.currentTimeMillis()
+          Thread.sleep(1000)
+          val win = UsbIso.window()
+          val st = ud.close(se)
+          val el = (System.currentTimeMillis() - t0) / 1000.0
+          raw.delete()
+          promise.resolve(mapOf(
+            "ok" to (st[0] > 0),
+            "error" to (if (st[0] > 0) "" else "aucun son reçu (erreur ${st[7]})"),
+            "product" to (d.productName ?: ""),
+            "ifNum" to se.s.ifNum, "alt" to se.s.alt, "ep" to se.s.ep, "maxPacket" to se.s.maxPacket,
+            "channels" to se.s.channels, "subslot" to se.s.subslot, "bits" to se.s.bits, "uac" to se.s.uac,
+            "rate" to se.rate, "frames" to st[0], "expected" to (el * (if (se.rate > 0) se.rate else 48000)).toLong(),
+            "pktErrors" to st[1], "urbErrors" to st[2], "empty" to st[3], "reaped" to st[4], "odd" to st[5], "submitErrors" to st[6], "lastErrno" to st[7],
+            "peakDb" to win.map { db(it) },
+          ))
+        } catch (e: Throwable) {
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + ": " + (e.message ?: "")).take(200)))
+        } finally {
+          running = false
+        }
+      }.start()
+    }
+
+    // Enregistre en direct : un WAV par voie, à la résolution de la table (24 bits).
+    AsyncFunction("directRecord") { o: Map<String, Any?>, promise: Promise ->
+      if (running) { promise.reject("BUSY", "Un enregistrement est déjà en cours", null); return@AsyncFunction }
+      val seconds = (o["seconds"] as? Number)?.toDouble() ?: 10.0
+      running = true
+      stopFlag = false
+      Thread {
+        try {
+          val ud = UsbDirect(ctx())
+          val d = ud.findDevice() ?: throw IllegalStateException("aucune carte son USB vue")
+          if (!ud.ensurePermission(d)) throw IllegalStateException("permission USB refusée")
+          val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.FRANCE).format(Date())
+          val dir = File(ctx().filesDir, "usb-test/$stamp").apply { mkdirs() }
+          val raw = File(dir, "raw.bin")
+          val se = ud.open(d, raw)
+          val t0 = System.currentTimeMillis()
+          while (!stopFlag && System.currentTimeMillis() - t0 < (seconds * 1000).toLong()) {
+            Thread.sleep(100)
+            sendEvent("onLevels", mapOf("peaks" to UsbIso.window().map { db(it) }, "t" to (System.currentTimeMillis() - t0)))
+          }
+          val st = ud.close(se)
+          val tot = UsbIso.totals()
+          val el = (System.currentTimeMillis() - t0) / 1000.0
+          val n = se.s.channels
+          val rate = if (se.rate > 0) se.rate else 48000
+          val files = ud.split(raw, dir, n, se.s.subslot, rate, st[0])
+          raw.delete()
+          promise.resolve(mapOf(
+            "dir" to dir.absolutePath,
+            "files" to files.map { it.absolutePath },
+            "frames" to st[0],
+            "expected" to (el * rate).toLong(),
+            "seconds" to el,
+            "rate" to rate,
+            "channels" to n,
+            "bits" to se.s.subslot * 8,
+            "routed" to "direct · ${d.productName ?: "USB"}",
+            "shortReads" to st[3],
+            "readErrors" to (st[1] + st[2] + st[6]),
+            "peakDb" to (0 until n).map { db(tot[it].toFloat()) },
+            "rmsDb" to (0 until n).map { db(kotlin.math.sqrt(tot[n + it]).toFloat()) },
+            "clips" to (0 until n).map { tot[2 * n + it].toInt() },
+          ))
+        } catch (e: Throwable) {
+          promise.reject("ERR", (e.javaClass.simpleName + ": " + (e.message ?: "")).take(200), e)
+        } finally {
+          running = false
+        }
+      }.start()
+    }
+
     Function("play") { path: String ->
       player?.release()
       player = MediaPlayer().apply {

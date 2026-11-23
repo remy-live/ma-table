@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.13)
+project(usbiso C)
+add_library(usbiso SHARED usbiso.c)
+target_compile_options(usbiso PRIVATE -O2 -Wall)
+target_link_libraries(usbiso log m)

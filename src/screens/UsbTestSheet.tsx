@@ -7,7 +7,7 @@ import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import * as dbg from '../debug/log';
 import { chNamePath } from '../xair/addresses';
-import { askMic, isUsb, ProbeOpts, ProbeResult, RecordResult, SRC_MIC, SRC_UNPROCESSED, TRY_CHANNELS, usbAudio, UsbHostDevice, UsbInput } from '../xair/usbAudio';
+import { askMic, DirectProbe, isUsb, ProbeOpts, ProbeResult, RecordResult, SRC_MIC, SRC_UNPROCESSED, TRY_CHANNELS, usbAudio, UsbHostDevice, UsbInput } from '../xair/usbAudio';
 import { XAirClient } from '../xair/XAirClient';
 
 type Phase = 'idle' | 'look' | 'probe' | 'rec' | 'done';
@@ -28,6 +28,7 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
   const [best, setBest] = useState<ProbeOpts | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);
   const [secs, setSecs] = useState(10);
+  const [direct, setDirect] = useState<DirectProbe | null>(null);
   const report = useRef<string[]>([]);
   const log = (s: string) => { report.current.push(s); };
 
@@ -46,7 +47,7 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
   const runAll = async () => {
     if (!usbAudio) return;
     report.current = [];
-    setRows([]); setRes(null); setBest(null); setLive([]);
+    setRows([]); setRes(null); setBest(null); setLive([]); setDirect(null);
     setPhase('look');
     const info = usbAudio.info();
     log(`Tablette : ${info.maker} ${info.model} · Android ${info.android} (SDK ${info.sdk}) · sortie ${info.outRate} Hz`);
@@ -63,9 +64,22 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
     for (const d of ins) log(`Entrée Android : ${d.type} « ${d.product} » id ${d.id} · voies ${d.channelCounts.join('/') || '?'} · masques ${d.indexMasks.length} · fréquences ${d.sampleRates.join('/') || 'toutes'} · encodages ${d.encodings.join('/') || '?'}`);
     const usb = ins.find(isUsb);
     if (!usb) {
-      setMsg(hs.length ? 'Le port USB voit la table, mais Android ne la propose pas comme entrée son. Envoie-moi le rapport : il faudra lire la carte son en direct.' : 'La tablette ne voit rien sur l’USB. Vérifie : table allumée, câble USB-C vers USB-B branché directement (sans hub), et accepte la fenêtre qui s’ouvre au branchement.');
-      log('Pas d’entrée son USB');
-      setPhase('done');
+      log('Pas d’entrée son USB côté Android');
+      if (!hs.length) {
+        setMsg('La tablette ne voit rien sur l’USB. Vérifie : table allumée, câble USB-C vers USB-B branché directement (sans hub).');
+        setPhase('done');
+        return;
+      }
+      // Android ne propose pas la table : on la lit nous-mêmes (une fenêtre « Autoriser Ma table » s'ouvre)
+      setPhase('probe');
+      setMsg('Android ne propose pas la table comme entrée son : j’essaie de la lire directement. Accepte la fenêtre « Autoriser Ma table ».');
+      const dp = await usbAudio.directProbe();
+      setDirect(dp);
+      log(`Lecture directe : ${dp.ok ? 'OK' : 'NON'}${dp.error ? ` (${dp.error})` : ''} · ${dp.channels ?? '?'} voies · ${dp.subslot ?? '?'} octets (${dp.bits ?? '?'} bits) · ${dp.rate || '?'} Hz · interface ${dp.ifNum}/${dp.alt} point ${dp.ep !== undefined ? fmtHex(dp.ep) : '?'} paquet ${dp.maxPacket}`);
+      if (dp.frames !== undefined) log(`  1 s : ${dp.frames} images sur ~${dp.expected} · paquets en erreur ${dp.pktErrors} · requêtes en erreur ${dp.urbErrors} · paquets vides ${dp.empty} · reçues ${dp.reaped} · bancals ${dp.odd} · envois ratés ${dp.submitErrors} · dernière erreur ${dp.lastErrno}`);
+      dp.peakDb?.forEach((p, k) => log(`  ${trackName(k)} : ${fmtDb(p)}`));
+      setMsg(dp.ok ? '' : `Lecture directe impossible : ${dp.error}. Envoie-moi le rapport.`);
+      setPhase(dp.ok ? 'idle' : 'done');
       return;
     }
     setPhase('probe');
@@ -106,16 +120,16 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
     setPhase('idle');
   };
 
-  const record = async (o: ProbeOpts) => {
+  const record = async (o: ProbeOpts | 'direct') => {
     if (!usbAudio) return;
     setPhase('rec');
     setRes(null);
-    setLive(Array(o.ch).fill(-120));
+    setLive(Array(o === 'direct' ? direct?.channels ?? 18 : o.ch).fill(-120));
     try {
-      const r = await usbAudio.record({ ...o, seconds: secs });
+      const r = o === 'direct' ? await usbAudio.directRecord({ seconds: secs }) : await usbAudio.record({ ...o, seconds: secs });
       setRes(r);
       const lost = r.expected > 0 ? Math.max(0, 1 - r.frames / r.expected) : 0;
-      log(`Enregistrement ${r.channels} voies ${r.rate} Hz · ${r.seconds.toFixed(1)} s · ${r.frames} images sur ${r.expected} attendues (${(lost * 100).toFixed(1)} % manquant) · lectures courtes ${r.shortReads} · erreurs ${r.readErrors} · par ${r.routed}`);
+      log(`Enregistrement ${r.channels} voies ${r.bits ?? 16} bits ${r.rate} Hz · ${r.seconds.toFixed(1)} s · ${r.frames} images sur ${r.expected} attendues (${(lost * 100).toFixed(1)} % manquant) · lectures courtes ${r.shortReads} · erreurs ${r.readErrors} · par ${r.routed}`);
       r.peakDb.forEach((p, k) => log(`  ${trackName(k)} : crête ${fmtDb(p)} · moyenne ${fmtDb(r.rmsDb[k])}${r.clips[k] ? ` · ${r.clips[k]} saturations` : ''}`));
       dbg.info(`Test USB : ${r.channels} voies à ${r.rate} Hz, ${(lost * 100).toFixed(1)} % manquant`);
     } catch (e) {
@@ -190,6 +204,52 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
                 </View>
               )}
 
+              {direct && (
+                <View style={[styles.box, { borderColor: direct.ok ? theme.ok : '#F87171', backgroundColor: theme.deep }]}>
+                  <Text style={[styles.kicker, { color: theme.muted }]}>2 · LECTURE DIRECTE (PILOTE MA TABLE)</Text>
+                  <Text style={{ color: direct.ok ? theme.ok : '#FCA5A5', fontSize: 14, fontWeight: '800' }}>
+                    {direct.ok ? `✓ Le son arrive : ${direct.channels} voies · ${direct.bits} bits · ${direct.rate ? `${direct.rate / 1000} kHz` : 'fréquence inconnue'}` : `✗ ${direct.error}`}
+                  </Text>
+                  {direct.frames !== undefined && <Text style={{ color: theme.muted, fontSize: 12 }}>Essai d’1 s : {direct.frames} images reçues sur ~{direct.expected}{direct.pktErrors || direct.urbErrors ? ` · ${(direct.pktErrors ?? 0) + (direct.urbErrors ?? 0)} erreurs` : ''}</Text>}
+                </View>
+              )}
+
+              {direct?.ok && (
+                <View style={[styles.box, { borderColor: theme.accent, backgroundColor: theme.deep }]}>
+                  <Text style={[styles.kicker, { color: theme.muted }]}>3 · ENREGISTRER UN ESSAI</Text>
+                  <Text style={{ color: theme.text, fontSize: 13 }}>Pendant l’essai, fais parler ou jouer dans plusieurs micros. Chaque voie aura son fichier (24 bits).</Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {[10, 30, 60].map((s2) => (
+                      <Pressable key={s2} onPress={() => setSecs(s2)} style={[styles.chip, { borderColor: secs === s2 ? theme.accent : theme.line2, backgroundColor: secs === s2 ? theme.accent : 'transparent' }]}>
+                        <Text style={{ color: secs === s2 ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 12 }}>{s2} s</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable disabled={busy} onPress={() => record('direct')} style={[styles.go, { flex: 2, backgroundColor: '#DC2626', opacity: busy ? 0.5 : 1 }]}>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 15 }}>{phase === 'rec' ? `⏺ ${(t / 1000).toFixed(0)} / ${secs} s` : `⏺ Enregistrer ${direct.channels} voies`}</Text>
+                    </Pressable>
+                    {phase === 'rec' && (
+                      <Pressable onPress={() => usbAudio?.stop()} style={[styles.go, { flex: 1, borderWidth: 1.5, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>■ Arrêter</Text></Pressable>
+                    )}
+                  </View>
+                  {live.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                      {live.map((d, k) => {
+                        const w = Math.max(0, Math.min(1, (d + 60) / 60));
+                        const c = d > -3 ? '#EF4444' : d > -18 ? '#FACC15' : '#34D399';
+                        return (
+                          <View key={k} style={{ width: '48%', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text numberOfLines={1} style={{ width: 92, color: theme.muted, fontSize: 11 }}>{trackName(k)}</Text>
+                            <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: theme.line }}><View style={{ width: `${w * 100}%`, height: 8, borderRadius: 4, backgroundColor: c }} /></View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+
               {best && (
                 <View style={[styles.box, { borderColor: theme.accent, backgroundColor: theme.deep }]}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>3 · ENREGISTRER UN ESSAI</Text>
@@ -242,7 +302,7 @@ export function UsbTestSheet({ client, theme, visible, onClose }: { client: XAir
                       <Pressable onPress={() => shareFile(res.files[k])} style={[styles.mini, { borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '800' }}>⤴</Text></Pressable>
                     </View>
                   ))}
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>Pistes 1 à 16 = les voies de la table si le routage USB est celui d’origine. Fichiers WAV 16 bits, rangés dans l’appli.</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>Pistes 1 à 16 = les voies de la table si le routage USB est celui d’origine. Fichiers WAV {res.bits ?? 16} bits, rangés dans l’appli.</Text>
                 </View>
               )}
 

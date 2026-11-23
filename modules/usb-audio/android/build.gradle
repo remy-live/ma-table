@@ -8,8 +8,22 @@ version = '0.1.0'
 
 android {
   namespace "fr.remy.usbaudio"
+  if (rootProject.hasProperty('ndkVersion')) {
+    ndkVersion rootProject.ext.ndkVersion
+  }
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    externalNativeBuild {
+      cmake {
+        arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+      }
+    }
+  }
+  // petit pilote en C : lecture « isochrone » de la carte son USB (usbfs)
+  externalNativeBuild {
+    cmake {
+      path "src/main/cpp/CMakeLists.txt"
+    }
   }
 }
