@@ -95,6 +95,7 @@ test('Détection du jeu, erreur de prise et micros voisins', () =>
 test('Gain : le pic va vers −12 dB, par pas de 18 dB au plus, jamais sur une entrée ligne', () =>
   withTable(10182, async (c, sim) => {
     c.set('/headamp/05/gain', f(gainDbToF(20)));
+    c.set('/ch/05/config/name', { t: 's', v: 'Guitare' });
     await sleep(60);
     const sm: Samples = new Map();
     feed(sm, 0, { 5: -24 });
@@ -110,6 +111,18 @@ test('Gain : le pic va vers −12 dB, par pas de 18 dB au plus, jamais sur une e
     assert.equal(soloResult(c, 5, sm.get(2)).gainTo! - soloResult(c, 5, sm.get(2)).gainFrom!, 18);
     feed(sm, 3, { 12: -30 });
     assert.equal(soloResult(c, 12, sm.get(3)).gainTo, undefined); // pas de préampli sur la 12
+    // garde-fous : gros saut signalé, marge batterie, plafond voix
+    assert.match(soloResult(c, 5, sm.get(2)).note ?? '', /trop doux/);
+    c.set('/ch/05/config/name', { t: 's', v: 'Kick' });
+    c.set('/headamp/05/gain', f(gainDbToF(20)));
+    await sleep(60);
+    assert.equal(soloResult(c, 5, sm.get(0)).gainTo, 20 + (TARGET_PEAK - 3 - -24)); // batterie : 3 dB de marge
+    c.set('/ch/05/config/name', { t: 's', v: 'Voix' });
+    c.set('/headamp/05/gain', f(gainDbToF(40)));
+    await sleep(60);
+    const v = soloResult(c, 5, sm.get(0));
+    assert.equal(v.gainTo, 45); // +12 demandés, plafonné à +45 pour une voix
+    assert.match(v.note ?? '', /Limité/);
   }));
 
 test('Calcul final : gate, compresseur, faders selon le rôle (voix devant), plafond 0 dB', () =>

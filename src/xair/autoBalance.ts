@@ -31,6 +31,9 @@ export interface AutoStep {
 
 export const TARGET_PEAK = -12; // dB : pic visé sur l'entrée (marge avant saturation)
 export const MAX_GAIN_STEP = 18; // dB par passage
+export const DRUM_MARGIN = 3; // dB de marge en plus pour la batterie
+export const BIG_JUMP = 15; // dB : au-delà, on prévient (test trop doux ?)
+export const VOICE_MAX_GAIN = 45; // dB : plafond automatique pour une voix
 export const SILENT = -55; // en dessous : on n'a rien entendu
 export const PLAYING = -45; // au-dessus : « ça joue », l'écoute démarre
 export const LR_KEY = 0; // clé des mesures de la façade dans Samples
@@ -208,10 +211,22 @@ export function soloResult(client: XAirClient, ch: number, m: StepSamples | unde
   }
   if (hasPreamp(ch)) {
     const cur = fToGainDb(Number(client.get(headampGainPath(ch)) ?? 0.5));
-    const delta = Math.max(-MAX_GAIN_STEP, Math.min(MAX_GAIN_STEP, TARGET_PEAK - peak));
+    const role = roleOf(r.name);
+    // la batterie tape toujours plus fort en concert qu'à la balance : 3 dB de marge en plus
+    const target = role.drum ? TARGET_PEAK - DRUM_MARGIN : TARGET_PEAK;
+    const delta = Math.max(-MAX_GAIN_STEP, Math.min(MAX_GAIN_STEP, target - peak));
     r.gainFrom = Math.round(cur * 2) / 2;
-    r.gainTo = Math.round(Math.max(-12, Math.min(60, cur + delta)) * 2) / 2;
-    if (Math.abs(TARGET_PEAK - peak) > MAX_GAIN_STEP) r.note = 'Très loin du bon niveau : refais un passage pour affiner';
+    let to = Math.max(-12, Math.min(60, cur + delta));
+    if (Math.abs(target - peak) > MAX_GAIN_STEP) r.note = 'Très loin du bon niveau : refais un passage pour affiner';
+    // gros saut vers le haut : souvent un test joué trop doucement
+    if (delta >= BIG_JUMP) r.note = `Force du micro (gain) montée de ${Math.round(delta)} dB : le test était peut-être trop doux. Refais-le en jouant fort, comme au concert.`;
+    // une voix qui demande plus de +45 dB : on s'arrête là (risque de sifflement dans les retours)
+    const isVoice = role.who === 'Chanteur' || role.who === 'Choriste';
+    if (isVoice && to > VOICE_MAX_GAIN && to > cur) {
+      to = Math.max(cur, VOICE_MAX_GAIN);
+      r.note = `Limité à +${VOICE_MAX_GAIN} dB pour une voix : chante plus près du micro, ou monte à la main si c’est voulu.`;
+    }
+    r.gainTo = Math.round(to * 2) / 2;
     if (peak > -1) r.note = 'Saturait pendant le test : gain baissé';
   } else if (peak < TARGET_PEAK - 12) r.note = 'Entrée ligne faible : monte le volume sur l’instrument';
   else if (peak > -3) r.note = 'Entrée ligne trop forte : baisse le volume sur l’instrument';

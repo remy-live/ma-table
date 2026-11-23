@@ -127,7 +127,7 @@ function StepPlugged({ client, theme }: { client: XAirClient; theme: Theme }) {
       const rec = recognize(label);
       applySmartName(client, ch, label, rec, { color: true, group: true, preset: true });
       if (rec?.phantom && hasPreamp(ch)) {
-        Alert.alert('Micro statique ?', `${label} se prend souvent avec un micro qui a besoin du 48 V. Allumer le 48 V sur la prise ${ch} ?`, [
+        Alert.alert('Micro statique ?', `${label} se prend souvent avec un micro statique, qui a besoin d’une alimentation (48 V · phantom). L’allumer sur la prise ${ch} ?`, [
           { text: 'Non', style: 'cancel' },
           { text: 'Oui, allumer', onPress: () => client.set(phantomPath(ch), i(1)) },
         ]);

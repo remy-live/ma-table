@@ -423,6 +423,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1 }}>{step.who.toUpperCase()}</Text>
               <Text style={{ color: theme.text, fontSize: 30, fontWeight: '800', textAlign: 'center' }}>{step.what}</Text>
               <Text style={{ color: theme.text, fontSize: 18, textAlign: 'center', lineHeight: 25 }}>{step.say}</Text>
+              {step.kind === 'solo' && <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700', textAlign: 'center' }}>Aussi fort qu’au concert : l’appli règle le micro sur ce niveau.</Text>}
               {(() => {
                 // la table en petit : la prise concernée clignote
                 const P = plugs(client);

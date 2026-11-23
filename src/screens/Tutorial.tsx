@@ -5,9 +5,9 @@ import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'reac
 import { Theme } from '../ui/theme';
 
 const STEPS = [
-  { title: 'Glisser pour régler', text: 'Les faders et les boutons ronds se règlent en glissant le doigt. Double-tap sur un fader = retour à 0 dB.' },
+  { title: 'Glisser pour régler', text: 'Les curseurs de volume (faders) et les boutons ronds se règlent en glissant le doigt. Double-tap sur un curseur = retour à 0 dB.' },
   { title: 'Rester appuyé = aide', text: 'Pas sûr d’un bouton ? Reste appuyé dessus : une bulle explique à quoi il sert.' },
-  { title: 'Qui écoute ?', text: 'Les pastilles en haut choisissent ce que règlent les faders : le public, ou le retour d’un musicien.' },
+  { title: 'Qui écoute ?', text: 'Les pastilles en haut choisissent ce que règlent les curseurs : le public (façade · MAIN), ou le retour d’un musicien (AUX).' },
   { title: 'Les bulles', text: 'Une bulle = un son dans une oreille. Glisse vers la droite pour monter, vers la gauche pour baisser.' },
 ];
 

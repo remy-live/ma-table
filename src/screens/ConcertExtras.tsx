@@ -30,7 +30,7 @@ export function RescueButton({ client, theme }: { client: XAirClient; theme: The
       accessibilityLabel={st ? 'Remettre les retours' : 'Au secours : baisser tous les retours de 6 dB'}
       style={[styles.rescue, st ? { backgroundColor: '#F59E0B', borderColor: '#F59E0B' } : { borderColor: '#EF4444', backgroundColor: '#2A1414' }]}
     >
-      <Text style={{ color: st ? '#1A1204' : '#FCA5A5', fontWeight: '800', fontSize: 16 }}>{st ? 'Remettre les retours' : 'AU SECOURS · larsen'}</Text>
+      <Text style={{ color: st ? '#1A1204' : '#FCA5A5', fontWeight: '800', fontSize: 16 }}>{st ? 'Remettre les retours' : 'AU SECOURS · ça siffle (larsen)'}</Text>
       <Text style={{ color: st ? '#1A1204' : '#FCA5A5', fontSize: 11 }}>{st ? 'les retours reviennent comme avant' : 'tous les retours −6 dB d’un coup · la façade ne bouge pas'}</Text>
     </Pressable>
   );
@@ -149,7 +149,7 @@ export function ClipHistoryCard({ client, theme, onOpen }: { client: XAirClient;
           {onOpen && <Pressable onPress={() => onOpen(e.ch)} style={{ height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#EF4444', justifyContent: 'center' }}><Text style={{ color: '#1A0505', fontWeight: '800', fontSize: 12 }}>Baisser le gain</Text></Pressable>}
         </View>
       ))}
-      {list.length > 0 && <Text style={{ color: theme.muted, fontSize: 11 }}>Baisse le gain de 2 à 3 dB entre deux morceaux, puis remonte le fader si besoin.</Text>}
+      {list.length > 0 && <Text style={{ color: theme.muted, fontSize: 11 }}>Baisse la force du micro (gain) de 2 à 3 dB entre deux morceaux, puis remonte son volume (fader) si besoin.</Text>}
     </View>
   );
 }

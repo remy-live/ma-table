@@ -54,7 +54,7 @@ export function LarsenWatch({ client, theme, top = 10 }: { client: XAirClient; t
           <View accessibilityLiveRegion="assertive" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: 760, marginHorizontal: 10, padding: 10, borderRadius: 16, borderWidth: 2, borderColor: '#EF4444', backgroundColor: '#2A1010', elevation: 16 }}>
             <View style={{ flexShrink: 1, minWidth: 160 }}>
               <Text style={{ color: '#FECACA', fontWeight: '900', fontSize: 15 }}>🔊 Ça siffle dans {name} ?</Text>
-              <Text style={{ color: '#FCA5A5', fontSize: 11 }}>un son très fort qui ne bouge pas : souvent un larsen</Text>
+              <Text style={{ color: '#FCA5A5', fontSize: 11 }}>un son très fort qui ne bouge pas : souvent un sifflement (larsen)</Text>
             </View>
             {btn('Baisser de 6 dB', lower, true)}
             {tg.kind === 'bus' && btn('Trouver la fréquence', () => { setHunt((tg as { n: number }).n); fine(); })}
