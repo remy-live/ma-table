@@ -6,7 +6,7 @@ import { Alert, Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet
 import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
-import { autoTrim, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
+import { arm, disarm, startArmed, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
 import { SessEntry, usbListen as usbAudio } from '../xair/usbAudio';
 import { ListenScreen } from './ListenScreen';
 import { XAirClient } from '../xair/XAirClient';
@@ -73,6 +73,28 @@ export function RecPill({ wide, onOpen }: { wide: boolean; onOpen: () => void })
     onPanResponderMove: (_e, g) => pos.setValue({ x: last.current.x + g.dx, y: last.current.y + g.dy }),
     onPanResponderRelease: (_e, g) => { last.current = { x: last.current.x + g.dx, y: last.current.y + g.dy }; },
   })).current;
+  if (!st.on && st.armed) {
+    const n = st.armed.chans.length + (st.armed.facade ? 1 : 0);
+    return (
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: wide ? 10 : 44, left: 0, right: 0, alignItems: 'center', zIndex: 50, elevation: 50 }}>
+        <Animated.View style={{ transform: pos.getTranslateTransform(), flexDirection: 'row', alignItems: 'stretch', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: RED, backgroundColor: '#2A1010', elevation: 12 }}>
+          <View {...pan.panHandlers} accessibilityLabel="Déplacer la télécommande" style={{ width: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#3A1515' }}>
+            <Text style={{ color: '#FCA5A5', fontSize: 16 }}>⠿</Text>
+          </View>
+          <Pressable onPress={onOpen} accessibilityLabel="Enregistrement prêt : ouvrir" style={{ minHeight: 52, paddingHorizontal: 12, justifyContent: 'center', maxWidth: wide ? 300 : 130 }}>
+            <Text numberOfLines={1} style={{ color: '#E8EAED', fontWeight: '900', fontSize: 14 }}>Prêt à enregistrer</Text>
+            <Text numberOfLines={1} style={{ color: '#FCA5A5', fontSize: 11, fontWeight: '700' }}>{st.starting ? 'démarrage…' : `${n} piste${n > 1 ? 's' : ''}`}</Text>
+          </Pressable>
+          <Pressable disabled={st.starting} onPress={async () => { const err = await startArmed(); if (err) Alert.alert('Enregistrement impossible', err); }} accessibilityLabel="Démarrer l’enregistrement" style={{ minHeight: 52, paddingHorizontal: 16, justifyContent: 'center', backgroundColor: RED, opacity: st.starting ? 0.5 : 1 }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 15 }}>⏺ Démarrer</Text>
+          </Pressable>
+          <Pressable onPress={disarm} accessibilityLabel="Annuler" style={{ width: 48, minHeight: 52, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FCA5A5', fontSize: 16, fontWeight: '800' }}>✕</Text>
+          </Pressable>
+        </Animated.View>
+      </View>
+    );
+  }
   if (!st.on) return null;
   const hotNames = st.hot.map((k) => st.meta?.tracks.find((t) => t.ch === k || (t.stereo && t.ch + 1 === k))?.name).filter(Boolean);
   const warn = hotNames.length > 0 || st.writeErrors > 0;
@@ -138,6 +160,11 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
     const err = await startRec(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade, false);
     setMsg(err);
     if (!err) onClose(); // c'est parti : retour à la table, la pastille rouge prend le relais
+  };
+  const armNow = () => {
+    if (!sel.length && !facade) { setMsg('Coche au moins une voie.'); return; }
+    arm(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade);
+    onClose();
   };
   const stop = () => Alert.alert('Arrêter l’enregistrement ?', 'Les fichiers sont gardés.', [
     { text: 'Continuer', style: 'cancel' },
@@ -205,9 +232,16 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
                 <Text style={{ color: hours < 2 ? '#FACC15' : theme.muted, fontSize: 13 }}>
                   Place libre : {gb(free)} · environ {hours >= 10 ? Math.round(hours) : hours.toFixed(1)} h d’enregistrement avec ce choix.
                 </Text>
-                <Pressable onPress={go} disabled={st.starting} style={[styles.go, { backgroundColor: RED, opacity: st.starting ? 0.5 : 1 }]}>
-                  <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 18 }}>⏺ Enregistrer</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                  <Pressable onPress={go} disabled={st.starting} style={[styles.go, { flex: 1, minWidth: 240, backgroundColor: RED, opacity: st.starting ? 0.5 : 1 }]}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 18 }}>⏺ Enregistrer tout de suite</Text>
+                    <Text style={{ color: '#FEE2E2', fontSize: 11 }}>ça part maintenant, et tu reviens sur la table</Text>
+                  </Pressable>
+                  <Pressable onPress={armNow} disabled={st.starting} style={[styles.go, { flex: 1, minWidth: 240, borderWidth: 2, borderColor: RED }]}>
+                    <Text style={{ color: '#FCA5A5', fontWeight: '900', fontSize: 18 }}>Préparer, je démarre plus tard</Text>
+                    <Text style={{ color: theme.muted, fontSize: 11 }}>un bouton « ⏺ Démarrer » t’attend sur la table</Text>
+                  </Pressable>
+                </View>
                 {!!msg && <Text style={{ color: '#FCD34D', fontSize: 13 }}>{msg}</Text>}
                 {st.last && !!st.last.reason && <Text style={{ color: '#FCA5A5', fontSize: 13 }}>Le dernier enregistrement s’est arrêté tout seul après {fmtTime(st.last.seconds)} : {st.last.reason}. Ce qui était enregistré est gardé.</Text>}
                 <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>

@@ -11,9 +11,9 @@ import { XAirClient } from './XAirClient';
 export interface RecTrack { ch: number; name: string; file: string; stereo?: boolean; pan: number }
 export interface Marker { t: number; label: string }
 export interface RecMeta { name: string; startedAt: number; tracks: RecTrack[]; markers: Marker[]; facade: boolean; seconds?: number; rate?: number; clips?: number[]; peakDb?: number[]; reason?: string; holes?: number; maxGapMs?: number; usbErrors?: number; mix?: import('./listen').MixState }
-export interface RecState { on: boolean; starting: boolean; id: string; dir: string; isPublic: boolean; t: number; peaks: number[]; clips: number[]; hot: number[]; usbErrors: number; writeErrors: number; free: number; meta: RecMeta | null; error: string; last: { id: string; reason: string; seconds: number } | null }
+export interface RecState { on: boolean; starting: boolean; id: string; dir: string; isPublic: boolean; t: number; peaks: number[]; clips: number[]; hot: number[]; usbErrors: number; writeErrors: number; free: number; meta: RecMeta | null; error: string; armed: { name: string; chans: number[]; facade: boolean } | null; last: { id: string; reason: string; seconds: number } | null }
 
-const empty = (): RecState => ({ on: false, starting: false, id: '', dir: '', isPublic: true, t: 0, peaks: [], clips: [], hot: [], usbErrors: 0, writeErrors: 0, free: 0, meta: null, error: '', last: null });
+const empty = (): RecState => ({ on: false, starting: false, id: '', dir: '', isPublic: true, t: 0, peaks: [], clips: [], hot: [], usbErrors: 0, writeErrors: 0, free: 0, meta: null, error: '', armed: null, last: null });
 let st: RecState = empty();
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
@@ -94,7 +94,7 @@ export async function startRec(client: XAirClient, name: string, chans: number[]
   if (!usbAudio) return 'Enregistrement possible seulement sur la tablette Android.';
   if (st.on || st.starting) return 'Un enregistrement est déjà en cours.';
   wire();
-  put({ ...empty(), starting: true });
+  put({ ...empty(), starting: true, armed: st.armed });
   await client.loadPaths(chans.map(panPath), false).catch(() => {});
   if (facade) await setFacade(client, true);
   const tracks: RecTrack[] = chans.map((ch) => {
@@ -107,9 +107,25 @@ export async function startRec(client: XAirClient, name: string, chans: number[]
   const r = await usbAudio.recStart({ name, tracks: tracks.map((t) => ({ file: t.file, a: t.ch, b: t.stereo ? t.ch + 1 : -1 })) });
   if (!r.ok) { put({ starting: false, error: r.error }); return r.error || 'Impossible de démarrer.'; }
   const meta: RecMeta = { name, startedAt: Date.now(), tracks, markers: [{ t: 0, label: 'Morceau 1' }], facade, rate: r.rate };
-  put({ on: true, starting: false, id: r.id ?? name, dir: r.dir ?? '', isPublic: !!r.public, meta, t: 0 });
+  put({ on: true, starting: false, armed: null, id: r.id ?? name, dir: r.dir ?? '', isPublic: !!r.public, meta, t: 0 });
   saveMeta();
   return '';
+}
+
+// « Armer » : tout est choisi, on retourne sur la table, et on démarre depuis la télécommande.
+let armedClient: XAirClient | null = null;
+export function arm(client: XAirClient, name: string, chans: number[], facade: boolean) {
+  if (st.on || st.starting) return;
+  armedClient = client;
+  put({ armed: { name, chans, facade }, error: '' });
+}
+export function disarm() { armedClient = null; put({ armed: null }); }
+export async function startArmed(): Promise<string> {
+  const a = st.armed;
+  if (!a || !armedClient) return 'Rien n’est prêt.';
+  const err = await startRec(armedClient, a.name, a.chans, a.facade, false);
+  if (err) put({ armed: a }); // raté (câble ?) : on reste prêt pour réessayer
+  return err;
 }
 
 export async function stopRec(): Promise<RecSummary | null> {
