@@ -25,7 +25,9 @@ import java.util.concurrent.TimeUnit
 /** Le petit pilote en C (usbiso.c). */
 object UsbIso {
   init { System.loadLibrary("usbiso") }
-  @JvmStatic external fun start(fd: Int, ep: Int, maxp: Int, nch: Int, bps: Int, path: String): Int
+  @JvmStatic external fun start(fd: Int, ep: Int, maxp: Int, nch: Int, bps: Int, path: String, rate: Int, spec: String): Int
+  @JvmStatic external fun stats(): LongArray
+  @JvmStatic external fun setRate(rate: Int)
   @JvmStatic external fun stop(): LongArray
   @JvmStatic external fun window(): FloatArray
   @JvmStatic external fun totals(): DoubleArray
@@ -137,10 +139,11 @@ class UsbDirect(private val ctx: Context) {
   private fun itf(d: UsbDevice, id: Int, alt: Int): UsbInterface? =
     (0 until d.interfaceCount).map { d.getInterface(it) }.firstOrNull { it.id == id && it.alternateSetting == alt }
 
-  class Session(val conn: UsbDeviceConnection, val s: Stream, val rate: Int, val idle: UsbInterface?, val active: UsbInterface?, val raw: File)
+  class Session(val conn: UsbDeviceConnection, val s: Stream, val rate: Int, val idle: UsbInterface?, val active: UsbInterface?, val raw: File?)
 
   /** Ouvre, réclame l'interface (en écartant le pilote du système) et lance la lecture. */
-  fun open(d: UsbDevice, raw: File): Session {
+  /** `spec` : pour chaque fichier à écrire, (chemin, voie A, voie B ou -1) ; reçoit le nombre de voies de la table. */
+  fun open(d: UsbDevice, raw: File?, spec: ((Stream) -> List<Triple<String, Int, Int>>)? = null): Session {
     val conn = um.openDevice(d) ?: throw IllegalStateException("impossible d’ouvrir la table (permission ?)")
     val s = parse(conn.rawDescriptors ?: ByteArray(0), d) ?: run { conn.close(); throw IllegalStateException("pas d’entrée son trouvée dans les descripteurs") }
     if (s.channels <= 0 || s.subslot !in 2..4) { conn.close(); throw IllegalStateException("format inattendu : ${s.channels} voies, ${s.subslot} octets") }
@@ -150,7 +153,8 @@ class UsbDirect(private val ctx: Context) {
     if (active == null || !conn.claimInterface(active, true)) { conn.close(); throw IllegalStateException("interface ${s.ifNum} occupée") }
     val r = rate(conn, s)
     if (!conn.setInterface(active)) { conn.releaseInterface(active); conn.close(); throw IllegalStateException("réglage alt ${s.alt} refusé") }
-    val res = UsbIso.start(conn.fileDescriptor, s.ep, s.maxPacket, s.channels, s.subslot, raw.absolutePath)
+    val lines = spec?.invoke(s)?.joinToString("\n") { "${it.first}\t${it.second}\t${it.third}" } ?: ""
+    val res = UsbIso.start(conn.fileDescriptor, s.ep, s.maxPacket, s.channels, s.subslot, raw?.absolutePath ?: "", if (r > 0) r else 48000, lines)
     if (res < 0) {
       idle?.let { conn.setInterface(it) }
       conn.releaseInterface(active); conn.close()

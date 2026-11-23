@@ -10,7 +10,25 @@ export interface ProbeResult { ok: boolean; error: string; frames?: number; rout
 export interface DirectProbe { ok: boolean; error: string; product?: string; ifNum?: number; alt?: number; ep?: number; maxPacket?: number; channels?: number; subslot?: number; bits?: number; uac?: number; rate?: number; frames?: number; expected?: number; pktErrors?: number; urbErrors?: number; empty?: number; reaped?: number; odd?: number; submitErrors?: number; lastErrno?: number; peakDb?: number[] }
 export interface RecordResult { bits?: number; dir: string; files: string[]; frames: number; expected: number; seconds: number; rate: number; channels: number; routed: string; shortReads: number; readErrors: number; peakDb: number[]; rmsDb: number[]; clips: number[] }
 
+export interface RecSummary { id: string; dir: string; frames: number; seconds: number; rate: number; channels: number; bits: number; peakDb: number[]; rmsDb: number[]; clips: number[]; usbErrors: number; writeErrors: number; lastErrno: number; files: string[]; reason: string }
+export interface RecEvent { t?: number; peaks?: number[]; clips?: number[]; usbErrors?: number; writeErrors?: number; alive?: boolean; free?: number; ended?: boolean; summary?: RecSummary; error?: string }
+export interface SessFile { name: string; path: string; size: number }
+export interface SessEntry { id: string; dir: string; public: boolean; modified: number; meta: string; files: SessFile[] }
+export interface MixResult { ok: boolean; error?: string; path?: string; gains?: (number | null)[]; peakDb?: number; seconds?: number }
+
 type Native = {
+  recStart(o: { name: string; tracks: { file: string; a: number; b: number }[] }): Promise<{ ok: boolean; error: string; id?: string; dir?: string; public?: boolean; channels?: number; bits?: number; rate?: number; files?: string[] }>;
+  recStop(): Promise<RecSummary | null>;
+  recState(): { on: boolean; id: string; dir: string };
+  recFree(): { free: number; public: boolean };
+  sessList(): SessEntry[];
+  metaSave(id: string, json: string): boolean;
+  sessDelete(id: string): boolean;
+  fileDelete(path: string): boolean;
+  mix(o: { tracks: { path: string; trim: number; pan: number; auto: boolean }[]; out: string; from?: number; to?: number }): Promise<MixResult>;
+  mixCancel(): void;
+  playAt(path: string, ms: number): boolean;
+  share(path: string): Promise<boolean>;
   info(): { model: string; maker: string; android: string; sdk: number; outRate: string; dir: string };
   devices(): UsbInput[];
   usbHost(): UsbHostDevice[];
@@ -23,6 +41,8 @@ type Native = {
   stopPlay(): void;
   clear(): boolean;
   addListener(ev: 'onLevels', cb: (e: { peaks: number[]; t: number }) => void): { remove(): void };
+  addListener(ev: 'onRec', cb: (e: RecEvent) => void): { remove(): void };
+  addListener(ev: 'onMix', cb: (e: { p: number }) => void): { remove(): void };
 };
 
 export const usbAudio: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('UsbAudio') : null;

@@ -34,6 +34,13 @@ class UsbAudioModule : Module() {
   private fun ctx(): Context = appContext.reactContext?.applicationContext ?: throw IllegalStateException("pas de contexte")
   private fun am(): AudioManager = ctx().getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
+  // ---- enregistrement de concert ----
+  @Volatile private var recStopFlag = false
+  @Volatile private var recOn = false
+  @Volatile private var recInfo: Map<String, Any?> = emptyMap()
+  @Volatile private var recStopPromise: Promise? = null
+  @Volatile private var mixing = false
+
   @Volatile private var stopFlag = false
   @Volatile private var running = false
   private var player: MediaPlayer? = null
@@ -77,7 +84,7 @@ class UsbAudioModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("UsbAudio")
-    Events("onLevels")
+    Events("onLevels", "onRec", "onMix")
 
     Function("info") {
       mapOf(
@@ -299,6 +306,186 @@ class UsbAudioModule : Module() {
           running = false
         }
       }.start()
+    }
+
+
+    // ---- Enregistrement de concert : un fichier par voie choisie, écrit au fil de l'eau ----
+
+    AsyncFunction("recStart") { o: Map<String, Any?>, promise: Promise ->
+      if (running || recOn) { promise.resolve(mapOf("ok" to false, "error" to "un enregistrement est déjà en cours")); return@AsyncFunction }
+      val name = (o["name"] as? String) ?: "Concert"
+      @Suppress("UNCHECKED_CAST")
+      val tracks = (o["tracks"] as? List<Map<String, Any?>>) ?: emptyList()
+      running = true; recOn = true; recStopFlag = false; recStopPromise = null
+      Thread {
+        var se: UsbDirect.Session? = null
+        val ud = UsbDirect(ctx())
+        var wl: android.os.PowerManager.WakeLock? = null
+        try {
+          val d = ud.findDevice() ?: throw IllegalStateException("la table n’est pas vue sur l’USB")
+          if (!ud.ensurePermission(d)) throw IllegalStateException("permission USB refusée")
+          val (dir, pub) = RecFiles.sessionDir(ctx(), name)
+          val files = ArrayList<String>()
+          se = ud.open(d, null) { s ->
+            tracks.mapNotNull { t ->
+              val a = num(t, "a", -1); val b = num(t, "b", -1)
+              if (a < 0 || a >= s.channels || b >= s.channels) null else {
+                val f = File(dir, RecFiles.clean((t["file"] as? String) ?: "piste ${a + 1}") + ".wav")
+                files.add(f.absolutePath)
+                Triple(f.absolutePath, a, b)
+              }
+            }
+          }
+          val s0 = se!!
+          wl = RecFiles.wakeLock(ctx())
+          try { ctx().startService(android.content.Intent(ctx(), RecService::class.java)) } catch (e: Throwable) {}
+          val nch = s0.s.channels
+          var rate = if (s0.rate > 0) s0.rate else 48000
+          var rateKnown = s0.rate > 0
+          recInfo = mapOf("dir" to dir.absolutePath, "id" to dir.name)
+          promise.resolve(mapOf("ok" to true, "error" to "", "id" to dir.name, "dir" to dir.absolutePath, "public" to pub, "channels" to nch, "bits" to s0.s.subslot * 8, "rate" to rate, "files" to files))
+          val t0 = System.currentTimeMillis()
+          var alive = true
+          while (!recStopFlag && alive) {
+            Thread.sleep(250)
+            val st = UsbIso.stats()
+            val el = (System.currentTimeMillis() - t0) / 1000.0
+            if (!rateKnown && el > 3) {
+              // la table n'a pas dit sa fréquence : on la mesure (44,1 ou 48 kHz)
+              val m = st[0] / el
+              rate = if (m < 46000) 44100 else if (m < 68000) 48000 else if (m < 92000) 88200 else 96000
+              UsbIso.setRate(rate); rateKnown = true
+            }
+            alive = st[4] != 0L
+            val tot = UsbIso.totals()
+            sendEvent("onRec", mapOf(
+              "t" to st[0].toDouble() / rate, "peaks" to UsbIso.window().map { db(it) },
+              "clips" to (0 until nch).map { tot[2 * nch + it] },
+              "usbErrors" to st[1].toDouble(), "writeErrors" to st[3].toDouble(), "alive" to alive, "free" to dir.usableSpace.toDouble(),
+            ))
+          }
+          val asked = recStopFlag
+          val st = ud.close(s0)
+          se = null
+          val tot = UsbIso.totals()
+          val sum = mapOf(
+            "id" to dir.name, "dir" to dir.absolutePath, "frames" to st[0].toDouble(), "seconds" to st[0].toDouble() / rate, "rate" to rate,
+            "channels" to nch, "bits" to s0.s.subslot * 8,
+            "peakDb" to (0 until nch).map { db(tot[it].toFloat()) },
+            "rmsDb" to (0 until nch).map { db(sqrt(tot[nch + it]).toFloat()) },
+            "clips" to (0 until nch).map { tot[2 * nch + it] },
+            "usbErrors" to (st[1] + st[2] + st[6]).toDouble(), "writeErrors" to st[8].toDouble(), "lastErrno" to st[7].toDouble(),
+            "files" to files, "reason" to (if (asked) "" else if (st[8] > 0) "plus de place ou écriture impossible" else "la table ne répond plus sur l’USB (câble ?)"),
+          )
+          try { android.media.MediaScannerConnection.scanFile(ctx(), files.toTypedArray(), null, null) } catch (e: Throwable) {}
+          val p = recStopPromise
+          if (p != null) p.resolve(sum)
+          sendEvent("onRec", mapOf("ended" to true, "summary" to sum))
+        } catch (e: Throwable) {
+          val msg = (e.message ?: e.javaClass.simpleName).take(200)
+          try { se?.let { ud.close(it) } } catch (e2: Throwable) {}
+          try { promise.resolve(mapOf("ok" to false, "error" to msg)) } catch (e2: Throwable) {}
+          try { recStopPromise?.resolve(null) } catch (e2: Throwable) {}
+          sendEvent("onRec", mapOf("ended" to true, "error" to msg))
+        } finally {
+          try { wl?.release() } catch (e: Throwable) {}
+          try { ctx().stopService(android.content.Intent(ctx(), RecService::class.java)) } catch (e: Throwable) {}
+          recStopPromise = null
+          recOn = false; running = false
+        }
+      }.start()
+    }
+
+    AsyncFunction("recStop") { promise: Promise ->
+      if (!recOn) { promise.resolve(null); return@AsyncFunction }
+      recStopPromise = promise
+      recStopFlag = true
+    }
+
+    Function("recState") { mapOf("on" to recOn, "id" to (recInfo["id"] ?: ""), "dir" to (recInfo["dir"] ?: "")) }
+
+    Function("recFree") {
+      val (d, pub) = try { Pair(RecFiles.publicRoot().apply { mkdirs() }, true) } catch (e: Throwable) { Pair(RecFiles.privateRoot(ctx()), false) }
+      val dir = if (d.isDirectory) d else RecFiles.privateRoot(ctx()).apply { mkdirs() }
+      mapOf("free" to dir.usableSpace.toDouble(), "public" to (pub && d.isDirectory))
+    }
+
+    Function("sessList") { RecFiles.list(ctx()) }
+
+    Function("metaSave") { id: String, json: String ->
+      try { File(RecFiles.metaDir(ctx()), RecFiles.clean(id) + ".json").writeText(json); true } catch (e: Throwable) { false }
+    }
+
+    Function("sessDelete") { id: String ->
+      val d = RecFiles.find(ctx(), id)
+      val ok = d?.deleteRecursively() ?: false
+      File(RecFiles.metaDir(ctx()), id + ".json").delete()
+      ok
+    }
+
+    Function("fileDelete") { path: String -> try { File(path).delete() } catch (e: Throwable) { false } }
+
+    // Mixage après coup : les pistes séparées → un fichier stéréo.
+    AsyncFunction("mix") { o: Map<String, Any?>, promise: Promise ->
+      if (mixing) { promise.resolve(mapOf("ok" to false, "error" to "un mixage est déjà en cours")); return@AsyncFunction }
+      @Suppress("UNCHECKED_CAST")
+      val tracks = (o["tracks"] as? List<Map<String, Any?>>) ?: emptyList()
+      val out = File((o["out"] as? String) ?: "")
+      val from = (o["from"] as? Number)?.toDouble() ?: 0.0
+      val to = (o["to"] as? Number)?.toDouble() ?: 0.0
+      mixing = true
+      Thread {
+        try {
+          var last = 0L
+          val r = Mixer.mix(
+            tracks.map { (it["path"] as? String) ?: "" },
+            tracks.map { (it["trim"] as? Number)?.toDouble() ?: 0.0 },
+            tracks.map { (it["pan"] as? Number)?.toDouble() ?: 0.0 },
+            tracks.map { it["auto"] != false },
+            out, from, to, -20.0,
+          ) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
+          }
+          try { android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(out.absolutePath), null, null) } catch (e: Throwable) {}
+          promise.resolve(r)
+        } catch (e: Throwable) {
+          try { out.delete() } catch (e2: Throwable) {}
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        } finally {
+          mixing = false
+        }
+      }.start()
+    }
+
+    Function("mixCancel") { Mixer.cancel = true }
+
+    Function("playAt") { path: String, ms: Int ->
+      player?.release()
+      player = MediaPlayer().apply {
+        setDataSource(path)
+        prepare()
+        if (ms > 0) seekTo(ms)
+        start()
+      }
+      true
+    }
+
+    // Partager un fichier (par le catalogue de musique d'Android).
+    AsyncFunction("share") { path: String, promise: Promise ->
+      try {
+        android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(path), arrayOf("audio/x-wav")) { _, uri ->
+          try {
+            if (uri == null) { promise.resolve(false) } else {
+              val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("audio/x-wav")
+                .putExtra(android.content.Intent.EXTRA_STREAM, uri).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+              val ch = android.content.Intent.createChooser(send, "Partager").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+              ctx().startActivity(ch)
+              promise.resolve(true)
+            }
+          } catch (e: Throwable) { promise.resolve(false) }
+        }
+      } catch (e: Throwable) { promise.resolve(false) }
     }
 
     Function("play") { path: String ->
