@@ -17,3 +17,11 @@ test('Les mots : simple + technique, technique seul, simple seul', () => {
   assert.match(explain('phase'), /Ø · phase/);
   setLevel({ words: 'double' });
 });
+
+test('Ø : on garde la position la plus pleine, sinon on ne change rien', async () => {
+  const { phaseVerdict } = await import('../src/xair/phasePair');
+  assert.equal(phaseVerdict(-20, -16), 'inverser');
+  assert.equal(phaseVerdict(-16, -20), 'garder');
+  assert.equal(phaseVerdict(-18, -17.5), 'pareil');
+  assert.equal(phaseVerdict(-80, -70), 'pareil'); // personne ne jouait
+});

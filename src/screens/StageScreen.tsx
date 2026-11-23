@@ -1,5 +1,6 @@
 // Télécommande de scène : revenir à la balance, groupes en gros boutons,
 // verrou contre les fausses manips, pause de la façade.
+import { getLevel } from '../ui/words';
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { f, i } from '../osc/osc';
@@ -279,7 +280,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
               return (
                 <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mix, on ? { backgroundColor: c, borderColor: c } : { backgroundColor: theme.deep, borderColor: c }]}>
                   <Text style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 14 }}>{t.kind === 'main' ? '👥 Le public' : `🎧 ${mixName(t)}`}</Text>
-                  <Text style={{ color: on ? '#0B0D10' : theme.muted, fontSize: 10 }}>{t.kind === 'main' ? 'façade' : `retour ${(t as { n: number }).n}`}</Text>
+                  <Text style={{ color: on ? '#0B0D10' : theme.muted, fontSize: 10 }}>{getLevel().words === 'simple' ? (t.kind === 'main' ? 'le public' : `retour ${(t as { n: number }).n}`) : t.kind === 'main' ? 'public · MAIN' : `retour · AUX ${(t as { n: number }).n}`}</Text>
                 </Pressable>
               );
             })}

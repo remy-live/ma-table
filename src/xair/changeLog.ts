@@ -7,6 +7,7 @@ import { argFor, XAirClient } from './XAirClient';
 import { faderToDb } from './levels';
 import { FX_SEND_BASE } from './addresses';
 import { plugs } from './wiring';
+import { word } from '../ui/words';
 
 export interface Change { before: OscValue; after: OscValue }
 export interface ChangeSet {
@@ -88,14 +89,14 @@ export function describe(client: XAirClient, set: ChangeSet): { plugs: PlugChang
     let m: RegExpMatchArray | null;
     if ((m = path.match(/^\/headamp\/(\d\d)\/(gain|phantom)$/))) {
       const e = pc(Number(m[1]));
-      if (m[2] === 'gain') { const d = gainDb(c.after) - gainDb(c.before); add(e, path, `Gain ${fmt(d)}`, `Gain : ${fmt(gainDb(c.before))} → ${fmt(gainDb(c.after))} dB`); }
-      else add(e, path, '48 V', `48 V : ${c.after ? 'allumé' : 'éteint'}`);
+      if (m[2] === 'gain') { const d = gainDb(c.after) - gainDb(c.before); add(e, path, `Gain ${fmt(d)}`, `${word('gain')} : ${fmt(gainDb(c.before))} → ${fmt(gainDb(c.after))} dB`); }
+      else add(e, path, '48 V', `${word('phantom')} : ${c.after ? 'allumée' : 'éteinte'}`);
       continue;
     }
     if ((m = path.match(/^\/ch\/(\d\d)\/(.*)$/))) {
       const e = pc(plugOfCh(Number(m[1])));
       const r = m[2];
-      if (r === 'mix/fader') add(e, path, `Fader ${fmt(faderToDb(Number(c.after)) - faderToDb(Number(c.before)) || 0)}`, `Façade : ${dbTxt(c.before)} → ${dbTxt(c.after)}`);
+      if (r === 'mix/fader') add(e, path, `Fader ${fmt(faderToDb(Number(c.after)) - faderToDb(Number(c.before)) || 0)}`, `Volume pour le public (fader) : ${dbTxt(c.before)} → ${dbTxt(c.after)}`);
       else if (/^mix\/\d\d\/level$/.test(r)) {
         const b = Number(r.slice(4, 6));
         const fx = b > FX_SEND_BASE;
@@ -104,10 +105,10 @@ export function describe(client: XAirClient, set: ChangeSet): { plugs: PlugChang
         if (!e.badges.includes(k)) e.badges.push(k);
         (sends.get(e) ?? sends.set(e, []).get(e)!).push(`${fx ? `FX${b - FX_SEND_BASE}` : `AUX ${b}`} ${dbTxt(c.after)}`);
       }
-      else if (r.startsWith('gate/')) add(e, path, 'Gate', 'Gate réglé');
-      else if (r.startsWith('dyn/')) add(e, path, 'Comp', 'Compresseur réglé');
-      else if (r.startsWith('eq/')) add(e, path, 'EQ', 'Égaliseur réglé');
-      else if (r.startsWith('preamp/hp')) add(e, path, 'Coupe-bas', 'Coupe-bas réglé');
+      else if (r.startsWith('gate/')) add(e, path, 'Gate', `${word('gate')} réglé`);
+      else if (r.startsWith('dyn/')) add(e, path, 'Comp', `${word('comp')} réglé`);
+      else if (r.startsWith('eq/')) add(e, path, 'EQ', `${word('eq')} réglé`);
+      else if (r.startsWith('preamp/hp')) add(e, path, 'Coupe-bas', `${word('hpf')} réglé`);
       else if (r === 'config/name') add(e, path, 'Nom', `Nom : « ${c.before || '—'} » → « ${c.after || '—'} »`);
       else if (r === 'mix/on') add(e, path, c.after ? 'Allumée' : 'Coupée', c.after ? 'Voie rallumée' : 'Voie coupée');
       else if (r === 'grp/dca') add(e, path, 'Groupe', 'Groupes changés');

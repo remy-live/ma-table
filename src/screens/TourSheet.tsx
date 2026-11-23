@@ -39,11 +39,11 @@ export function TourSheet({ client, theme, visible, onClose }: { client: XAirCli
 
   const steps: Step[] = [
     { title: 'Les prises', text: `Chaque rond est une prise à l’arrière de la table : un micro ou un instrument par prise. Chez toi : ${ex1 || 'aucune prise nommée pour l’instant'}.`, blink: named.map((p) => p.n) },
-    { title: 'Le gain', text: `Le gain règle la force du signal à l’entrée d’une prise (prise ${voicePlug}, ${nm(voice)}). Il vaut pour tout : la façade ET tous les retours. On le règle une fois, au début.`, blink: [voicePlug] },
-    { title: 'La façade', text: 'MAIN L/R, c’est ce qu’entend le public, dans les enceintes de façade. Chaque voie y va avec son fader (le volume « public »).', blinkOuts: [0] },
-    { title: 'Les AUX = les retours', text: `Chaque AUX est un mélange à part, pour un musicien. AUX 1 = « ${bus(1)} » : ce qui sort dans son enceinte ou son casque. Chaque voie y envoie plus ou moins de son, sans changer la façade.`, blinkOuts: [1] },
-    { title: 'Les effets', text: `La table a ${FX_COUNT} effets (réverbe, écho…). Une voie envoie un peu de son vers un effet ; l’effet revient ensuite dans la façade et dans les retours. Plus d’envoi = plus d’effet sur cette voie.`, blinkOuts: [-1] },
-    ...(groups.length ? [{ title: 'Les groupes', text: `Un groupe (DCA) monte ou baisse plusieurs voies d’un coup, en gardant leur équilibre : « ${String(client.get(dcaNamePath(groups[0])) ?? '') || `Groupe ${groups[0]}`} » en est un. Il agit sur la façade.`, blink: P.filter((p) => p.chans.some((c) => inG(c, groups[0]))).map((p) => p.n) }] : []),
+    { title: 'La force du micro · gain', text: `Le gain règle la force du signal à l’entrée d’une prise (prise ${voicePlug}, ${nm(voice)}). Il vaut pour tout : la façade ET tous les retours. On le règle une fois, au début.`, blink: [voicePlug] },
+    { title: 'Le public · MAIN L/R', text: 'MAIN L/R (la « façade »), c’est ce qu’entend le public, dans les enceintes de façade. Chaque voie y va avec son fader (le volume « public »).', blinkOuts: [0] },
+    { title: 'Les retours · AUX', text: `Chaque AUX est un mélange à part, pour un musicien. AUX 1 = « ${bus(1)} » : ce qui sort dans son enceinte ou son casque. Chaque voie y envoie plus ou moins de son, sans changer la façade.`, blinkOuts: [1] },
+    { title: 'Les effets · FX', text: `La table a ${FX_COUNT} effets (réverbe, écho…). Une voie envoie un peu de son vers un effet ; l’effet revient ensuite dans la façade et dans les retours. Plus d’envoi = plus d’effet sur cette voie.`, blinkOuts: [-1] },
+    ...(groups.length ? [{ title: 'Les groupes · DCA', text: `Un groupe (DCA) monte ou baisse plusieurs voies d’un coup, en gardant leur équilibre : « ${String(client.get(dcaNamePath(groups[0])) ?? '') || `Groupe ${groups[0]}`} » en est un. Il agit sur la façade.`, blink: P.filter((p) => p.chans.some((c) => inG(c, groups[0]))).map((p) => p.n) }] : []),
     { title: 'À toi', text: `Monte « ${nm(ex.ch)} » dans « ${bus(ex.bus)} » : c’est ce que tu ferais si ce musicien dit « je ne m’entends pas ». La façade ne bouge pas.`, blink: [voicePlug], blinkOuts: [ex.bus], exercise: true },
   ];
   const st = steps[Math.min(k, steps.length - 1)];

@@ -36,7 +36,7 @@ export const TERMS: Record<string, Term> = {
   gain: { simple: 'Force du micro', tech: 'gain', help: 'Le niveau d’entrée de la prise. Il vaut pour tout : public et retours. On le règle une fois, au début.', short: 'Gain' },
   fader: { simple: 'Volume', tech: 'fader', help: 'Le volume de cette voie dans le mélange choisi (le public ou un retour).' },
   gate: { simple: 'Anti-bruit', tech: 'gate', help: 'Coupe le micro quand personne ne joue dedans : moins de bruit de fond.' },
-  comp: { simple: 'Adoucir les écarts', tech: 'compresseur', help: 'Rapproche les passages forts et les passages doux : la voix reste devant.', short: 'Comp' },
+  comp: { simple: 'Adoucir les écarts', tech: 'compresseur', help: 'Rapproche les passages forts et les passages doux : la voix reste devant.' },
   phantom: { simple: 'Alimentation du micro', tech: '48 V · phantom', help: 'Du courant envoyé par le câble, pour les micros statiques et certaines boîtes DI. Jamais sur un micro à ruban.', short: '48V' },
   hpf: { simple: 'Couper les graves', tech: 'coupe-bas · HPF', help: 'Enlève les graves inutiles (bruits de pied de micro, souffle) : le son est plus net.' },
   eq: { simple: 'Graves / aigus', tech: 'égaliseur · EQ', help: 'Règle le timbre de la voie : plus ou moins de graves, de médiums, d’aigus.', short: 'EQ' },

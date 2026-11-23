@@ -3,7 +3,7 @@
 //   🎚 Régler  : gain + vumètre, couleur, 48 V, phase, panoramique, prise, groupes
 //   🔗 Relier  : une case par sortie et par effet, un appui relie, un curseur dose
 // Renommer, changer de prise et les préréglages s'ouvrent d'ici.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { f, i } from '../osc/osc';
 import { dbLabel } from '../ui/format';
@@ -32,6 +32,7 @@ import { FindMicSheet } from './FindMicSheet';
 import { ChangesSheet } from './ChangesSheet';
 import { ChangeSet } from '../xair/changeLog';
 import { explain, useLevel, word, words2 } from '../ui/words';
+import { phasePartner, phaseVerdict } from '../xair/phasePair';
 import { showTip } from '../ui/tip';
 import { SmartRenameSheet } from './SmartRenameSheet';
 
@@ -91,6 +92,7 @@ export function ChannelDrawer(props: { client: XAirClient; theme: Theme; ch: num
               ))}
             </View>
             <Toggles client={client} theme={theme} ch={ch} />
+            <PhaseHelper client={client} theme={theme} ch={ch} />
             <PanRow client={client} theme={theme} ch={ch} />
           </View>
           <View style={{ flex: 1, gap: 8 }}>
@@ -205,6 +207,47 @@ function Toggles({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: 
       ) : (
         <Pressable onPress={() => setMore(true)} style={[styles.tg, { borderColor: theme.line, backgroundColor: 'transparent' }]}><Text style={{ color: theme.muted, fontWeight: '700', fontSize: 12 }}>Autres…</Text></Pressable>
       )}
+    </View>
+  );
+}
+
+/** Deux micros sur le même instrument : proposer de comparer avec / sans l'inversion (Ø). */
+function PhaseHelper({ client, theme, ch }: { client: XAirClient; theme: Theme; ch: number }) {
+  const other = phasePartner(client, ch);
+  const [state, setState] = useState<'idle' | 'a' | 'b' | string>('idle');
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  if (other === null) return null;
+  const nm = (c: number) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`;
+  const run = async () => {
+    const was = Number(client.get(invertPath(ch)) ?? 0);
+    const listen = (ms: number) => new Promise<number>((res) => {
+      const xs: number[] = [];
+      const off = client.onMeters((m) => xs.push(Math.max(m[meterIndex.lrL] ?? -90, m[meterIndex.lrR] ?? -90)));
+      setTimeout(() => { off(); res(xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : -90); }, ms);
+    });
+    client.startMeters();
+    setState('a');
+    const normal = await listen(2500);
+    client.set(invertPath(ch), i(was ? 0 : 1));
+    setState('b');
+    await new Promise((r) => setTimeout(r, 300));
+    const flipped = await listen(2500);
+    client.stopMeters();
+    const v = phaseVerdict(normal, flipped);
+    if (v !== 'inverser') client.set(invertPath(ch), i(was));
+    if (!alive.current) return;
+    setState(v === 'inverser' ? `✓ Plus plein avec l’inverse (+${(flipped - normal).toFixed(1)} dB) : je le garde.` : v === 'garder' ? '✓ C’était déjà la bonne position : rien ne change.' : 'Pas de différence nette : rien ne change. Vérifie que les deux micros sont bien dans le mélange du public, et que seul cet instrument joue.');
+  };
+  const busy = state === 'a' || state === 'b';
+  return (
+    <View style={{ borderWidth: 1, borderColor: theme.line2, borderRadius: 12, padding: 10, gap: 6, backgroundColor: theme.deep }}>
+      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 13 }}>Deux micros sur le même instrument : « {nm(ch)} » et « {nm(other)} »</Text>
+      <Text style={{ color: theme.muted, fontSize: 12 }}>S’ils se contrarient, le son devient creux, sans graves (phase · Ø). Fais jouer seulement cet instrument : je compare les deux positions et je garde la plus pleine.</Text>
+      {state !== 'idle' && !busy && <Text style={{ color: theme.ok, fontSize: 13, fontWeight: '700' }}>{state}</Text>}
+      <Pressable disabled={busy} onPress={run} style={{ minHeight: 42, borderRadius: 10, borderWidth: 1.5, borderColor: theme.accent, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.6 : 1 }}>
+        <Text style={{ color: theme.accent, fontWeight: '800' }}>{state === 'a' ? 'J’écoute… (position actuelle)' : state === 'b' ? 'J’écoute… (inversé)' : 'Son creux ? Comparer (5 s)'}</Text>
+      </Pressable>
     </View>
   );
 }

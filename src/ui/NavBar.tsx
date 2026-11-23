@@ -108,6 +108,8 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
   }
   return (
     <View style={[vertical ? styles.rail : styles.bar, { backgroundColor: theme.deep, borderColor: theme.line }]}>
+      {/* tout en haut, loin de « Quitter » et des onglets */}
+      {props.client && <View style={{ marginBottom: 14 }}><KillButton client={props.client} vertical={vertical} /></View>}
       <Pressable onPress={props.onHelp} onLongPress={() => showTip(HELP.aide)} accessibilityLabel="Aide-moi : balance automatique, mode guidé" style={[vertical ? styles.help : styles.helpSmall, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
         <Icon id="aide" color="#6EE7B7" size={vertical ? 26 : 22} />
         <Text style={{ color: '#A7F3D0', fontSize: vertical ? 11 : 10, fontWeight: '800' }}>Aide-moi</Text>
@@ -130,8 +132,6 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
           <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>Mixages</Text>
         </Pressable>
       )}
-      {props.onQuit && vertical && <View style={{ flex: 1 }} />}
-      {props.client && <KillButton client={props.client} vertical={vertical} />}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (

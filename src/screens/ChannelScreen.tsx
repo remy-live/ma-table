@@ -32,6 +32,7 @@ import { InputSourceSheet } from './InputSourceSheet';
 import { FindMicSheet } from './FindMicSheet';
 import { ChangesSheet } from './ChangesSheet';
 import { ChangeSet } from '../xair/changeLog';
+import { getLevel, word } from '../ui/words';
 import { mixInfo } from './MixPicker';
 import { PresetPanel } from './PresetPanel';
 import { GatePanel, HpfPanel } from './CutGatePanels';
@@ -120,11 +121,11 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
   const BLOCKS0: { id: Block; icon: string; label: string; sub: string; color: string }[] = [
     { id: 'preset', icon: '', label: 'Préréglage', sub: lastPreset ?? 'choisir', color: '#FBBF24' },
     { id: 'in', icon: '🎤', label: 'Entrée', sub: `prise ${insrcPlug(insrc)} · ${gain === undefined ? kind : `${fToGainDb(Number(gain)) > 0 ? '+' : ''}${fToGainDb(Number(gain)).toFixed(0)} dB`}`, color: '#C9CED4' },
-    { id: 'hpf', icon: '⤴', label: 'Coupe-bas', sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
-    { id: 'gate', icon: '▯', label: 'Gate', sub: gateOn ? `${fToGateDb(gateThr).toFixed(0)} dB` : 'off', color: '#9AA3AD' },
+    { id: 'hpf', icon: '⤴', label: word('hpf'), sub: hpOn ? formatHz(fToHpfHz(hpf)) : 'off', color: '#60A5FA' },
+    { id: 'gate', icon: '▯', label: word('gate'), sub: gateOn ? `${fToGateDb(gateThr).toFixed(0)} dB` : 'off', color: '#9AA3AD' },
     { id: 'eq', icon: '〰', label: 'EQ', sub: eqOn ? '4 bandes' : 'off', color: theme.accent },
     { id: 'comp', icon: '◐', label: 'Comp', sub: dynOn ? `${fToCompDb(dynThr).toFixed(0)} dB` : 'off', color: '#34D399' },
-    { id: 'fx', icon: '✦', label: 'Effets', sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
+    { id: 'fx', icon: '✦', label: word('fx'), sub: fxCount ? `${fxCount} actif${fxCount > 1 ? 's' : ''}` : 'aucun', color: '#C084FC' },
     { id: 'qui', icon: '🎧', label: 'Qui entend', sub: `${destLv.filter((v) => v > 0).length} sortie${destLv.filter((v) => v > 0).length > 1 ? 's' : ''}`, color: '#60A5FA' },
   ];
   const BLOCKS = MODEL.family === 'ui' ? BLOCKS0.filter((b) => b.id === 'in' || b.id === 'fx' || b.id === 'qui') : BLOCKS0;
@@ -211,7 +212,7 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
         )}
 
         {show('eq') && (
-          <Card theme={theme} title="Égaliseur" color="#FBBF24" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
+          <Card theme={theme} title={word('eq')} color="#FBBF24" on={eqOn} onToggle={() => client.set(eqOnPath(ch), i(eqOn ? 0 : 1))}>
             <EqGraph
               bands={bands}
               on={eqOn}
@@ -269,19 +270,19 @@ export function ChannelBody({ client, ch, theme, onClose, wide, start }: { clien
         )}
 
         {show('hpf') && (
-          <Card theme={theme} title="Coupe-bas" color="#60A5FA" on={hpOn} onToggle={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))}>
+          <Card theme={theme} title={word('hpf')} color="#60A5FA" on={hpOn} onToggle={() => client.set(hpOnPath(ch), i(hpOn ? 0 : 1))}>
             <HpfPanel client={client} theme={theme} ch={ch} name={name} quick={styles.quick} />
           </Card>
         )}
 
         {show('gate') && (
-          <Card theme={theme} title="Gate" color="#9AA3AD" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
+          <Card theme={theme} title={word('gate')} color="#9AA3AD" on={gateOn} onToggle={() => client.set(gateOnPath(ch), i(gateOn ? 0 : 1))}>
             <GatePanel client={client} theme={theme} ch={ch} name={name} quick={styles.quick} />
           </Card>
         )}
 
         {show('comp') && (
-          <Card theme={theme} title="Compresseur" color="#34D399" on={dynOn} onToggle={() => client.set(dynOnPath(ch), i(dynOn ? 0 : 1))}>
+          <Card theme={theme} title={word('comp')} color="#34D399" on={dynOn} onToggle={() => client.set(dynOnPath(ch), i(dynOn ? 0 : 1))}>
             <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Rapproche les passages forts et faibles : la voix reste devant même quand on chante doucement. Seuil bas = plus de compression.</Text>
             <HSlider label="Seuil" value={dynThr} valueText={`${fToCompDb(dynThr).toFixed(0)} dB`} onChange={(v) => client.set(dynThrPath(ch), f(v))} color={theme.ok} theme={theme} />
             <View style={{ flexDirection: 'row', gap: 6 }}>

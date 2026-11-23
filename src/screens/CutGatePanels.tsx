@@ -4,6 +4,7 @@
 //  - gate : on VOIT quand la porte s'ouvre (le niveau qui arrive face au seuil),
 //    des recettes par instrument, et les réglages fins (profondeur, attaque,
 //    maintien, relâche) pour qui veut.
+import { word } from '../ui/words';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
@@ -134,7 +135,7 @@ function GateMeter({ level, db, thr, on, theme }: { level: number; db: number; t
         {on && <View style={{ position: 'absolute', left: `${thrX * 100}%`, top: 0, bottom: 0, width: 3, marginLeft: -1.5, backgroundColor: '#F8FAFC' }} />}
       </View>
       <Text style={{ color: open ? theme.ok : theme.muted, fontSize: 12, fontWeight: '800' }}>
-        {!on ? 'Gate coupé : tout passe' : level < 0.01 ? 'Rien n’arrive : la porte est fermée' : open ? '● Porte ouverte : le son passe' : '○ Porte fermée : le micro est baissé'}
+        {!on ? `${word('gate')} coupé : tout passe` : level < 0.01 ? 'Rien n’arrive : la porte est fermée' : open ? '● Porte ouverte : le son passe' : '○ Porte fermée : le micro est baissé'}
       </Text>
     </View>
   );

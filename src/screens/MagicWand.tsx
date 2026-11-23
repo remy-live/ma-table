@@ -6,6 +6,7 @@ import { CloseX } from '../ui/kit';
 import { MiniTable } from '../ui/MiniTable';
 import { ChangeSet, changeSets, record } from '../xair/changeLog';
 import { ChangesSheet } from './ChangesSheet';
+import { word } from '../ui/words';
 import { showTip } from '../ui/tip';
 import { Theme } from '../ui/theme';
 import { MODEL } from '../xair/addresses';
@@ -121,7 +122,7 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
                       <View style={[styles.num, { borderColor: p.mic ? theme.accent : theme.line2 }]}><Text style={{ color: theme.text, fontWeight: '900' }}>{p.plug}</Text></View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>{p.label} <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 12 }}>· {band[p.who]?.name}</Text></Text>
-                        <Text style={{ color: theme.muted, fontSize: 11 }}>{p.mic ? 'micro (XLR)' : 'jack ou boîte DI'}{p.phantom ? ' · micro statique : 48 V à allumer' : ''}</Text>
+                        <Text style={{ color: theme.muted, fontSize: 11 }}>{p.mic ? 'micro (XLR)' : 'jack ou boîte DI'}{p.phantom ? ` · micro statique : ${word('phantom')} à allumer` : ''}</Text>
                       </View>
                     </View>
                   ))}
@@ -144,7 +145,7 @@ export function MagicWand({ client, theme, visible, onClose, onSeeWiring }: { cl
                   {plan.warnings.map((w) => (
                     <Text key={w} style={{ color: '#FCD34D', fontSize: 12, fontWeight: '700' }}>⚠ {w}</Text>
                   ))}
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>Le 48 V n’est jamais allumé tout seul. Les mélanges sont un point de départ : affine-les dans « Qui entend quoi ».</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>L’alimentation des micros (48 V) n’est jamais allumée toute seule. Les mélanges sont un point de départ : affine-les dans « Qui entend quoi ».</Text>
                 </View>
               </ScrollView>
               {done ? (

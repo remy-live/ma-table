@@ -18,6 +18,7 @@ import { plugColor, plugs } from '../xair/wiring';
 import { MiniTable } from '../ui/MiniTable';
 import { ChangeSet, changeSets, record } from '../xair/changeLog';
 import { ChangesSheet } from './ChangesSheet';
+import { word } from '../ui/words';
 import { swapChannels } from '../xair/clipboard';
 import { capture, restore, Snapshot } from '../xair/snapshot';
 import { addAuto } from '../store/sessions';
@@ -333,7 +334,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               <Pressable key={m} onPress={() => setMode(m)} style={[styles.card, { backgroundColor: theme.panel, borderColor: mode === m ? theme.accent : theme.line }]}>
                 <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{m === 'complet' ? `Complète · environ ${mode === 'complet' ? estimate : '?'} min` : 'Express · 30 secondes'}</Text>
                 <Text style={{ color: theme.muted, fontSize: 12 }}>
-                  {m === 'complet' ? 'Silence, chaque élément un par un (gain, gate, compresseur), tous ensemble (faders, retours, volume général).' : 'Tous ensemble seulement : faders, retours et volume. Les gains ne bougent pas (concert suivant, même groupe).'}
+                  {m === 'complet' ? 'Silence, chaque élément un par un (force du micro, anti-bruit, écarts), puis tous ensemble (volumes, retours, volume général).' : 'Tous ensemble seulement : faders, retours et volume. Les gains ne bougent pas (concert suivant, même groupe).'}
                 </Text>
               </Pressable>
             ))}
@@ -360,7 +361,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
               <Text style={{ color: theme.text, fontWeight: '800' }}>Ce que l’appli règle</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {([['preset', 'Préréglage de l’instrument'], ['gain', 'Gain'], ['gate', 'Gate'], ['comp', 'Compresseur'], ['fader', 'Volume dans la façade']] as [keyof What, string][]).map(([k, l]) => (
+                {([['preset', 'Préréglage de l’instrument'], ['gain', word('gain')], ['gate', word('gate')], ['comp', word('comp')], ['fader', 'Volume pour le public · fader']] as [keyof What, string][]).map(([k, l]) => (
                   <Pressable key={k} accessibilityRole="checkbox" accessibilityState={{ checked: what[k] }} onPress={() => setWhat((w) => ({ ...w, [k]: !w[k] }))}
                     style={[styles.chip, what[k] ? { backgroundColor: theme.ok, borderColor: theme.ok } : { borderColor: theme.line2 }]}>
                     <Text style={{ color: what[k] ? '#052E1F' : theme.muted, fontWeight: '800', fontSize: 12 }}>{what[k] ? '✓ ' : ''}{l}</Text>
@@ -386,7 +387,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             <Pressable onPress={begin} disabled={pick.size === 0} style={[styles.go, { backgroundColor: theme.ok, opacity: pick.size ? 1 : 0.4 }]}>
               <Text style={{ color: '#052E1F', fontWeight: '800', fontSize: 17 }}>{pick.size === allNamed.length ? 'Commencer' : `Commencer · ${pick.size} voie${pick.size > 1 ? 's' : ''}`}</Text>
             </Pressable>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>La table est photographiée avant : « Annuler tout » la remet comme avant. Le 48 V n’est jamais touché.</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>La table est photographiée avant : « Annuler tout » la remet comme avant. L’alimentation des micros (48 V) n’est jamais touchée.</Text>
 
             {venues.length > 0 && (
               <View style={{ gap: 8 }}>
@@ -506,7 +507,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
               const parts = [
                 r.gainTo !== undefined ? `Gain ${dbs(r.gainFrom)} → ${dbs(r.gainTo)}` : '',
                 r.fader !== undefined ? `Fader ${dbs(r.faderFrom)} → ${dbs(r.fader)}` : '',
-                r.gate !== undefined ? `Gate ${r.gate} dB` : '',
+                r.gate !== undefined ? `${word('gate')} ${r.gate} dB` : '',
                 r.comp !== undefined ? `Comp ${r.comp} dB` : '',
               ].filter(Boolean);
               return (
