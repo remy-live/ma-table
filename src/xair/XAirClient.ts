@@ -478,7 +478,7 @@ export function parseMeters(blob: Uint8Array, out: Float32Array): boolean {
 
 /** Remet le bon type OSC (entier, réel, texte) sur une valeur gardée en mémoire. */
 export function argFor(p: string, v: OscValue): OscArg {
-  return typeof v === 'string' ? { t: 's', v } : Number.isInteger(v) && /\/(on|type|insrc|dca|phantom|invert|hpon|color|mode|ratio)$/.test(p) ? { t: 'i', v: Number(v) } : { t: 'f', v: Number(v) };
+  return typeof v === 'string' ? { t: 's', v } : Number.isInteger(v) && /\/(on|type|insrc|dca|mute|lr|hpslope|phantom|invert|hpon|color|mode|ratio)$/.test(p) ? { t: 'i', v: Number(v) } : { t: 'f', v: Number(v) };
 }
 
 /** Fabrique un blob de vumètres (simulateur, démo, tests). */

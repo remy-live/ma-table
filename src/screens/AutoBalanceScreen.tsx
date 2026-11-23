@@ -10,7 +10,7 @@ import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath, dynOnPath, gateOnPath } from '../xair/addresses';
 import {
   addSample, applyGainNow, applyMaster, applyResults, applyReturn, AutoStep, Bleed, bleeds, buildSteps, ChResult, compute, isPlaying,
-  masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
+  masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, applyInstrumentPresets, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
 } from '../xair/autoBalance';
 import { roleOf } from '../xair/autoBalance';
 import { setDemoStage } from '../xair/tableModel';
@@ -246,6 +246,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     rec.current?.cancel();
     rec.current = record(client, mode === 'express' ? 'Balance express' : 'Balance auto');
     swaps.current = [];
+    if (what.preset) applyInstrumentPresets(client, pick);
     const list = buildSteps(client, mode, pick);
     if (!list.length) {
       Alert.alert('Aucune voie nommée', 'Dis d’abord ce qui est branché (Aide-moi › Mode guidé, étape 1), pour que l’appli sache qui appeler.');
@@ -359,13 +360,14 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
               <Text style={{ color: theme.text, fontWeight: '800' }}>Ce que l’appli règle</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {([['gain', 'Gain'], ['gate', 'Gate'], ['comp', 'Compresseur'], ['fader', 'Volume dans la façade']] as [keyof What, string][]).map(([k, l]) => (
+                {([['preset', 'Préréglage de l’instrument'], ['gain', 'Gain'], ['gate', 'Gate'], ['comp', 'Compresseur'], ['fader', 'Volume dans la façade']] as [keyof What, string][]).map(([k, l]) => (
                   <Pressable key={k} accessibilityRole="checkbox" accessibilityState={{ checked: what[k] }} onPress={() => setWhat((w) => ({ ...w, [k]: !w[k] }))}
                     style={[styles.chip, what[k] ? { backgroundColor: theme.ok, borderColor: theme.ok } : { borderColor: theme.line2 }]}>
                     <Text style={{ color: what[k] ? '#052E1F' : theme.muted, fontWeight: '800', fontSize: 12 }}>{what[k] ? '✓ ' : ''}{l}</Text>
                   </Pressable>
                 ))}
               </View>
+              {what.preset && <Text style={{ color: theme.muted, fontSize: 11 }}>Égaliseur, coupe-bas et compresseur selon le nom de chaque voie (Voix, Grosse caisse…), posés avant la mesure. Ça remplace leurs réglages actuels : tout reste annulable.</Text>}
             </View>
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, flexDirection: 'row', alignItems: 'center' }]}>
               <View style={{ flex: 1 }}>

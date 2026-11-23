@@ -13,6 +13,8 @@ import {
 import { hasPreamp } from './guide';
 import { dbToFader, faderToDb } from './levels';
 import { XAirClient } from './XAirClient';
+import { recognize } from './smartName';
+import { applyPreset, PRESETS } from './presets';
 
 export type StepKind = 'silence' | 'solo' | 'tutti';
 export type Mode = 'complet' | 'express';
@@ -77,8 +79,20 @@ const named = (client: XAirClient) =>
 
 /** Le déroulé. Complet : silence, chaque voie nommée (batterie élément par élément d'abord, voix en dernier), tous ensemble. Express : tous ensemble. */
 /** Ce que la balance automatique a le droit de régler. */
-export interface What { gain: boolean; gate: boolean; comp: boolean; fader: boolean }
-export const WHAT_ALL: What = { gain: true, gate: true, comp: true, fader: true };
+export interface What { gain: boolean; gate: boolean; comp: boolean; fader: boolean; preset?: boolean }
+export const WHAT_ALL: What = { gain: true, gate: true, comp: true, fader: true, preset: false };
+
+/** Préréglage de l'instrument (égaliseur, coupe-bas, comp) d'après le nom de la voie.
+ *  Posé AVANT la mesure : l'égaliseur et le compresseur changent le niveau. Rend les voies touchées. */
+export function applyInstrumentPresets(client: XAirClient, chans: Iterable<number>): number[] {
+  const done: number[] = [];
+  for (const ch of chans) {
+    const rec = recognize(String(client.get(chNamePath(ch)) ?? ''));
+    const p = rec?.preset ? PRESETS.find((x) => x.name === rec.preset) : undefined;
+    if (p) { applyPreset(client, ch, p); done.push(ch); }
+  }
+  return done;
+}
 
 /** Les voies nommées (celles qu'on peut appeler). */
 export const namedChannels = (client: XAirClient) => named(client).map((n) => n.ch);

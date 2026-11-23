@@ -7,7 +7,7 @@ import Svg, { Circle, G, Rect, Text as SvgText } from 'react-native-svg';
 import { MODEL } from '../xair/addresses';
 
 export interface MiniPlug { label?: string; color?: string; badge?: string; dim?: boolean }
-export interface MiniOut { n: number; label?: string; color?: string; badge?: string }
+export interface MiniOut { n: number; label?: string; color?: string; badge?: string; tag?: string }
 
 const COLS = 8;
 const CW = 62; // largeur d'une colonne
@@ -67,7 +67,7 @@ export function MiniTable(props: {
     return (
       <G key={`o${o.n}`}>
         <Circle cx={x} cy={y + 14} r={lit ? 17 : 14} fill="#15181C" stroke={lit ? '#FFFFFF' : c} strokeWidth={lit ? 4 : 2.5} />
-        <SvgText x={x} y={y + 18} textAnchor="middle" fontSize={9} fontWeight="900" fill={c}>{`AUX${o.n}`}</SvgText>
+        <SvgText x={x} y={y + 18} textAnchor="middle" fontSize={9} fontWeight="900" fill={c}>{o.tag ?? `AUX${o.n}`}</SvgText>
         {!!o.label && <SvgText x={x} y={y + 44} textAnchor="middle" fontSize={10} fontWeight="700" fill="#E8EAED">{o.label.slice(0, 10)}</SvgText>}
         {!!o.badge && <SvgText x={x} y={y - 6} textAnchor="middle" fontSize={9} fontWeight="900" fill="#F59E0B">{o.badge.slice(0, 10)}</SvgText>}
       </G>

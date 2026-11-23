@@ -85,3 +85,46 @@ test('Sans l’appli : la page ne règle que le retour invité', async () => {
     assert.match(handleRemote(c, inv, 'GET', '/').body, /Mon retour/);
   } finally { c.close(); sim.stop(); }
 });
+
+test('Réorganiser : la voix passe en 1, les réglages et la prise la suivent', async () => {
+  const { applyOrder, orderByFamily } = await import('../src/xair/reorder');
+  const port = 10399;
+  const sim = await startSimulator({ port });
+  const c = new XAirClient(new NodeUdpTransport(), port);
+  try {
+    await c.connect('127.0.0.1');
+    await sleep(200);
+    c.set('/ch/01/config/name', { t: 's', v: 'Kick' });
+    c.set('/ch/07/config/name', { t: 's', v: 'Voix' });
+    c.set('/ch/07/eq/1/g', f(0.8));
+    c.set('/ch/07/mix/02/level', f(0.6));
+    await sleep(100);
+    const order = orderByFamily(c);
+    assert.equal(order[0], 7);
+    await applyOrder(c, order);
+    await sleep(100);
+    assert.equal(c.get('/ch/01/config/name'), 'Voix');
+    assert.ok(Math.abs(Number(c.get('/ch/01/eq/1/g')) - 0.8) < 0.01);
+    assert.ok(Math.abs(Number(c.get('/ch/01/mix/02/level')) - 0.6) < 0.01);
+    assert.equal(Number(c.get('/ch/01/config/insrc')), 6); // la voie 1 écoute la prise 7
+    const kickAt = Array.from({ length: 16 }, (_, k) => k + 1).find((ch) => c.get(`/ch/${String(ch).padStart(2, '0')}/config/name`) === 'Kick')!;
+    assert.equal(Number(c.get(`/ch/${String(kickAt).padStart(2, '0')}/config/insrc`)), 0); // le kick écoute toujours la prise 1
+  } finally { c.close(); sim.stop(); }
+});
+
+test('Nouvelle salle : retouches de gain plafonnées à ±3 dB', async () => {
+  const { trimFor } = await import('../src/xair/venueTrim');
+  assert.equal(trimFor(-12), 0);
+  assert.equal(trimFor(-2), -3); // trop fort ici
+  assert.equal(trimFor(-7), 0);
+  assert.equal(trimFor(-40), 3);
+  assert.equal(trimFor(-70), 0); // rien entendu : on ne touche pas
+});
+
+test('Effets conseillés selon l’instrument', async () => {
+  const { adviseFor } = await import('../src/xair/fxAdvice');
+  assert.equal(adviseFor('Voix').slot, 1);
+  assert.equal(adviseFor('Grosse caisse').slot, null);
+  assert.equal(adviseFor('Caisse claire').slot, 2);
+  assert.equal(adviseFor('Basse').slot, null);
+});

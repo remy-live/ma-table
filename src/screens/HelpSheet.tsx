@@ -8,14 +8,22 @@ import { ChecklistSheet } from './ConcertExtras';
 import { GuideScreen } from './GuideScreen';
 import { MagicWand } from './MagicWand';
 import { ChangesSheet } from './ChangesSheet';
+import { ReorderSheet } from './ReorderSheet';
+import { TourSheet } from './TourSheet';
+import { EffectsAdvisor } from './EffectsAdvisor';
+import { VenueQuick } from './VenueQuick';
 import { Tutorial } from './Tutorial';
 import { TableCheckSheet } from './TableCheckSheet';
 
-type Which = 'magie' | 'auto' | 'guide' | 'check' | 'tuto' | 'verif' | 'change' | null;
+type Which = 'magie' | 'auto' | 'guide' | 'check' | 'tuto' | 'verif' | 'change' | 'ranger' | 'visite' | 'effets' | 'salle' | null;
 
 const ITEMS: [Exclude<Which, null>, string, string, string][] = [
   ['magie', '🪄 Qui branche quoi', 'Combien vous êtes, qui joue quoi, qui veut un retour : l’appli range prises et retours', '#E879F9'],
   ['auto', 'Balance automatique', 'Chacun son tour, puis tous ensemble : l’appli règle gains, faders et retours', '#22C55E'],
+  ['visite', '🧭 Visite de la table', 'AUX, façade, effets : à quoi sert chaque rond, avec tes vrais noms', '#60A5FA'],
+  ['salle', '🏠 Nouvelle salle', 'Reprendre une salle déjà faite et l’ajuster en une minute', '#34D399'],
+  ['effets', '✨ Proposer des effets', 'Réverbe et écho conseillés pour chaque voie, à écouter avant de garder', '#C084FC'],
+  ['ranger', '🔀 Réorganiser les voies', 'Voix d’abord, batterie à la fin… sans toucher aux câbles', '#F472B6'],
   ['change', '👀 Ce qui a changé', 'Ce que l’appli a réglé (balance, baguette, préréglages), sur le dessin de la table · annuler', '#FBBF24'],
   ['guide', 'Mode guidé', 'Installer un concert pas à pas : ce qui est branché, groupes, retours, ambiance', '#60A5FA'],
   ['check', 'Avant le concert', 'La check-list : connexion, noms, retours, balance, sauvegarde', '#F59E0B'],
@@ -50,6 +58,10 @@ export function HelpSheet({ client, theme, visible, onClose, onSeeWiring }: { cl
       <GuideScreen client={client} theme={theme} visible={visible && which === 'guide'} onClose={() => { setWhich(null); onClose(); }} />
       <ChecklistSheet client={client} theme={theme} visible={visible && which === 'check'} onClose={() => { setWhich(null); onClose(); }} />
       <TableCheckSheet client={client} theme={theme} visible={visible && which === 'verif'} onClose={() => { setWhich(null); onClose(); }} />
+      <ReorderSheet client={client} theme={theme} visible={visible && which === 'ranger'} onClose={() => { setWhich(null); onClose(); }} />
+      <TourSheet client={client} theme={theme} visible={visible && which === 'visite'} onClose={() => { setWhich(null); onClose(); }} />
+      <EffectsAdvisor client={client} theme={theme} visible={visible && which === 'effets'} onClose={() => { setWhich(null); onClose(); }} />
+      <VenueQuick client={client} theme={theme} visible={visible && which === 'salle'} onClose={() => { setWhich(null); onClose(); }} />
       <ChangesSheet client={client} theme={theme} visible={visible && which === 'change'} onClose={() => { setWhich(null); onClose(); }} />
       <Tutorial theme={theme} visible={visible && which === 'tuto'} onClose={() => { setWhich(null); onClose(); }} />
     </>
