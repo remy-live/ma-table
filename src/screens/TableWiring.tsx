@@ -32,7 +32,7 @@ type Sel = { k: 'in'; n: number } | { k: 'out'; id: string } | { k: 'many'; ns: 
 type End = { kind: 'plug'; n: number } | { kind: 'out'; id: string } | { kind: 'group'; k: number } | { kind: 'fold'; k: number };
 // X32 / M32 : 32 prises sur 2 rangées de 16 et 12 retours : dessin plus large
 const big = () => MODEL.family !== 'xair';
-const H = 300;
+const H = 314;
 const xIn = (n: number) => (big() ? 60 + ((n - 1) % 16) * 100 : n <= 16 ? 60 + ((n - 1) % 8) * 72 : n === 17 ? 700 : 760);
 const yIn = (n: number) => (big() ? (n <= 16 ? 66 : 158) : n <= 8 ? 66 : 158);
 const xOut = (k: number) => { const nb = big() ? 12 : 6; return k < nb ? 60 + k * 100 : 60 + nb * 100 + 100 + (k - nb) * 60; }; // 2 enceintes : MAIN L puis MAIN R
@@ -302,8 +302,18 @@ export function TableWiring(props: { client: XAirClient; theme: Theme; P: Plug[]
                     </>
                   )) : (
                     <>
-                      <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{o.id === 'main' ? (mono ? 'MAIN mono' : 'MAIN L·R') : o.label}</SvgText>
-                      <SvgText x={xOut(k) + (o.id === 'main' ? 44 : 28)} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
+                      {o.id === 'main' ? (
+                        <>
+                          <SvgText x={xOut(k) + 44} y={Y_OUT - 2} fontSize={12} fontWeight="800" fill={c}>{mono ? 'MAIN mono' : 'MAIN L·R'}</SvgText>
+                          <SvgText x={xOut(k) + 44} y={Y_OUT + 13} fontSize={11} fill="#E8EAED">{o.name.slice(0, 12)}</SvgText>
+                        </>
+                      ) : (
+                        <>
+                          {/* le sigle à côté du rond, le nom en entier dessous (il ne mord plus sur la sortie voisine) */}
+                          <SvgText x={xOut(k) + 28} y={Y_OUT + 5} fontSize={12} fontWeight="800" fill={c}>{o.label}</SvgText>
+                          <SvgText x={xOut(k)} y={Y_OUT + 37} textAnchor="middle" fontSize={11} fontWeight="700" fill="#E8EAED">{o.name.length > 15 ? `${o.name.slice(0, 14)}…` : o.name}</SvgText>
+                        </>
+                      )}
                     </>
                   )}
                 </G>
