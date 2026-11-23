@@ -10,7 +10,7 @@ export interface ProbeResult { ok: boolean; error: string; frames?: number; rout
 export interface DirectProbe { ok: boolean; error: string; product?: string; ifNum?: number; alt?: number; ep?: number; maxPacket?: number; channels?: number; subslot?: number; bits?: number; uac?: number; rate?: number; frames?: number; expected?: number; pktErrors?: number; urbErrors?: number; empty?: number; reaped?: number; odd?: number; submitErrors?: number; lastErrno?: number; peakDb?: number[] }
 export interface RecordResult { bits?: number; dir: string; files: string[]; frames: number; expected: number; seconds: number; rate: number; channels: number; routed: string; shortReads: number; readErrors: number; peakDb: number[]; rmsDb: number[]; clips: number[] }
 
-export interface RecSummary { id: string; dir: string; frames: number; seconds: number; rate: number; channels: number; bits: number; peakDb: number[]; rmsDb: number[]; clips: number[]; usbErrors: number; writeErrors: number; lastErrno: number; files: string[]; reason: string }
+export interface RecSummary { id: string; dir: string; frames: number; seconds: number; rate: number; channels: number; bits: number; peakDb: number[]; rmsDb: number[]; clips: number[]; usbErrors: number; writeErrors: number; lastErrno: number; holes: number; maxGapMs: number; emptyPackets: number; files: string[]; reason: string }
 export interface RecEvent { t?: number; peaks?: number[]; clips?: number[]; usbErrors?: number; writeErrors?: number; alive?: boolean; free?: number; ended?: boolean; summary?: RecSummary; error?: string }
 export interface SessFile { name: string; path: string; size: number }
 export interface SessEntry { id: string; dir: string; public: boolean; modified: number; meta: string; files: SessFile[] }

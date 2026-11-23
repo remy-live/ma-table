@@ -10,7 +10,7 @@ import { XAirClient } from './XAirClient';
 
 export interface RecTrack { ch: number; name: string; file: string; stereo?: boolean; pan: number }
 export interface Marker { t: number; label: string }
-export interface RecMeta { name: string; startedAt: number; tracks: RecTrack[]; markers: Marker[]; facade: boolean; seconds?: number; rate?: number; clips?: number[]; peakDb?: number[]; reason?: string }
+export interface RecMeta { name: string; startedAt: number; tracks: RecTrack[]; markers: Marker[]; facade: boolean; seconds?: number; rate?: number; clips?: number[]; peakDb?: number[]; reason?: string; holes?: number; maxGapMs?: number; usbErrors?: number }
 export interface RecState { on: boolean; starting: boolean; id: string; dir: string; isPublic: boolean; t: number; peaks: number[]; clips: number[]; hot: number[]; usbErrors: number; writeErrors: number; free: number; meta: RecMeta | null; error: string; last: { id: string; reason: string; seconds: number } | null }
 
 const empty = (): RecState => ({ on: false, starting: false, id: '', dir: '', isPublic: true, t: 0, peaks: [], clips: [], hot: [], usbErrors: 0, writeErrors: 0, free: 0, meta: null, error: '', last: null });
@@ -75,7 +75,7 @@ function wire() {
   usbAudio.addListener('onRec', (e) => {
     if (e.ended) {
       const s = e.summary;
-      if (st.meta && s) { st.meta = { ...st.meta, seconds: s.seconds, rate: s.rate, clips: s.clips, peakDb: s.peakDb, reason: s.reason }; saveMeta(); }
+      if (st.meta && s) { st.meta = { ...st.meta, seconds: s.seconds, rate: s.rate, clips: s.clips, peakDb: s.peakDb, reason: s.reason, holes: s.holes, maxGapMs: s.maxGapMs, usbErrors: s.usbErrors }; saveMeta(); }
       put({ on: false, starting: false, last: st.on ? { id: st.id, reason: s?.reason || e.error || '', seconds: s?.seconds ?? st.t } : st.last, error: e.error ?? '' });
       return;
     }

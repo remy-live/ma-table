@@ -30,6 +30,7 @@ import { FirstRun } from './src/screens/FirstRun';
 import { LarsenWatch } from './src/screens/LarsenWatch';
 import { KillBanner, KillButton } from './src/ui/KillSwitch';
 import { LinkBadge } from './src/ui/LinkBadge';
+import { RecPill, RecorderSheet } from './src/screens/RecorderSheet';
 import { setLevel, setLevelSaver } from './src/ui/words';
 import { installBigText } from './src/ui/bigText';
 
@@ -62,6 +63,7 @@ export default function App() {
   const bottomInset = useBottomInset(prefs.immersive !== false, prefs.navRoom);
   const [fxCh, setFxCh] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
+  const [recOpen, setRecOpen] = useState(false);
   const [mixes, setMixes] = useState(false);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -294,6 +296,9 @@ export default function App() {
       {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMore={() => (locked ? go('table') : setMore(true))} />}
       <MoreSheet theme={theme} visible={more} current={tab} onGo={go} onMixes={() => setMixes(true)} onQuit={disconnect} onClose={() => setMore(false)} />
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
+      {/* pendant un enregistrement : pastille visible sur tous les écrans (sauf Concert, qui a son bandeau) */}
+      {tab !== 'scene' && <RecPill wide={wide} onOpen={() => setRecOpen(true)} />}
+      <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}

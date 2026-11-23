@@ -14,10 +14,11 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 #include <android/log.h>
 
 #define TAG "usbiso"
-#define NURB 16
+#define NURB 32
 #define NPK 32
 #define MAXCH 64
 
@@ -42,6 +43,27 @@ static int g_nout = 0;
 static volatile int g_rate = 48000;
 static volatile int g_alive = 0;
 static long long g_werr = 0, g_lasthdr = 0;
+
+// Le fil USB ne doit jamais attendre le disque (sinon : trous, donc grésillements).
+// Il dépose les échantillons dans un anneau ; un 2e fil les écrit dans les fichiers.
+#define RSZ (48u << 20)
+static unsigned char *g_ring = NULL;
+static unsigned long long g_head = 0, g_tail = 0; // octets déposés / écrits depuis le départ
+static volatile int g_wrun = 0;
+static pthread_t g_wth;
+static long long g_over = 0, g_stall = 0, g_maxgap = 0, g_written = 0;
+
+static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
+
+static void ring_put(const unsigned char *d, size_t n) {
+  unsigned long long h = __atomic_load_n(&g_head, __ATOMIC_RELAXED), t = __atomic_load_n(&g_tail, __ATOMIC_ACQUIRE);
+  if (!g_ring) return;
+  if (h - t + n > RSZ) { g_over++; return; }
+  size_t i = (size_t)(h % RSZ), first = RSZ - i < n ? RSZ - i : n;
+  memcpy(g_ring + i, d, first);
+  if (first < n) memcpy(g_ring, d + first, n - first);
+  __atomic_store_n(&g_head, h + n, __ATOMIC_RELEASE);
+}
 
 static void put32(unsigned char *p, unsigned int v) { p[0] = v & 255; p[1] = (v >> 8) & 255; p[2] = (v >> 16) & 255; p[3] = (v >> 24) & 255; }
 static void put16(unsigned char *p, unsigned int v) { p[0] = v & 255; p[1] = (v >> 8) & 255; }
@@ -129,20 +151,7 @@ static void process(struct usbdevfs_urb *u) {
     if (al % g_fb) g_odd++;
     int nfr = al / g_fb;
     const unsigned char *d = base + (size_t)i * g_maxp;
-    if (g_out) fwrite(d, 1, (size_t)nfr * g_fb, g_out);
-    for (int k = 0; k < g_nout; k++) {
-      Out *o = &g_outs[k];
-      if (!o->f) continue;
-      unsigned char tmp[1024];
-      int n = 0;
-      for (int f = 0; f < nfr && n + 2 * g_bps <= (int)sizeof tmp; f++) {
-        const unsigned char *fr = d + (size_t)f * g_fb;
-        memcpy(tmp + n, fr + o->a * g_bps, (size_t)g_bps); n += g_bps;
-        if (o->b >= 0) { memcpy(tmp + n, fr + o->b * g_bps, (size_t)g_bps); n += g_bps; }
-      }
-      if (fwrite(tmp, 1, (size_t)n, o->f) != (size_t)n) g_werr++;
-      o->bytes += n;
-    }
+    ring_put(d, (size_t)nfr * g_fb);
     for (int f = 0; f < nfr; f++) {
       const unsigned char *fr = d + (size_t)f * g_fb;
       for (int c = 0; c < g_nch; c++) {
@@ -158,10 +167,54 @@ static void process(struct usbdevfs_urb *u) {
   }
 }
 
+/** Écrit un bloc d'images entrelacées dans les fichiers (brut d'essai, et un WAV par voie choisie). */
+static void demux(const unsigned char *d, int nfr) {
+  if (g_out && fwrite(d, 1, (size_t)nfr * g_fb, g_out) != (size_t)nfr * g_fb) g_werr++;
+  static unsigned char tmp[8192];
+  for (int k = 0; k < g_nout; k++) {
+    Out *o = &g_outs[k];
+    if (!o->f) continue;
+    int w = (o->b >= 0 ? 2 : 1) * g_bps, f = 0;
+    while (f < nfr) {
+      int n = 0;
+      for (; f < nfr && n + w <= (int)sizeof tmp; f++) {
+        const unsigned char *fr = d + (size_t)f * g_fb;
+        memcpy(tmp + n, fr + o->a * g_bps, (size_t)g_bps); n += g_bps;
+        if (o->b >= 0) { memcpy(tmp + n, fr + o->b * g_bps, (size_t)g_bps); n += g_bps; }
+      }
+      if (fwrite(tmp, 1, (size_t)n, o->f) != (size_t)n) g_werr++;
+      o->bytes += n;
+    }
+  }
+}
+
+static void *writer(void *arg) {
+  (void)arg;
+  size_t cap = (size_t)g_fb * 1024;
+  unsigned char *lin = (unsigned char *)malloc(cap);
+  while (lin) {
+    unsigned long long h = __atomic_load_n(&g_head, __ATOMIC_ACQUIRE), t = __atomic_load_n(&g_tail, __ATOMIC_RELAXED);
+    size_t avail = (size_t)(h - t);
+    if (avail < (size_t)g_fb) { if (!g_wrun) break; usleep(4000); continue; }
+    size_t n = avail > cap ? cap : avail - avail % g_fb;
+    size_t i = (size_t)(t % RSZ), first = RSZ - i < n ? RSZ - i : n;
+    memcpy(lin, g_ring + i, first);
+    if (first < n) memcpy(lin + first, g_ring, n - first);
+    demux(lin, (int)(n / g_fb));
+    __atomic_store_n(&g_tail, t + n, __ATOMIC_RELEASE);
+    g_written += (long long)(n / g_fb);
+    // toutes les ~10 s : en-têtes à jour (fichiers lisibles même après un arrêt brutal)
+    if (g_nout && g_written - g_lasthdr > 10LL * g_rate) { g_lasthdr = g_written; headers(); }
+  }
+  free(lin);
+  return NULL;
+}
+
 static void *loop(void *arg) {
   (void)arg;
   // priorité « audio » pour ce fil (si Android le permet)
   setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), -19);
+  long long last = 0;
   while (g_outstanding > 0) {
     struct usbdevfs_urb *r = NULL;
     if (ioctl(g_fd, USBDEVFS_REAPURB, &r) < 0) {
@@ -177,12 +230,13 @@ static void *loop(void *arg) {
     g_reaped++;
     if (!g_run) continue; // on arrête : on ne relance pas
     if (r->status != 0 && r->status != -EXDEV) g_urberr++;
+    // le fil a-t-il été retenu trop longtemps ? (au-delà de ~100 ms, la table n'est plus écoutée : trou)
+    long long now = now_ms();
+    if (last) { long long gap = now - last; if (gap > g_maxgap) g_maxgap = gap; if (gap > 100) g_stall++; }
+    last = now;
     process(r);
     submit(r);
-    // toutes les ~10 s : en-têtes à jour (fichiers lisibles même après un arrêt brutal)
-    if (g_nout && g_frames - g_lasthdr > 10LL * g_rate) { g_lasthdr = g_frames; headers(); }
   }
-  if (g_nout) headers();
   g_alive = 0;
   return NULL;
 }
@@ -198,6 +252,7 @@ JNIEXPORT jint JNICALL Java_fr_remy_usbaudio_UsbIso_start(JNIEnv *env, jclass cl
   g_lasterr = 0;
   g_outstanding = 0;
   g_werr = 0; g_lasthdr = 0; g_nout = 0;
+  g_over = g_stall = g_maxgap = g_written = 0; g_head = g_tail = 0;
   g_rate = rate > 0 ? rate : 48000;
   g_out = NULL; g_fbuf = NULL;
   const char *p = (*env)->GetStringUTFChars(env, path, NULL);
@@ -253,6 +308,11 @@ JNIEXPORT jint JNICALL Java_fr_remy_usbaudio_UsbIso_start(JNIEnv *env, jclass cl
     free(g_fbuf); g_fbuf = NULL;
     return first ? first : -EIO;
   }
+  if (g_out || g_nout) {
+    if (!g_ring) g_ring = (unsigned char *)malloc(RSZ);
+    g_wrun = 1;
+    if (g_ring) pthread_create(&g_wth, NULL, writer, NULL); else g_wrun = 0;
+  }
   g_alive = 1;
   pthread_create(&g_th, NULL, loop, NULL);
   __android_log_print(ANDROID_LOG_INFO, TAG, "départ : %d requêtes, %d voies, %d octets/éch., paquet %d", g_outstanding, nch, bps, maxp);
@@ -267,22 +327,23 @@ JNIEXPORT jlongArray JNICALL Java_fr_remy_usbaudio_UsbIso_stop(JNIEnv *env, jcla
     for (int i = 0; i < NURB; i++) if (g_urbs[i]) ioctl(g_fd, USBDEVFS_DISCARDURB, g_urbs[i]);
     pthread_join(g_th, NULL);
   }
+  if (g_wrun) { g_wrun = 0; pthread_join(g_wth, NULL); }
   if (g_out) { fflush(g_out); fclose(g_out); g_out = NULL; }
   closeouts();
   for (int i = 0; i < NURB; i++) if (g_urbs[i]) { free(g_urbs[i]->buffer); free(g_urbs[i]); g_urbs[i] = NULL; }
   free(g_fbuf); g_fbuf = NULL;
-  jlong v[9] = { g_frames, g_pkterr, g_urberr, g_zero, g_reaped, g_odd, g_submiterr, g_lasterr, g_werr };
-  jlongArray a = (*env)->NewLongArray(env, 9);
-  (*env)->SetLongArrayRegion(env, a, 0, 9, v);
+  jlong v[12] = { g_frames, g_pkterr, g_urberr, g_zero, g_reaped, g_odd, g_submiterr, g_lasterr, g_werr, g_over, g_stall, g_maxgap };
+  jlongArray a = (*env)->NewLongArray(env, 12);
+  (*env)->SetLongArrayRegion(env, a, 0, 12, v);
   return a;
 }
 
 /** Pendant l'enregistrement : [images, erreurs USB, paquets vides, erreurs d'écriture, en vie, dernière erreur]. */
 JNIEXPORT jlongArray JNICALL Java_fr_remy_usbaudio_UsbIso_stats(JNIEnv *env, jclass cls) {
   (void)cls;
-  jlong v[6] = { g_frames, g_pkterr + g_urberr + g_submiterr, g_zero, g_werr, g_alive, g_lasterr };
-  jlongArray a = (*env)->NewLongArray(env, 6);
-  (*env)->SetLongArrayRegion(env, a, 0, 6, v);
+  jlong v[8] = { g_frames, g_pkterr + g_urberr + g_submiterr, g_zero, g_werr, g_alive, g_lasterr, g_over + g_stall, g_maxgap };
+  jlongArray a = (*env)->NewLongArray(env, 8);
+  (*env)->SetLongArrayRegion(env, a, 0, 8, v);
   return a;
 }
 

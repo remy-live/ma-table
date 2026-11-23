@@ -41,6 +41,25 @@ export function RecBar({ theme, onOpen }: { theme: Theme; onOpen: () => void }) 
   );
 }
 
+/** Petite pastille rouge posée par-dessus les autres écrans pendant qu'on enregistre. */
+export function RecPill({ wide, onOpen }: { wide: boolean; onOpen: () => void }) {
+  const st = useRec();
+  if (!st.on) return null;
+  const warn = st.hot.length > 0 || st.writeErrors > 0;
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: wide ? 6 : 40, left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
+      <View style={{ flexDirection: 'row', borderRadius: 999, overflow: 'hidden', borderWidth: 1.5, borderColor: RED, backgroundColor: '#2A1010' }}>
+        <Pressable onPress={onOpen} accessibilityLabel="Enregistrement en cours : ouvrir" style={{ minHeight: 36, paddingHorizontal: 12, justifyContent: 'center' }}>
+          <Text style={{ color: warn ? '#FACC15' : '#FCA5A5', fontWeight: '900', fontSize: 13 }}>{warn ? '⚠' : '⏺'} {fmtTime(st.t)} · {currentSong()?.label ?? ''}</Text>
+        </Pressable>
+        <Pressable onPress={mark} accessibilityLabel="Morceau suivant" style={{ minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: RED }}>
+          <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>suivant ›</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function RecorderSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
   const st = useRec();
   const [tab, setTab] = useState<'rec' | 'list'>('rec');
@@ -77,6 +96,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
     setMsg('Démarrage… (accepte la fenêtre « Autoriser Ma table » si elle s’ouvre)');
     const err = await startRec(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade, false);
     setMsg(err);
+    if (!err) onClose(); // c'est parti : retour à la table, la pastille rouge prend le relais
   };
   const stop = () => Alert.alert('Arrêter l’enregistrement ?', 'Les fichiers sont gardés.', [
     { text: 'Continuer', style: 'cancel' },
@@ -162,6 +182,10 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
                   <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{currentSong()?.label} · depuis {fmtTime(st.t - (currentSong()?.t ?? 0))}</Text>
                   <Text style={{ color: theme.muted, fontSize: 12 }}>{st.meta?.name} · encore {hours >= 10 ? Math.round(hours) : hours.toFixed(1)} h de place{st.isPublic ? ' · Musique/Ma table' : ''}</Text>
                 </View>
+                <Pressable onPress={onClose} style={[styles.go, { borderWidth: 2, borderColor: theme.accent }]}>
+                  <Text style={{ color: theme.text, fontWeight: '900', fontSize: 17 }}>‹ Retourner à la table</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>l’enregistrement continue · une pastille rouge reste en haut de l’écran</Text>
+                </Pressable>
                 <Pressable onPress={mark} style={[styles.go, { backgroundColor: theme.accent }]}>
                   <Text style={{ color: theme.onAccent, fontWeight: '900', fontSize: 18 }}>Morceau suivant ›</Text>
                   <Text style={{ color: theme.onAccent, fontSize: 11 }}>pose un repère : pratique pour retrouver chaque morceau</Text>
@@ -298,6 +322,12 @@ function SessionDetail({ entry, theme, onBack }: { entry: SessEntry; theme: Them
       <Pressable onPress={onBack} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 15, fontWeight: '800' }}>‹ Mes enregistrements</Text></Pressable>
       <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>{entry.id}</Text>
       {!!meta?.reason && <Text style={{ color: '#FCA5A5', fontSize: 13 }}>Arrêté tout seul : {meta.reason}.</Text>}
+      {meta?.holes != null && (
+        <Text style={{ color: meta.holes ? '#FACC15' : theme.muted, fontSize: 12 }}>
+          {meta.holes ? `⚠ ${meta.holes} trou${meta.holes > 1 ? 's' : ''} pendant la prise (la tablette n’a pas suivi, jusqu’à ${meta.maxGapMs} ms) : il peut y avoir des clics.` : `Prise propre : aucun trou (attente la plus longue ${meta.maxGapMs} ms).`}
+          {meta.clips?.some((c) => c > 0) ? ' Des voies ont saturé à l’entrée : ça grésille sur ces pistes-là.' : ''}
+        </Text>
+      )}
       {!!msg && <Text style={{ color: '#FCD34D', fontSize: 13 }}>{msg}</Text>}
 
       {(files.some((f) => isMix(f.name)) || facadeFile) && (

@@ -361,7 +361,7 @@ class UsbAudioModule : Module() {
             sendEvent("onRec", mapOf(
               "t" to st[0].toDouble() / rate, "peaks" to UsbIso.window().map { db(it) },
               "clips" to (0 until nch).map { tot[2 * nch + it] },
-              "usbErrors" to st[1].toDouble(), "writeErrors" to st[3].toDouble(), "alive" to alive, "free" to dir.usableSpace.toDouble(),
+              "usbErrors" to st[1].toDouble(), "writeErrors" to st[3].toDouble(), "holes" to st[6].toDouble(), "alive" to alive, "free" to dir.usableSpace.toDouble(),
             ))
           }
           val asked = recStopFlag
@@ -375,6 +375,7 @@ class UsbAudioModule : Module() {
             "rmsDb" to (0 until nch).map { db(sqrt(tot[nch + it]).toFloat()) },
             "clips" to (0 until nch).map { tot[2 * nch + it] },
             "usbErrors" to (st[1] + st[2] + st[6]).toDouble(), "writeErrors" to st[8].toDouble(), "lastErrno" to st[7].toDouble(),
+            "holes" to (st[9] + st[10]).toDouble(), "maxGapMs" to st[11].toDouble(), "emptyPackets" to st[3].toDouble(),
             "files" to files, "reason" to (if (asked) "" else if (st[8] > 0) "plus de place ou écriture impossible" else "la table ne répond plus sur l’USB (câble ?)"),
           )
           try { android.media.MediaScannerConnection.scanFile(ctx(), files.toTypedArray(), null, null) } catch (e: Throwable) {}
