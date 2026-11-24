@@ -79,3 +79,35 @@ test('mix complet : « avant » enlève nettoyage et finition', () => {
   assert.ok(!raw.params.eq && raw.params.thr[0] === 0 && raw.params.hp[0] === 0);
   assert.equal(buildMix(tr, pk, emptyMix(), 1, 20).params.gains[0], 0);
 });
+
+import { tailorEq, smartGate, autoPans, loudFactor, compExtra, parseAnalysis, Analysis } from '../src/xair/listen';
+const flatAn = (over: Record<number, number> = {}): Analysis => ({ bands: Array.from({ length: 27 }, (_, b) => -30 - Math.abs(b - 12) * 1.2 + (over[b] ?? 0)), hist: Array(91).fill(0), rmsDb: -28, peakDb: -6, crestDb: 15, active: 0.8 });
+test('Étude : rabote une résonance et seulement elle, épargne la fondamentale de la basse', () => {
+  const eq = tailorEq('Autre', flatAn({ 9: 8 }));
+  assert.equal(eq.length, 1);
+  assert.equal(eq[0].f, 320);
+  assert.ok(eq[0].db < 0 && eq[0].db >= -6);
+  assert.equal(tailorEq('Autre', flatAn()).length, 0);
+  assert.ok(!tailorEq('Basse', flatAn({ 2: 9 })).some((b) => b.q === 3));
+});
+test('Étude : bas-médium en trop sur une voix (jamais plus de −4 dB), place pour la voix dans les guitares', () => {
+  const a = flatAn(); for (let b = 6; b <= 10; b++) a.bands[b] += 14;
+  const c = tailorEq('Voix', a).find((b) => b.f === 250);
+  assert.ok(c && c.db < 0 && c.db >= -4);
+  assert.ok(tailorEq('Guitare', flatAn(), true).some((b) => b.f === 3200 && b.db < 0));
+  assert.ok(tailorEq('Voix', flatAn()).every((b) => b.db >= -4 && b.db <= 3));
+});
+test('Anti-repisse intelligent : seuil entre frappes et repisse, rien si tout se mélange', () => {
+  const two = flatAn(); two.hist = two.hist.map((_, i) => Math.round(900 * Math.exp(-((i - 48) ** 2) / 30) + 300 * Math.exp(-((i - 74) ** 2) / 20)));
+  const g = smartGate(two);
+  assert.ok(g != null && g > -42 && g < -16, String(g));
+  const one = flatAn(); one.hist = one.hist.map((_, i) => Math.round(600 * Math.exp(-((i - 66) ** 2) / 40)));
+  assert.equal(smartGate(one), null);
+});
+test('Placement, volume final et compression suivent les mesures', () => {
+  assert.deepEqual(autoPans(['Voix', 'Guitare', 'Basse', 'Guitare', 'Tom', 'Tom', 'Tom']), [0, 0.35, 0, -0.35, -0.3, 0, 0.3]);
+  assert.ok(Math.abs(loudFactor(-23, 'std')! - 2) < 0.05);
+  assert.equal(loudFactor(null, 'std'), undefined);
+  assert.equal(compExtra('Voix', { ...flatAn(), crestDb: 22 }), 3);
+  assert.equal(parseAnalysis('pas du json'), null);
+});

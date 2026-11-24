@@ -93,6 +93,12 @@ class MixEngine(paths: List<String>) {
     val hp: FloatArray = FloatArray(0), val thr: FloatArray = FloatArray(0), val slope: FloatArray = FloatArray(0), val makeup: FloatArray = FloatArray(0), val gate: FloatArray = FloatArray(0),
     // finition : équilibre (creux à 300 Hz, air à 8 kHz), colle d'ensemble, limiteur
     val eq: Boolean = false, val glue: Boolean = false, val limit: Boolean = false,
+    // égalisation sur mesure de chaque piste : suites de (type 0 plateau grave / 1 cloche / 2 plateau aigu, Hz, dB, Q)
+    val teq: List<FloatArray> = emptyList(),
+    // réverbération : part de chaque piste envoyée
+    val rev: FloatArray = FloatArray(0),
+    // la voix devant : pistes « clé » (voix), pistes qui s'effacent un peu quand ça chante
+    val key: FloatArray = FloatArray(0), val duck: FloatArray = FloatArray(0), val duckThr: Float = 0f, val duckGain: Float = 1f,
   )
 
   /** Un filtre du second ordre (formules classiques « RBJ »). */
@@ -103,13 +109,58 @@ class MixEngine(paths: List<String>) {
     private fun set(nb0: Double, nb1: Double, nb2: Double, a0: Double, na1: Double, na2: Double) { b0 = (nb0 / a0).toFloat(); b1 = (nb1 / a0).toFloat(); b2 = (nb2 / a0).toFloat(); a1 = (na1 / a0).toFloat(); a2 = (na2 / a0).toFloat() }
     fun highPass(f: Double, rate: Int) { val w = 2 * Math.PI * f / rate; val c = cos(w); val al = sin(w) / 1.414; set((1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al) }
     fun peak(f: Double, db: Double, q: Double, rate: Int) { val a = Math.pow(10.0, db / 40); val w = 2 * Math.PI * f / rate; val c = cos(w); val al = sin(w) / (2 * q); set(1 + al * a, -2 * c, 1 - al * a, 1 + al / a, -2 * c, 1 - al / a) }
+    fun lowShelf(f: Double, db: Double, rate: Int) {
+      val a = Math.pow(10.0, db / 40); val w = 2 * Math.PI * f / rate; val c = cos(w); val al = sin(w) / 2 * 1.414; val r = 2 * sqrt(a) * al
+      set(a * ((a + 1) - (a - 1) * c + r), 2 * a * ((a - 1) - (a + 1) * c), a * ((a + 1) - (a - 1) * c - r), (a + 1) + (a - 1) * c + r, -2 * ((a - 1) + (a + 1) * c), (a + 1) + (a - 1) * c - r)
+    }
     fun highShelf(f: Double, db: Double, rate: Int) {
       val a = Math.pow(10.0, db / 40); val w = 2 * Math.PI * f / rate; val c = cos(w); val al = sin(w) / 2 * 1.414; val r = 2 * sqrt(a) * al
       set(a * ((a + 1) + (a - 1) * c + r), -2 * a * ((a - 1) + (a + 1) * c), a * ((a + 1) + (a - 1) * c - r), (a + 1) - (a - 1) * c + r, 2 * ((a - 1) - (a + 1) * c), (a + 1) - (a - 1) * c - r)
     }
   }
   /** Mémoire du traitement d'une piste. */
-  class Dyn { val hp = Biquad(); var hpF = -1f; var env = 0f; var g = 1f }
+  class Dyn {
+    val hp = Biquad(); var hpF = -1f; var env = 0f; var g = 1f
+    // égalisation sur mesure
+    val eq = Array(6) { Biquad() }; var eqN = 0; var eqSig: FloatArray? = null
+    // petit retard (5 ms) : le traitement « voit venir » les attaques et s'ouvre avant elles
+    val delay = FloatArray(LOOK); var di = 0
+    // anti-repisse : tenue après une frappe, puis fermeture douce
+    var gateG = 1f; var hold = 0
+  }
+
+  /** Une réverbération simple (peignes + passe-tout, façon Freeverb), ajoutée en stéréo. */
+  class Reverb(rate: Int) {
+    private val k = rate / 44100.0
+    private fun len(n: Int) = max(8, (n * k).toInt())
+    private val combL = intArrayOf(1116, 1188, 1277, 1356, 1422, 1491).map { FloatArray(len(it)) }
+    private val combR = intArrayOf(1139, 1211, 1300, 1379, 1445, 1514).map { FloatArray(len(it)) }
+    private val apL = intArrayOf(556, 441, 341).map { FloatArray(len(it)) }
+    private val apR = intArrayOf(579, 464, 364).map { FloatArray(len(it)) }
+    private val ci = IntArray(12); private val ai = IntArray(6); private val lp = FloatArray(12)
+    private val fb = 0.80f; private val damp = 0.35f
+    private fun side(x: Float, combs: List<FloatArray>, aps: List<FloatArray>, o: Int, ao: Int): Float {
+      var acc = 0f
+      for (c in combs.indices) {
+        val b = combs[c]; val i = ci[o + c]; val y = b[i]
+        lp[o + c] = y * (1f - damp) + lp[o + c] * damp
+        b[i] = x + lp[o + c] * fb
+        ci[o + c] = if (i + 1 >= b.size) 0 else i + 1
+        acc += y
+      }
+      var v = acc * 0.16f
+      for (a in aps.indices) {
+        val b = aps[a]; val i = ai[ao + a]; val y = b[i]
+        b[i] = v + y * 0.5f
+        ai[ao + a] = if (i + 1 >= b.size) 0 else i + 1
+        v = y - v * 0.5f
+      }
+      return if (abs(v) < 1e-20f) 0f else v
+    }
+    fun run(inp: FloatArray, n: Int, outL: FloatArray, outR: FloatArray) {
+      for (i in 0 until n) { val x = inp[i]; outL[i] += side(x, combL, apL, 0, 0); outR[i] += side(x, combR, apR, 6, 3) }
+    }
+  }
 
   val srcs = paths.map { Src(File(it)) }
   val rate: Int = srcs.firstOrNull()?.w?.rate ?: 48000
@@ -120,6 +171,10 @@ class MixEngine(paths: List<String>) {
   private val eqL = arrayOf(Biquad(), Biquad()); private val eqR = arrayOf(Biquad(), Biquad())
   private var eqReady = false
   private var glueEnv = 0f; private var glueG = 1f; private var limEnv = 0f
+  private val reverb = Reverb(rate)
+  private val revIn = FloatArray(BLOCK)
+  private var keyPeak = 0f; private var duckG = 1f
+  private val holdN = (0.14 * rate / 8).toInt()
   private val attC = Math.exp(-1.0 / (0.004 * rate)).toFloat()
   private val relC = Math.exp(-1.0 / (0.14 * rate)).toFloat()
   private var lastEnd = -1L
@@ -166,9 +221,14 @@ class MixEngine(paths: List<String>) {
     val jumped = pos != lastEnd
     java.util.Arrays.fill(outL, 0, limit, 0f); java.util.Arrays.fill(outR, 0, limit, 0f)
     val t = pos.toDouble() / rate
+    java.util.Arrays.fill(revIn, 0, limit, 0f)
+    // la voix devant : si ça chantait à l'instant, les pistes désignées s'effacent un peu
+    duckG += 0.25f * ((if (p.duckThr > 0f && keyPeak > p.duckThr) p.duckGain else 1f) - duckG)
+    var keyNext = 0f
     for (k in srcs.indices) {
       val base = if (k < p.gains.size) p.gains[k] else 1f
-      val g1 = base * regionGain(p, k, t) * p.master
+      val ducked = k < p.duck.size && p.duck[k] > 0f
+      val g1 = base * regionGain(p, k, t) * p.master * (if (ducked) duckG else 1f)
       val g0 = if (jumped || prev[k] < 0f) g1 else prev[k]
       prev[k] = g1
       if (g1 <= 0f && g0 <= 0f) continue
@@ -183,35 +243,61 @@ class MixEngine(paths: List<String>) {
         val pan = if (k < p.pans.size) p.pans[k].coerceIn(-1f, 1f) else 0f
         val l = cos((pan + 1) * Math.PI / 4).toFloat() * 1.4142f; val r = sin((pan + 1) * Math.PI / 4).toFloat() * 1.4142f
         var g = g0
-        // nettoyage de la piste : coupe-bas, puis compression et anti-repisse (gain recalculé toutes les 8 images)
+        // la piste : coupe-bas, égalisation sur mesure, puis compression et anti-repisse (gain recalculé toutes les 8 images)
         val d = dyn[k]
         val hpF = if (k < p.hp.size) p.hp[k] else 0f
         if (hpF != d.hpF) { d.hpF = hpF; if (hpF > 0f) d.hp.highPass(hpF.toDouble(), rate) }
+        val te = if (k < p.teq.size) p.teq[k] else null
+        if (te !== d.eqSig) {
+          d.eqSig = te
+          d.eqN = 0
+          if (te != null) {
+            var j = 0
+            while (j + 3 < te.size && d.eqN < d.eq.size) {
+              val b = d.eq[d.eqN]; val f = te[j + 1].toDouble().coerceIn(20.0, rate * 0.45); val db = te[j + 2].toDouble().coerceIn(-12.0, 9.0); val q = te[j + 3].toDouble().coerceIn(0.3, 8.0)
+              when (te[j].toInt()) { 0 -> b.lowShelf(f, db, rate); 2 -> b.highShelf(f, db, rate); else -> b.peak(f, db, q, rate) }
+              d.eqN++
+              j += 4
+            }
+          }
+        }
+        val eqN = d.eqN
         val thr = if (k < p.thr.size) p.thr[k] else 0f
         val slope = if (k < p.slope.size) p.slope[k] else 0f
         val mk = if (k < p.makeup.size && thr > 0f) p.makeup[k] else 1f
         val gt = if (k < p.gate.size) p.gate[k] else 0f
-        val dynOn = thr > 0f || gt > 0f
-        var env = d.env; var dg = d.g
+        val send = if (k < p.rev.size) p.rev[k] else 0f
+        val isKey = k < p.key.size && p.key[k] > 0f
+        var env = d.env; var dg = d.g; var gg = d.gateG; var hold = d.hold; var di = d.di
+        val dl = d.delay
         for (i in 0 until got) {
           var x = sample(s.buf, i * fb, bps)
+          if (isKey) { val a0 = abs(x); if (a0 > keyNext) keyNext = a0 }
           if (hpF > 0f) x = d.hp.run(x)
-          if (dynOn) {
-            val a = abs(x)
-            env = if (a > env) a + attC * (env - a) else a + relC * (env - a)
-            if (i and 7 == 0) {
-              var target = 1f
-              if (thr > 0f && env > thr) target = Math.pow((env / thr).toDouble(), slope.toDouble()).toFloat()
-              if (gt > 0f && env < gt) target *= max(0.2f, env / gt)
-              dg += 0.35f * (target - dg)
-            }
-            x *= dg * mk
+          for (e in 0 until eqN) x = d.eq[e].run(x)
+          val a = abs(x)
+          env = if (a > env) a + attC * (env - a) else a + relC * (env - a)
+          if (i and 7 == 0) {
+            val target = if (thr > 0f && env > thr) Math.pow((env / thr).toDouble(), slope.toDouble()).toFloat() else 1f
+            dg += 0.35f * (target - dg)
+            if (gt > 0f) {
+              // ouvert dès que ça frappe, tenu un instant, puis refermé doucement (jamais coupé net)
+              if (a > gt || env > gt) hold = holdN else if (hold > 0) hold--
+              gg += if (hold > 0) 0.3f * (1f - gg) else 0.0012f * (GATE_FLOOR - gg)
+            } else gg = 1f
           }
-          val v = x * g; outL[i] += v * l; outR[i] += v * r; g += step
+          // le son sort 5 ms plus tard que ce qui est mesuré : le gain est prêt avant l'attaque
+          val xd = dl[di]; dl[di] = x; di = if (di + 1 >= LOOK) 0 else di + 1
+          val v = xd * dg * mk * gg * g
+          outL[i] += v * l; outR[i] += v * r
+          if (send > 0f) revIn[i] += v * send
+          g += step
         }
-        d.env = env; d.g = dg
+        d.env = env; d.g = dg; d.gateG = gg; d.hold = hold; d.di = di
       }
     }
+    keyPeak = max(keyNext, keyPeak * 0.8f)
+    if (p.rev.isNotEmpty()) reverb.run(revIn, limit, outL, outR)
     // finition : équilibre, colle d'ensemble, limiteur
     if (p.eq) {
       if (!eqReady) { for (e in arrayOf(eqL, eqR)) { e[0].peak(300.0, -2.0, 0.9, rate); e[1].highShelf(8000.0, 2.0, rate) }; eqReady = true }
@@ -246,6 +332,8 @@ class MixEngine(paths: List<String>) {
 
   companion object {
     const val BLOCK = 1024
+    const val LOOK = 240          // 5 ms à 48 kHz
+    const val GATE_FLOOR = 0.14f  // l'anti-repisse baisse de 17 dB, il ne coupe pas
     fun soft(x: Float): Float { val a = abs(x); return if (a <= 0.8f) x else (if (x < 0) -1f else 1f) * (0.8f + 0.2f * tanh((a - 0.8f) / 0.2f)) }
     fun sample(raw: ByteArray, o: Int, bps: Int): Float = when (bps) {
       3 -> ((raw[o].toInt() and 0xFF) or ((raw[o + 1].toInt() and 0xFF) shl 8) or (raw[o + 2].toInt() shl 16)) / 8388608f
@@ -432,5 +520,123 @@ object Exporter {
     }
     progress(1.0)
     return mapOf("ok" to true, "path" to out.absolutePath, "seconds" to written.toDouble() / engine.rate)
+  }
+}
+
+
+/** Étudier une piste : son spectre (27 bandes de tiers d'octave), sa dynamique, et la répartition de ses niveaux. */
+object Analyzer {
+  const val N = 8192
+  const val BANDS = 27
+
+  private fun fft(re: FloatArray, im: FloatArray) {
+    val n = re.size
+    var j = 0
+    for (i in 1 until n) {
+      var bit = n shr 1
+      while (j and bit != 0) { j = j xor bit; bit = bit shr 1 }
+      j = j xor bit
+      if (i < j) { val tr = re[i]; re[i] = re[j]; re[j] = tr; val ti = im[i]; im[i] = im[j]; im[j] = ti }
+    }
+    var len = 2
+    while (len <= n) {
+      val ang = -2 * Math.PI / len
+      val wr = cos(ang).toFloat(); val wi = sin(ang).toFloat()
+      var i = 0
+      while (i < n) {
+        var cr = 1f; var cim = 0f
+        for (k in 0 until len / 2) {
+          val a = i + k; val b = a + len / 2
+          val xr = re[b] * cr - im[b] * cim; val xi = re[b] * cim + im[b] * cr
+          re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi
+          val ncr = cr * wr - cim * wi; cim = cr * wi + cim * wr; cr = ncr
+        }
+        i += len
+      }
+      len = len shl 1
+    }
+  }
+
+  /** Rend un petit texte JSON ; le résultat est gardé à côté des ondes pour ne pas refaire le calcul. */
+  fun get(ctx: Context, wav: File): String {
+    val side = File(Peaks.sidecar(ctx, wav).absolutePath.removeSuffix(".pk") + ".an.json")
+    if (side.exists() && side.lastModified() >= wav.lastModified() - 5000) return side.readText()
+    val w = Mixer.Wav(wav)
+    val rate = w.rate
+    val win = FloatArray(N) { (0.5 - 0.5 * cos(2 * Math.PI * it / (N - 1))).toFloat() }
+    val re = FloatArray(N); val im = FloatArray(N)
+    val raw = ByteArray(N * w.fb)
+    val bands = DoubleArray(BANDS)
+    val hist = IntArray(91)
+    var active = 0; var windows = 0; var sumRms = 0.0; var sumCrest = 0.0; var peak = 0f
+    val count = min(240L, max(1L, w.frames / N)).toInt()
+    val seg = max(1, rate / 100)
+    RandomAccessFile(wav, "r").use { raf ->
+      for (n in 0 until count) {
+        val pos = if (count <= 1) 0L else (w.frames - N) * n / (count - 1)
+        if (pos < 0) break
+        raf.seek(44 + pos * w.fb)
+        var got = 0
+        while (got < raw.size) { val r = raf.read(raw, got, raw.size - got); if (r < 0) break; got += r }
+        val nf = got / w.fb
+        if (nf < N) break
+        windows++
+        var ss = 0.0; var pk = 0f; var segMax = 0f
+        for (i in 0 until N) {
+          var x = MixEngine.sample(raw, i * w.fb, w.bps)
+          if (w.channels >= 2) x = (x + MixEngine.sample(raw, i * w.fb + w.bps, w.bps)) * 0.5f
+          val a = abs(x)
+          ss += x.toDouble() * x; if (a > pk) pk = a; if (a > segMax) segMax = a
+          if ((i + 1) % seg == 0) { val db = if (segMax <= 0f) -90.0 else 20 * Math.log10(segMax.toDouble()); hist[(db + 90).toInt().coerceIn(0, 90)]++; segMax = 0f }
+          re[i] = x * win[i]; im[i] = 0f
+        }
+        if (pk > peak) peak = pk
+        val rms = sqrt(ss / N)
+        if (rms < 0.001) continue // sous −60 dB : rien ne joue ici
+        active++
+        sumRms += rms * rms
+        sumCrest += 20 * Math.log10(pk / rms)
+        fft(re, im)
+        for (b in 0 until BANDS) {
+          val fc = 40.0 * Math.pow(2.0, b / 3.0)
+          val lo = max(1, (fc / 1.1225 * N / rate).toInt()); val hi = min(N / 2 - 1, (fc * 1.1225 * N / rate).toInt())
+          var e = 0.0
+          for (k in lo..max(lo, hi)) e += re[k].toDouble() * re[k] + im[k].toDouble() * im[k]
+          bands[b] += e
+        }
+      }
+    }
+    fun db10(x: Double) = if (x <= 0) -120.0 else 10 * Math.log10(x)
+    val sb = StringBuilder("{")
+    sb.append("\"bands\":[").append((0 until BANDS).joinToString(",") { String.format(java.util.Locale.US, "%.1f", db10(if (active > 0) bands[it] / active else 0.0)) }).append("],")
+    sb.append("\"hist\":[").append(hist.joinToString(",")).append("],")
+    sb.append(String.format(java.util.Locale.US, "\"rmsDb\":%.1f,\"peakDb\":%.1f,\"crestDb\":%.1f,\"active\":%.3f,\"rate\":%d}",
+      db10(if (active > 0) sumRms / active else 0.0), if (peak <= 0f) -120.0 else 20 * Math.log10(peak.toDouble()), if (active > 0) sumCrest / active else 0.0, if (windows > 0) active.toDouble() / windows else 0.0, rate))
+    val json = sb.toString()
+    try { side.writeText(json) } catch (e: Throwable) {}
+    return json
+  }
+
+  /** Le volume moyen du mix tel qu'il sortirait (sur des extraits répartis), pour caler le volume final. */
+  fun measure(engine: MixEngine): Map<String, Any?> {
+    val total = engine.total
+    val chunk = engine.rate * 3L
+    val n = min(14L, max(1L, total / chunk)).toInt()
+    var ss = 0.0; var cnt = 0L; var peak = 0f
+    for (c in 0 until n) {
+      var pos = if (n <= 1) 0L else (total - chunk) * c / (n - 1)
+      val end = pos + chunk
+      while (pos < end) {
+        val r = engine.render(pos, MixEngine.BLOCK, end)
+        val got = r[1].toInt()
+        if (got <= 0) break
+        var bs = 0.0
+        for (i in 0 until got) { val l = engine.outL[i]; val rr = engine.outR[i]; bs += (l.toDouble() * l + rr.toDouble() * rr) * 0.5; val a = max(abs(l), abs(rr)); if (a > peak) peak = a }
+        if (bs / got > 1e-5) { ss += bs; cnt += got } // on ne compte que quand ça joue
+        pos = r[0]
+      }
+    }
+    engine.close()
+    return mapOf("ok" to true, "rmsDb" to (if (cnt > 0) 10 * Math.log10(ss / cnt) else -120.0), "peakDb" to (if (peak > 0f) 20 * Math.log10(peak.toDouble()) else -120.0))
   }
 }

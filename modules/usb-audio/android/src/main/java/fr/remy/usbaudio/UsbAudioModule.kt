@@ -503,6 +503,24 @@ class UsbAudioModule : Module() {
       }.start()
     }
 
+    // Étudier une piste (spectre, dynamique, niveaux) : rend un petit JSON, gardé en mémoire sur la tablette.
+    AsyncFunction("analyze") { path: String, promise: Promise ->
+      Thread {
+        try { promise.resolve(mapOf("ok" to true, "json" to Analyzer.get(ctx(), File(path)))) }
+        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))) }
+      }.start()
+    }
+
+    // Le volume moyen du mix avec ces réglages (extraits répartis sur toute la durée).
+    AsyncFunction("mixMeasure") { o: Map<String, Any?>, promise: Promise ->
+      @Suppress("UNCHECKED_CAST")
+      val paths = (o["paths"] as? List<String>) ?: emptyList()
+      Thread {
+        try { val e = MixEngine(paths); e.params = mixParams(o); promise.resolve(Analyzer.measure(e)) }
+        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))) }
+      }.start()
+    }
+
     Function("playerOpen") { paths: List<String> ->
       try {
         player?.release(); player = null
@@ -611,7 +629,9 @@ class UsbAudioModule : Module() {
     val regs = ((o["regs"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Reg(dbl(it["a"]), dbl(it["b"]), dbl(it["g"], 1.0).toFloat(), dbl(it["k"], -1.0).toInt()) }
     val fades = ((o["fades"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Fade(dbl(it["a"]), dbl(it["b"]), it["rising"] == true) }
     fun fa(k: String) = ((o[k] as? List<Any?>) ?: emptyList()).map { dbl(it).toFloat() }.toFloatArray()
-    return MixEngine.Params(gains, pans, dbl(o["master"], 1.0).toFloat(), kept, regs, fades, fa("hp"), fa("thr"), fa("slope"), fa("makeup"), fa("gate"), o["eq"] == true, o["glue"] == true, o["limit"] == true)
+    return MixEngine.Params(gains, pans, dbl(o["master"], 1.0).toFloat(), kept, regs, fades, fa("hp"), fa("thr"), fa("slope"), fa("makeup"), fa("gate"), o["eq"] == true, o["glue"] == true, o["limit"] == true,
+      ((o["teq"] as? List<List<Any?>>) ?: emptyList()).map { row -> row.map { dbl(it).toFloat() }.toFloatArray() },
+      fa("rev"), fa("key"), fa("duck"), dbl(o["duckThr"]).toFloat(), dbl(o["duckGain"], 1.0).toFloat())
   }
 
   private fun num(o: Map<String, Any?>, k: String, d: Int): Int = (o[k] as? Number)?.toInt() ?: d

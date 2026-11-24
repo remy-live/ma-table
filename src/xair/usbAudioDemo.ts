@@ -79,6 +79,16 @@ export const demoUsb: ListenNative = {
     const k = files.findIndex((n) => path.endsWith(n));
     return { ok: true, data: peaksB64(k >= 0 && k < TR.length ? k : -1), bucket: 0.2, seconds: TOTAL, channels: k === TR.length ? 2 : 1 };
   },
+  // fausse étude : un spectre plausible selon le nom de la piste, avec une résonance
+  analyze: async (path) => {
+    const n = (path.split('/').pop() ?? '').toLowerCase();
+    const drum = /caisse|tom|kick|snare/.test(n), low = /basse|grosse/.test(n);
+    const bump = /voix/.test(n) ? 8 : /guit/.test(n) ? 9 : drum ? 7 : 12; // n° de bande qui résonne
+    const bands = Array.from({ length: 27 }, (_, b) => -30 - Math.abs(b - (low ? 3 : 12)) * (low ? 2.2 : 1.6) + (b === bump ? 7 : 0) + (/voix/.test(n) && b >= 6 && b <= 10 ? 4 : 0));
+    const hist = Array.from({ length: 91 }, (_, i) => (drum ? Math.round(900 * Math.exp(-((i - 48) ** 2) / 30) + 300 * Math.exp(-((i - 74) ** 2) / 20)) : Math.round(600 * Math.exp(-((i - 66) ** 2) / 90))));
+    return { ok: true, json: JSON.stringify({ bands, hist, rmsDb: -28, peakDb: -6, crestDb: drum ? 23 : 15, active: 0.8, rate: 48000 }) };
+  },
+  mixMeasure: async () => ({ ok: true, rmsDb: -21.5, peakDb: -3 }),
   playerOpen: () => ({ ok: true, rate: 48000, seconds: TOTAL }),
   playerSet: () => true,
   playerPlay: (on) => {

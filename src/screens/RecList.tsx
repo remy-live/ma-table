@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Theme } from '../ui/theme';
-import { Bar, bars, Blank, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, keptSegments, lin, mergePeaks } from '../xair/listen';
+import { Analysis, loudFactor, parseAnalysis, Bar, bars, Blank, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, keptSegments, lin, mergePeaks } from '../xair/listen';
 import { fmtTime, parseMeta, RecMeta } from '../xair/recorder';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
 import { Tick } from './RecPrep';
@@ -12,7 +12,7 @@ const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} Go` : `${Math.rou
 const isExport = (n: string) => n.startsWith('Mix') || n.startsWith('Extrait');
 export const MAGIC_FILE = 'Mix du concert.m4a';
 
-interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number; all: Uint8Array }
+interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number; all: Uint8Array; an: Record<string, Analysis | null>; rms?: number | null }
 const cache: Record<string, Loaded> = {};
 
 /** Les pistes d'un enregistrement et leurs ondes (gardées en mémoire pendant que l'écran reste ouvert). */
@@ -33,17 +33,19 @@ async function load(e: SessEntry): Promise<Loaded | null> {
   const all = (facade && peaks[facade.name]) || mergePeaks(tracks.map((x) => peaks[x.key]));
   let first = 0;
   for (let i = 0; i < all.length; i++) if (all[i] > 40) { first = Math.max(0, i * bucket - 1); break; }
-  const d: Loaded = { meta, tracks, facade, peaks, bucket, seconds, over: bars(all, bucket, 0, seconds || 1, 90, () => 1.5, [[0, seconds || 1]]), first, all };
+  const an: Record<string, Analysis | null> = {};
+  for (const x of tracks) { const r = await usbListen.analyze(x.path).catch(() => null); an[x.key] = r?.ok ? parseAnalysis(r.json) : null; }
+  const d: Loaded = { an, meta, tracks, facade, peaks, bucket, seconds, over: bars(all, bucket, 0, seconds || 1, 90, () => 1.5, [[0, seconds || 1]]), first, all };
   cache[e.id] = d;
   return d;
 }
 
 /** Les réglages du lecteur pour cet enregistrement : son mix gardé, sinon le mix magique par défaut. */
-function paramsFor(d: Loaded, facade: boolean) {
+function paramsFor(d: Loaded, facade: boolean, loud?: number) {
   const mix = { ...emptyMix(), ...(d.meta?.mix ?? {}) };
   const total = d.seconds || 1;
   if (facade && d.facade) return { paths: [d.facade.path], params: { ...engineParams({ gains: [1], pans: [0], master: lin(mix.master), edits: mix.edits.filter((x) => x.type !== 'gain' || x.k == null), total }), limit: true }, segs: keptSegments(mix.edits, total) };
-  return { paths: d.tracks.map((x) => x.path), params: buildMix(d.tracks, d.peaks, mix, null, total).params, segs: keptSegments(mix.edits, total) };
+  return { paths: d.tracks.map((x) => x.path), params: buildMix(d.tracks, d.peaks, mix, null, total, false, { an: d.an, loud: loud ?? loudFactor(d.rms, mix.loud ?? 'std') }).params, segs: keptSegments(mix.edits, total) };
 }
 
 const Wave = React.memo(function Wave({ data, played, color, dim }: { data: Bar[]; played: number; color: string; dim: string }) {
@@ -128,6 +130,8 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     setBusy(e.id); setProg(0);
     const d = await load(e);
     if (!d || !d.tracks.length) { setBusy(null); setMsg('Pas de piste séparée à mixer dans cet enregistrement.'); return; }
+    // le volume final : on mesure le mix une fois, puis on le cale
+    if (d.rms == null) { const flat = paramsFor(d, false, 1); const m = await usbListen.mixMeasure({ ...flat.params, paths: flat.paths }).catch(() => null); if (m?.ok && m.rmsDb != null) d.rms = m.rmsDb; }
     const p = paramsFor(d, false);
     const r = await usbListen.mixExport({ ...p.params, paths: p.paths, out: `${e.dir}/${MAGIC_FILE}`, m4a: true });
     setBusy(null);
@@ -135,7 +139,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     reload();
     const left = again ? [] : blanksOf(d);
     setOffer(left.length ? { id: e.id, blanks: left } : null);
-    setMsg(again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : niveaux, nettoyage de chaque piste, finition.');
+    setMsg(again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : chaque piste étudiée et égalisée, niveaux, finition.');
   };
   const rename = () => {
     if (!ren || !usbListen) return;

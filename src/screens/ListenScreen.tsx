@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Theme } from '../ui/theme';
 import { Tick } from './RecPrep';
-import { Bar, bars, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
+import { Analysis, Bar, bars, blankIsCut, buildMix, db, loudFactor, parseAnalysis, REV, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
 import { fmtTime, Marker, parseMeta, RecMeta } from '../xair/recorder';
 import { CH_PALETTE } from '../xair/smartName';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
@@ -106,6 +106,8 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState<{ a: number; b: number } | null>(null);
   const [peaks, setPeaks] = useState<Record<string, Uint8Array>>({});
+  const [an, setAn] = useState<Record<string, Analysis | null>>({}); // l'étude de chaque piste (spectre, dynamique)
+  const [rms, setRms] = useState<number | null>(null); // le volume moyen mesuré du mix
   const [bucket, setBucket] = useState(0.2);
   const [total, setTotal] = useState(meta0.seconds ?? 0);
   const [loading, setLoading] = useState('Préparation des ondes…');
@@ -144,7 +146,16 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
         const r = await usbListen?.peaks(all[i].path);
         if (r?.ok && r.data) { got[all[i].name] = decodeB64(r.data); if (r.bucket) setBucket(r.bucket); secs = Math.max(secs, r.seconds ?? 0); }
       }
+      // l'étude de chaque piste (gardée sur la tablette : rapide les fois suivantes)
+      const studied: Record<string, Analysis | null> = {};
+      for (let i = 0; i < tracks.length; i++) {
+        if (dead) return;
+        setLoading(`Étude des pistes (spectre, dynamique)… ${i + 1} / ${tracks.length}`);
+        const r = await usbListen?.analyze(tracks[i].file.path).catch(() => null);
+        studied[tracks[i].file.name] = r?.ok ? parseAnalysis(r.json) : null;
+      }
       if (dead) return;
+      setAn(studied);
       setPeaks(got);
       if (secs > 0) setTotal(secs);
       setLoading('');
@@ -154,7 +165,18 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
 
   // 2) niveaux : automatique + retouche à la main, puis le tout ramené pour ne pas taper
   const mt = useMemo(() => tracks.map((x) => ({ key: x.file.name, name: x.name, pan: x.pan })), [tracks]);
-  const built = useMemo(() => buildMix(mt, peaks, mix, solo, total || 1, raw), [mt, peaks, mix, solo, total, raw]);
+  const built = useMemo(() => buildMix(mt, peaks, mix, solo, total || 1, raw, { an, loud: loudFactor(rms, mix.loud ?? 'std') }), [mt, peaks, mix, solo, total, raw, an, rms]);
+  // le volume final se cale sur une mesure du mix (refaite, un instant après, quand un réglage change)
+  const flat = useMemo(() => JSON.stringify(buildMix(mt, peaks, mix, null, total || 1, false, { an, loud: 1 }).params), [mt, peaks, mix, total, an]);
+  useEffect(() => {
+    if (loading || !tracks.length || !usbListen) return;
+    let dead = false;
+    const h = setTimeout(async () => {
+      const r = await usbListen?.mixMeasure({ ...JSON.parse(flat), paths: tracks.map((x) => x.file.path) }).catch(() => null);
+      if (!dead && r?.ok && r.rmsDb != null) setRms(r.rmsDb);
+    }, 900);
+    return () => { dead = true; clearTimeout(h); };
+  }, [flat, loading, tracks]);
   const levels = built.levels;
   const norm = built.norm;
   const edits = useMemo(() => (onFacade ? mix.edits.filter((e) => e.type !== 'gain' || e.k == null) : mix.edits), [mix.edits, onFacade]);
@@ -505,11 +527,13 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
 
       {/* RÉGLAGES D'UNE PISTE : instrument reconnu, nettoyage, gauche-droite */}
       {edit != null && tracks[edit] && (() => {
-        const x = tracks[edit], L = levels[edit], key = x.file.name, R = ROLES[L.role];
+        const x = tracks[edit], L = levels[edit], key = x.file.name, R = ROLES[L.role], A = an[key];
         const fx: [FxKind, string, string, boolean][] = [
           ['hp', 'Coupe-bas', `enlève le grondement sous ${R.hp} Hz`, true],
-          ['comp', 'Compression', `resserre les écarts : les crêtes baissent d’environ ${Math.round(procForShow(L.role, mix.force ?? 1))} dB`, true],
-          ['gate', 'Anti-repisse', 'baisse la piste entre les frappes : moins des autres instruments', R.gate],
+          ['comp', 'Compression', `resserre les écarts : les crêtes baissent d’environ ${Math.round(L.proc.redDb || procForShow(L.role, mix.force ?? 1))} dB${A ? ` · écart mesuré crêtes / moyenne : ${Math.round(A.crestDb)} dB` : ''}`, true],
+          ['gate', 'Anti-repisse', !A ? 'baisse la piste entre les frappes : moins des autres instruments' : L.proc.gate > 0 ? `s’ouvre juste avant chaque frappe, se referme en douceur · seuil trouvé à ${Math.round(db(L.proc.gate))} dB, entre les frappes et la repisse` : 'frappes et repisse trop proches sur cette piste : laissé ouvert pour ne rien hacher', R.gate],
+          ['eq', 'Égalisation sur mesure', !A ? 'piste pas encore étudiée' : L.eq.length ? L.eq.map((b) => b.why).join(' · ') : mix.off?.[`${key}:eq`] ? 'retirée' : 'rien à corriger : le spectre est équilibré', true],
+          ['rev', 'Un peu de salle', 'une réverbération légère, pour que ça ne sonne pas « sec »', (REV[L.role] ?? 0) > 0 && mix.rev !== false],
         ];
         return (
           <Pressable onPress={() => setEdit(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
@@ -585,7 +609,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
             </View>
             <Text style={styles.kick}>FINITION (COMME UN MASTERING)</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {([['eq', 'Équilibre graves / aigus'], ['glue', 'Colle d’ensemble']] as const).map(([id, l]) => {
+              {([['eq', 'Équilibre graves / aigus'], ['glue', 'Colle d’ensemble'], ['rev', 'Un peu de salle'], ['front', 'Voix devant'], ['wide', 'Gauche-droite automatique']] as const).map(([id, l]) => {
                 const on = mix[id] !== false;
                 return <Pressable key={id} onPress={() => setMix((m) => ({ ...m, [id]: !on }))} accessibilityState={{ checked: on }} style={[styles.act, { borderWidth: 1.5, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}><Text style={{ color: on ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>{on ? '✓ ' : ''}{l}</Text></Pressable>;
               })}

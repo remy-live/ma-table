@@ -46,7 +46,7 @@ export function guessRole(name: string): Role {
   return 'Autre';
 }
 
-export type FxKind = 'hp' | 'comp' | 'gate';
+export type FxKind = 'hp' | 'comp' | 'gate' | 'eq' | 'rev';
 export interface MixState {
   trims: Record<string, number>; mute: Record<string, boolean>; master: number; edits: Edit[];
   /** rôle corrigé à la main, par piste */
@@ -59,15 +59,25 @@ export interface MixState {
   force?: number;
   /** finition : équilibre, colle ; volume final */
   eq?: boolean; glue?: boolean; loud?: 'nat' | 'std' | 'fort';
+  /** un peu de salle (réverbération), la voix devant, le placement gauche-droite automatique */
+  rev?: boolean; front?: boolean; wide?: boolean;
 }
-export const emptyMix = (): MixState => ({ trims: {}, mute: {}, master: 0, edits: [], roles: {}, off: {}, pans: {}, force: 1, eq: true, glue: true, loud: 'std' });
+export const emptyMix = (): MixState => ({ trims: {}, mute: {}, master: 0, edits: [], roles: {}, off: {}, pans: {}, force: 1, eq: true, glue: true, loud: 'std', rev: true, front: true, wide: true });
 
 export interface Proc { hp: number; thr: number; slope: number; makeup: number; gate: number; redDb: number }
 /** Le nettoyage d'une piste, calculé d'après son niveau « quand ça joue ». */
-export function procFor(role: Role, level: number | null, force: number, off: (k: FxKind) => boolean): Proc {
+export function procFor(role: Role, level: number | null, force: number, off: (k: FxKind) => boolean, an?: Analysis | null): Proc {
   const R = ROLES[role];
   if (level == null) return { hp: 0, thr: 0, slope: 0, makeup: 1, gate: 0, redDb: 0 };
-  const depth = [5, 8, 11][Math.max(0, Math.min(2, force))];
+  const f = Math.max(0, Math.min(2, force));
+  // une piste très « nerveuse » (grands écarts entre crêtes et moyenne) est tenue plus fort, une piste déjà régulière moins
+  const depth = [5, 8, 11][f] + (an ? compExtra(role, an) : 0);
+  if (an && R.gate && !off('gate')) {
+    const g = smartGate(an);
+    const comp = !off('comp');
+    const redDb = comp ? depth * (1 - 1 / R.ratio) : 0;
+    return { hp: off('hp') ? 0 : R.hp, thr: comp ? lin(level - depth) : 0, slope: 1 / R.ratio - 1, makeup: lin(redDb * 0.6), gate: g == null ? 0 : lin(g + [-3, 0, 3][f]), redDb };
+  }
   const comp = !off('comp');
   const redDb = comp ? depth * (1 - 1 / R.ratio) : 0; // ce que la compression enlève sur une crête typique
   return {
@@ -79,28 +89,44 @@ export function procFor(role: Role, level: number | null, force: number, off: (k
 }
 
 export interface MixTrack { key: string; name: string; pan: number }
-export interface Level { role: Role; auto: number | null; trim: number; silenced: boolean; shown: number; proc: Proc; pan: number }
+export interface Level { role: Role; auto: number | null; trim: number; silenced: boolean; shown: number; proc: Proc; pan: number; eq: EqBand[]; rev: number }
 /**
  * Tout le mix d'un coup : pour chaque piste son rôle, son niveau et son nettoyage, puis la finition.
  * `raw` = écouter « avant » : niveaux automatiques seulement, sans nettoyage ni finition.
  */
-export function buildMix(tracks: MixTrack[], peaks: Record<string, Uint8Array>, mix: MixState, solo: number | null, total: number, raw = false) {
+export function buildMix(tracks: MixTrack[], peaks: Record<string, Uint8Array>, mix: MixState, solo: number | null, total: number, raw = false, extra: { an?: Record<string, Analysis | null | undefined>; loud?: number } = {}) {
   const force = mix.force ?? 1;
+  const roles = tracks.map((x) => mix.roles?.[x.key] ?? guessRole(x.name));
+  const hasVoice = roles.some((r, k) => r === 'Voix' && !mix.mute[tracks[k].key]);
+  const auto = mix.wide !== false && !raw ? autoPans(roles) : null;
   const levels: Level[] = tracks.map((x, k) => {
-    const role = mix.roles?.[x.key] ?? guessRole(x.name);
+    const role = roles[k];
+    const an = raw ? null : extra.an?.[x.key] ?? null;
+    const off = (f: FxKind) => !!mix.off?.[`${x.key}:${f}`];
     const level = activeLevel(peaks[x.key] ?? new Uint8Array(0));
-    const auto = autoGainDb(level);
+    const autoDb = autoGainDb(level);
     const trim = mix.trims[x.key] ?? ROLES[role].trim;
     const silenced = !!mix.mute[x.key] || (solo != null && solo !== k);
-    const proc = raw ? procFor(role, null, force, () => true) : procFor(role, level, force, (f) => !!mix.off?.[`${x.key}:${f}`]);
-    return { role, auto, trim, silenced, shown: auto == null ? 0 : lin(auto + trim), proc, pan: mix.pans?.[x.key] ?? x.pan };
+    const proc = raw ? procFor(role, null, force, () => true) : procFor(role, level, force, off, an);
+    const eq = an && !off('eq') && level != null ? tailorEq(role, an, hasVoice && role !== 'Voix') : [];
+    const rev = raw || mix.rev === false || off('rev') ? 0 : REV[role] ?? 0;
+    return { role, auto: autoDb, trim, silenced, shown: autoDb == null ? 0 : lin(autoDb + trim), proc, pan: mix.pans?.[x.key] ?? (auto && x.pan === 0 ? auto[k] : x.pan), eq, rev };
   });
   const norm = mixScale(tracks.map((x, i) => ({ peaks: peaks[x.key] ?? null, gain: mix.mute[x.key] ? 0 : levels[i].shown })));
-  const loud = raw ? 1 : { nat: 1, std: 1.5, fort: 2.2 }[mix.loud ?? 'std'];
+  const loud = raw ? 1 : extra.loud ?? { nat: 1, std: 1.5, fort: 2.2 }[mix.loud ?? 'std'];
+  // la voix devant : quand ça chante, guitares et claviers s'effacent de 2 dB
+  const front = !raw && mix.front !== false && hasVoice;
+  const voiceLevels = tracks.map((x, k) => (roles[k] === 'Voix' && !levels[k].silenced ? activeLevel(peaks[x.key] ?? new Uint8Array(0)) : null)).filter((v): v is number => v != null);
+  const duckOn = front && voiceLevels.length > 0;
   const params = {
     ...engineParams({ gains: levels.map((l) => (l.silenced ? 0 : l.shown)), pans: levels.map((l) => l.pan), master: lin(mix.master) * norm * loud, edits: mix.edits, total }),
     hp: levels.map((l) => l.proc.hp), thr: levels.map((l) => l.proc.thr), slope: levels.map((l) => l.proc.slope), makeup: levels.map((l) => l.proc.makeup), gate: levels.map((l) => l.proc.gate),
     eq: !raw && mix.eq !== false, glue: !raw && mix.glue !== false, limit: true,
+    teq: levels.map((l) => l.eq.flatMap((b) => [b.type, b.f, b.db, b.q])),
+    rev: levels.some((l) => l.rev > 0) ? levels.map((l) => l.rev) : [],
+    key: duckOn ? levels.map((l) => (l.role === 'Voix' && !l.silenced ? 1 : 0)) : [],
+    duck: duckOn ? levels.map((l) => (l.role === 'Guitare' || l.role === 'Ampli' || l.role === 'Clavier' ? 1 : 0)) : [],
+    duckThr: duckOn ? lin(Math.max(...voiceLevels) - 14) : 0, duckGain: lin(-2),
   };
   return { levels, norm, params };
 }
@@ -245,4 +271,151 @@ export function engineParams(o: { gains: number[]; pans: number[]; master: numbe
     regs: o.edits.filter((e): e is Extract<Edit, { type: 'gain' }> => e.type === 'gain').map((e) => ({ a: e.a, b: e.b, g: lin(e.db), k: e.k == null ? -1 : e.k })),
     fades: o.edits.filter((e) => e.type === 'fadeIn' || e.type === 'fadeOut').map((e) => ({ a: e.a, b: e.b, rising: e.type === 'fadeIn' })),
   };
+}
+
+
+// ───────── Étudier une piste : spectre, dynamique, niveaux ─────────
+
+/** Ce que la tablette mesure sur une piste : 27 bandes de tiers d'octave (40 Hz → 16 kHz, en dB), la répartition des niveaux (un compte par dB, de −90 à 0), etc. */
+export interface Analysis { bands: number[]; hist: number[]; rmsDb: number; peakDb: number; crestDb: number; active: number }
+export const bandHz = (b: number) => 40 * Math.pow(2, b / 3);
+export function parseAnalysis(json: string | undefined | null): Analysis | null {
+  try {
+    const o = JSON.parse(json || '') as Analysis;
+    return Array.isArray(o.bands) && o.bands.length >= 27 && Array.isArray(o.hist) && o.active > 0 ? o : null;
+  } catch { return null; }
+}
+
+/** Une correction : type 0 = plateau dans le grave, 1 = cloche, 2 = plateau dans l'aigu. */
+export interface EqBand { type: 0 | 1 | 2; f: number; db: number; q: number; why: string }
+
+const ZONES = { grave: [0, 5], corps: [6, 10], medium: [11, 17], presence: [18, 21], air: [22, 26] } as const;
+type Zone = keyof typeof ZONES;
+const zoneDb = (a: Analysis, z: Zone) => { const [i, j] = ZONES[z]; let s = 0; for (let b = i; b <= j; b++) s += a.bands[b]; return s / (j - i + 1); };
+/** Ce qu'on attend d'un instrument, zone par zone, par rapport à son médium (dB). Des repères larges : on ne corrige que les vrais écarts. */
+const SHAPE: Partial<Record<Role, Partial<Record<Zone, number>>>> = {
+  'Voix': { corps: 2, presence: -6, air: -13 },
+  'Chœurs': { corps: 2, presence: -6, air: -13 },
+  'Guitare': { corps: 2, presence: -5, air: -14 },
+  'Ampli': { corps: 3, presence: -5, air: -16 },
+  'Basse': { grave: 8, corps: 3, presence: -10 },
+  'Grosse caisse': { grave: 10, corps: 2, presence: -8 },
+  'Caisse claire': { corps: 3, presence: -3, air: -8 },
+  'Tom': { grave: 3, corps: 4, presence: -6 },
+  'Cymbales': { corps: -6, presence: 0, air: -2 },
+  'Batterie entière': { grave: 4, corps: 2, presence: -3, air: -6 },
+  'Clavier': { grave: 2, corps: 2, presence: -6, air: -13 },
+};
+const ZFIX: Record<Exclude<Zone, 'medium'>, { type: 0 | 1 | 2; f: number; q: number; name: string }> = {
+  grave: { type: 0, f: 100, q: 0.7, name: 'grave' },
+  corps: { type: 1, f: 250, q: 0.9, name: 'bas-médium' },
+  presence: { type: 1, f: 3200, q: 0.9, name: 'présence' },
+  air: { type: 2, f: 8000, q: 0.7, name: 'aigu' },
+};
+const hzText = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 0 : 1).replace('.', ',')} kHz` : `${Math.round(f)} Hz`);
+const dbText = (d: number) => `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1).replace('.', ',')} dB`;
+
+/**
+ * L'égalisation sur mesure d'une piste, d'après son spectre :
+ * 1. les résonances (une bande qui dépasse nettement ses voisines) sont rabotées par une coupe étroite ;
+ * 2. l'équilibre grave / bas-médium / présence / aigu est ramené vers ce qu'on attend de l'instrument, en douceur (−4 à +3 dB) ;
+ * 3. s'il y a une voix, guitares et claviers lui laissent un peu de place autour de 3 kHz.
+ */
+export function tailorEq(role: Role, a: Analysis, carve = false): EqBand[] {
+  const out: EqBand[] = [];
+  const lowKeep = role === 'Basse' || role === 'Grosse caisse' ? 4 : 0; // leur fondamentale EST une bosse : on n'y touche pas
+  const lo = Math.max(lowKeep, Math.ceil(3 * Math.log2(Math.max(40, ROLES[role].hp) / 40)) + 1);
+  const res: { b: number; x: number }[] = [];
+  for (let b = Math.max(2, lo); b <= 23; b++) {
+    const around = (a.bands[b - 2] + a.bands[b - 1] + a.bands[b + 1] + a.bands[b + 2]) / 4;
+    const x = a.bands[b] - Math.max(around, (a.bands[b - 1] + a.bands[b + 1]) / 2);
+    if (x >= 5 && a.bands[b] >= a.bands[b - 1] && a.bands[b] >= a.bands[b + 1]) res.push({ b, x });
+  }
+  res.sort((p, q) => q.x - p.x);
+  for (const r of res.slice(0, 2)) {
+    const cut = -Math.min(6, Math.round((r.x - 2.5) * 0.7 * 2) / 2);
+    out.push({ type: 1, f: Math.round(bandHz(r.b)), db: cut, q: 3, why: `résonance à ${hzText(bandHz(r.b))} : ${dbText(cut)}` });
+  }
+  const shape = SHAPE[role];
+  const mid = zoneDb(a, 'medium');
+  let presence = 0;
+  if (shape) {
+    for (const z of ['grave', 'corps', 'presence', 'air'] as const) {
+      const want = shape[z];
+      if (want == null) continue;
+      const dev = zoneDb(a, z) - mid - want;
+      if (Math.abs(dev) <= 2) continue;
+      const fix = Math.max(-4, Math.min(z === 'air' ? 2 : 3, -(dev - Math.sign(dev) * 2) * 0.6));
+      const v = Math.round(fix * 2) / 2;
+      if (!v) continue;
+      if (z === 'presence') { presence = v; continue; }
+      const F = ZFIX[z];
+      out.push({ type: F.type, f: F.f, db: v, q: F.q, why: `${v < 0 ? `trop ${F.name === 'aigu' ? 'd’' : 'de '}` : `manque ${F.name === 'aigu' ? 'd’' : 'de '}`}${F.name} : ${dbText(v)}` });
+    }
+  }
+  if (carve && (role === 'Guitare' || role === 'Ampli' || role === 'Clavier')) {
+    const v = Math.max(-5, presence - 1.5);
+    out.push({ type: 1, f: 3200, db: v, q: 0.9, why: `place pour la voix vers 3 kHz : ${dbText(v)}` });
+  } else if (presence) {
+    out.push({ type: 1, f: 3200, db: presence, q: 0.9, why: `${presence < 0 ? 'trop de' : 'manque de'} présence : ${dbText(presence)}` });
+  }
+  return out.slice(0, 6);
+}
+
+/** Compression : plus forte si la piste a de grands écarts, plus légère si elle est déjà régulière (dB en plus ou en moins). */
+export function compExtra(role: Role, a: Analysis): number {
+  const usual = ROLES[role].gate || role === 'Batterie entière' || role === 'Cymbales' ? 20 : role === 'Basse' ? 11 : 14;
+  return Math.max(-3, Math.min(3, Math.round((a.crestDb - usual) * 0.4)));
+}
+
+/**
+ * L'anti-repisse intelligent : on regarde comment se répartissent les niveaux de la piste. Sur un fût, il y a deux
+ * paquets — les frappes (fort) et ce que le micro attrape des autres (moins fort). Le seuil se place entre les deux.
+ * Si les deux paquets ne se séparent pas nettement, on ne ferme rien : rend null.
+ */
+export function smartGate(a: Analysis): number | null {
+  const top = Math.min(90, Math.round(a.peakDb + 90));
+  const lo = Math.max(0, top - 50);
+  let n = 0, sum = 0;
+  for (let i = lo; i <= top; i++) { n += a.hist[i] || 0; sum += i * (a.hist[i] || 0); }
+  if (n < 50) return null;
+  let best = -1, bestV = 0, w0 = 0, s0 = 0, m0b = 0, m1b = 0, w0b = 0;
+  for (let t = lo; t < top; t++) {
+    w0 += a.hist[t] || 0; s0 += t * (a.hist[t] || 0);
+    const w1 = n - w0;
+    if (!w0 || !w1) continue;
+    const m0 = s0 / w0, m1 = (sum - s0) / w1;
+    const v = w0 * w1 * (m1 - m0) * (m1 - m0);
+    if (v > bestV) { bestV = v; best = t; m0b = m0; m1b = m1; w0b = w0 / n; }
+  }
+  if (best < 0 || m1b - m0b < 10 || w0b < 0.05 || w0b > 0.97) return null;
+  // un peu au-dessus de la repisse, bien en dessous des frappes
+  return Math.min(best + 0.5, m0b + (m1b - m0b) * 0.55) - 90;
+}
+
+/** Un peu de salle : part de chaque piste envoyée dans la réverbération. */
+export const REV: Partial<Record<Role, number>> = { 'Voix': 0.16, 'Chœurs': 0.2, 'Caisse claire': 0.14, 'Tom': 0.08, 'Guitare': 0.07, 'Clavier': 0.06, 'Batterie entière': 0.04 };
+
+/** Placement gauche-droite : voix, basse, grosse caisse et caisse claire au centre ; le reste s'écarte, en alternant les côtés. */
+export function autoPans(roles: Role[]): number[] {
+  const width: Partial<Record<Role, number>> = { 'Guitare': 0.35, 'Ampli': 0.35, 'Clavier': 0.3, 'Chœurs': 0.25, 'Tom': 0.3, 'Cymbales': 0.45 };
+  let side = -1;
+  const count: Partial<Record<Role, number>> = {};
+  for (const r of roles) count[r] = (count[r] ?? 0) + 1;
+  const seen: Partial<Record<Role, number>> = {};
+  return roles.map((r) => {
+    const w = width[r];
+    if (!w) return 0;
+    const i = (seen[r] = (seen[r] ?? 0) + 1) - 1;
+    if (r === 'Tom' || r === 'Cymbales') { const n = count[r] ?? 1; return n === 1 ? 0 : Math.round((-w + (2 * w * i) / (n - 1)) * 100) / 100; }
+    side = -side;
+    return side * w;
+  });
+}
+
+/** Volume final : le facteur qui amène le mix mesuré (dB moyens) au niveau voulu. */
+export const LOUD_TARGET = { nat: -20, std: -17, fort: -14 } as const;
+export function loudFactor(measuredDb: number | null | undefined, want: 'nat' | 'std' | 'fort'): number | undefined {
+  if (measuredDb == null || measuredDb < -70) return undefined;
+  return Math.max(0.4, Math.min(5, lin(LOUD_TARGET[want] - measuredDb)));
 }
