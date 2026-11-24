@@ -21,7 +21,7 @@ import { load } from '../store/persist';
 import { Theme } from '../ui/theme';
 import { MonConfig } from '../xair/monitor';
 import { InviteSheet } from './InviteSheet';
-import { ChecklistSheet, ClipHistoryCard, JournalSheet, RescueButton } from './ConcertExtras';
+import { ChecklistSheet, ClipHistoryCard, JournalSheet, RescueButton, SpeakButton } from './ConcertExtras';
 import { InputSheet } from './InputSheet';
 import { HoldButton } from '../ui/HoldButton';
 import { useLevels } from '../xair/useMeter';
@@ -201,6 +201,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
             <Text style={[styles.kicker, { color: '#FCA5A5' }]}>EN CAS DE PROBLÈME</Text>
             <RescueButton client={client} theme={theme} />
+            <SpeakButton client={client} theme={theme} locked={locked} />
             {locked && lrOn ? (
               <HoldButton label="⏸ Pause : couper le son du public (façade)" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 46 }} />
             ) : (
@@ -282,6 +283,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
             <Step n="!" title="En cas de problème" theme={theme} color="#EF4444" />
             <RescueButton client={client} theme={theme} />
+            <SpeakButton client={client} theme={theme} locked={locked} />
             {locked && lrOn ? <HoldButton label="⏸ Pause : couper le son du public (façade)" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 60 }} /> : (
             <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
               <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 15 }}>{lrOn ? '⏸ Pause : couper le son du public (façade)' : '▶ Remettre le son'}</Text>

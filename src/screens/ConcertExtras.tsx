@@ -4,16 +4,18 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { journal } from '../store/journal';
-import { load } from '../store/persist';
+import { load, save } from '../store/persist';
 import { listSessions } from '../store/sessions';
 import { Theme } from '../ui/theme';
 import { busDyn } from '../xair/monitor';
 import { readWifiClient } from '../xair/network';
 import { clearClipHistory, clipHistory, onClipHistory } from '../xair/clip';
 import { chColor } from '../xair/smartName';
-import { chNamePath } from '../xair/addresses';
+import { CH_COUNT, chNamePath } from '../xair/addresses';
 import { Check, checklist, rescue, RescueState, unrescue } from '../xair/rescue';
 import { XAirClient } from '../xair/XAirClient';
+import { isSpeaking, onSpeak, speakKept, speakOff, speakOn } from '../xair/speakMode';
+import { guessRole } from '../xair/listen';
 
 export function RescueButton({ client, theme }: { client: XAirClient; theme: Theme }) {
   const [st, setSt] = useState<RescueState | null>(null);
@@ -151,5 +153,60 @@ export function ClipHistoryCard({ client, theme, onOpen }: { client: XAirClient;
       ))}
       {list.length > 0 && <Text style={{ color: theme.muted, fontSize: 11 }}>Baisse la force du micro (gain) de 2 à 3 dB entre deux morceaux, puis remonte son volume (fader) si besoin.</Text>}
     </View>
+  );
+}
+
+
+/** « Parler au public » : tout se coupe sauf le ou les micros choisis ; un appui rouvre tout comme avant. */
+export function SpeakButton({ client, theme, locked }: { client: XAirClient; theme: Theme; locked?: boolean }) {
+  const [, setN] = React.useState(0);
+  const [open, setOpen] = React.useState(false);
+  const [keep, setKeep] = React.useState<number[]>([]);
+  React.useEffect(() => onSpeak(() => setN((n) => n + 1)), []);
+  const on = isSpeaking();
+  const named = Array.from({ length: CH_COUNT }, (_, k) => k + 1).map((c) => ({ c, name: String(client.get(chNamePath(c)) ?? '').trim() })).filter((x) => x.name);
+  const ask = async () => {
+    const last = await load<number[] | null>('speakKeep', null).catch(() => null);
+    const voices = named.filter((x) => guessRole(x.name) === 'Voix').map((x) => x.c);
+    const start = (last ?? []).filter((c) => named.some((x) => x.c === c));
+    setKeep(start.length ? start : voices.slice(0, 1));
+    setOpen(true);
+  };
+  const names = speakKept().map((c) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`).join(', ');
+  return (
+    <>
+      <Pressable
+        onPress={() => (on ? speakOff(client) : ask())}
+        disabled={locked && !on}
+        accessibilityLabel={on ? 'Tout rouvrir : la musique reprend' : 'Parler au public : tout couper sauf un micro'}
+        style={{ minHeight: 56, borderRadius: 14, borderWidth: 2, borderColor: on ? '#FBBF24' : theme.line2, backgroundColor: on ? '#FBBF24' : theme.panel, paddingHorizontal: 12, paddingVertical: 6, justifyContent: 'center' }}
+      >
+        <Text numberOfLines={1} style={{ color: on ? '#1A1204' : theme.text, fontSize: 15, fontWeight: '900' }}>{on ? '🎤 Tout rouvrir' : '🎤 Parler au public'}</Text>
+        <Text numberOfLines={1} style={{ color: on ? '#1A1204' : theme.muted, fontSize: 11, fontWeight: '600' }}>{on ? `seul ${names} est ouvert · touche pour reprendre la musique` : 'tout se coupe sauf un micro'}</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <Pressable onPress={() => {}} style={{ width: 460, maxWidth: '100%', maxHeight: '90%', borderRadius: 18, borderWidth: 1, borderColor: theme.line2, backgroundColor: theme.panel, padding: 16, gap: 10 }}>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>🎤 Parler au public</Text>
+            <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>Quel micro reste ouvert ? Toutes les autres voies se coupent. Un appui sur « Tout rouvrir » remet tout comme avant.</Text>
+            <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {named.map((x) => {
+                const k = keep.includes(x.c);
+                return (
+                  <Pressable key={x.c} onPress={() => setKeep(k ? keep.filter((c) => c !== x.c) : [...keep, x.c])} accessibilityState={{ checked: k }} style={{ width: '48.5%', minHeight: 48, borderRadius: 12, borderWidth: 2, borderColor: k ? theme.accent : theme.line, backgroundColor: k ? theme.deep : 'transparent', paddingHorizontal: 10, justifyContent: 'center' }}>
+                    <Text numberOfLines={1} style={{ color: k ? theme.text : theme.muted, fontSize: 15, fontWeight: k ? '800' : '500' }}>{k ? '✓ ' : ''}{x.name}</Text>
+                  </Pressable>
+                );
+              })}
+              {!named.length && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme d’abord tes voies (Table › la voie › son nom).</Text>}
+            </ScrollView>
+            <Pressable disabled={!keep.length} onPress={() => { save('speakKeep', keep).catch(() => {}); speakOn(client, keep); setOpen(false); }} style={{ minHeight: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBBF24', opacity: keep.length ? 1 : 0.4 }}>
+              <Text style={{ color: '#1A1204', fontSize: 16, fontWeight: '900' }}>Couper tout le reste</Text>
+            </Pressable>
+            <Pressable onPress={() => setOpen(false)} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>Annuler</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
