@@ -4,6 +4,7 @@
 // Rien n'est modifié dans les fichiers : on garde une liste de retouches.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import * as Sharing from 'expo-sharing';
 import { Theme } from '../ui/theme';
 import { Tick } from './RecPrep';
 import { Analysis, Bar, bars, blankIsCut, buildMix, db, loudFactor, parseAnalysis, REV, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
@@ -260,15 +261,33 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
 
   const exported = files.filter((f) => isExport(f.name));
   const refresh = () => setFiles(usbListen?.sessList().find((e) => e.id === entry.id)?.files ?? files);
-  const doExport = async (scope: Scope, m4a: boolean) => {
+  // envoyer l'enregistrement lui-même (les pistes, les repères, le mix) à quelqu'un qui a l'appli
+  const packRange = (scope: Scope): [number, number] => (scope === 'song' && markers.length > 1 ? [markers[g]?.t ?? 0, songEnd(g)] : [0, T]);
+  const packSize = (scope: Scope) => { const [a, b] = packRange(scope); return tracks.reduce((n, x) => n + x.file.size, 0) * ((b - a) / T) * 0.9; };
+  const doPack = async (scope: Scope) => {
+    if (!usbListen) return;
+    const [a, b] = packRange(scope);
+    const whole = a <= 0.01 && b >= T - 0.01;
+    const label = whole ? entry.id : `${entry.id} - ${markers[g]?.label ?? 'morceau'}`;
+    // un extrait : les repères et les coupes ne correspondent plus, on garde seulement les réglages des pistes
+    const notes: RecMeta = whole ? { ...meta0, mix } : { ...meta0, name: label, seconds: b - a, markers: [{ t: 0, label: markers[g]?.label ?? 'Morceau' }], clips: undefined, mix: { ...mix, edits: [] } };
+    usbListen.playerPlay(false);
+    setProg(0);
+    const r = await usbListen.sessPack({ paths: tracks.map((x) => x.file.path), notes: JSON.stringify({ ...notes, facade: false, tracks: meta0.tracks.filter((x) => !x.stereo) }), name: label, from: whole ? 0 : a, to: whole ? 0 : b });
+    setProg(null);
+    if (!r.ok || !r.path) { say(`Envoi impossible : ${r.error ?? ''}`); return; }
+    setSharing(null);
+    try { await Sharing.shareAsync(`file://${r.path}`, { mimeType: 'application/zip', dialogTitle: 'Envoyer l’enregistrement' }); } catch { say('Partage impossible sur cet appareil.'); }
+  };
+  const doExport = async (scope: Scope, fmt: 'mp3' | 'm4a' | 'wav') => {
     if (!usbListen) return;
     const lab = scope === 'sel' && sel ? `Extrait ${fmtTime(sel.a).replace(':', 'm')}-${fmtTime(sel.b).replace(':', 'm')}` : scope === 'song' ? `Mix ${markers[g]?.label ?? 'morceau'}` : 'Mix du concert';
-    const out = `${entry.dir}/${lab}${onFacade ? ' (façade)' : ''}.${m4a ? 'm4a' : 'wav'}`;
+    const out = `${entry.dir}/${lab}${onFacade ? ' (façade)' : ''}.${fmt}`;
     const from = scope === 'sel' && sel ? sel.a : scope === 'song' ? va : 0;
     const to = scope === 'sel' && sel ? sel.b : scope === 'song' ? vb : 0;
     usbListen.playerPlay(false);
     setProg(0);
-    const r = await usbListen.mixExport({ ...params, paths, out, m4a, from, to });
+    const r = await usbListen.mixExport({ ...params, paths, out, from, to });
     setProg(null);
     if (!r.ok || !r.path) { say(`Export impossible : ${r.error ?? ''}`); return; }
     refresh();
@@ -675,12 +694,18 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
             )}
             {prog == null ? (
               <>
-                {([[true, 'Fichier léger (M4A)', 'parfait pour WhatsApp ou un mail'], [false, 'Qualité maximale (WAV)', 'gros fichier · pour retravailler sur un ordinateur']] as const).map(([m4a, l, sub]) => (
-                  <Pressable key={l} onPress={() => doExport(sharing, m4a)} style={[styles.fmt, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                {([['mp3', 'MP3', 'se lit partout · parfait pour WhatsApp ou un mail'], ['m4a', 'Fichier léger (M4A)', 'un peu plus fin que le MP3, à taille égale'], ['wav', 'Qualité maximale (WAV)', 'gros fichier · pour retravailler sur un ordinateur']] as const).map(([fmt, l, sub]) => (
+                  <Pressable key={l} onPress={() => doExport(sharing, fmt)} style={[styles.fmt, { borderColor: theme.line2, backgroundColor: theme.deep }]}>
                     <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{l}</Text>
                     <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
                   </Pressable>
                 ))}
+                {!onFacade && sharing !== 'sel' && (
+                  <Pressable onPress={() => doPack(sharing)} style={[styles.fmt, { borderColor: theme.accent, backgroundColor: theme.deep }]}>
+                    <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>📦 Les pistes séparées, pour quelqu’un qui a Ma table</Text>
+                    <Text style={{ color: theme.muted, fontSize: 11 }}>{tracks.length} pistes + tes repères et ton mix · environ {gb(packSize(sharing))} · il l’ouvre avec « 📥 Reçu… »</Text>
+                  </Pressable>
+                )}
                 {exported.length > 0 && <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 4 }}>DÉJÀ FAITS</Text>}
                 <ScrollView style={{ maxHeight: 150 }}>
                   {exported.map((f) => (

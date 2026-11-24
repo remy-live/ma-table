@@ -69,7 +69,7 @@ export const demoUsb: ListenNative = {
     return null;
   },
   recFree: () => ({ free: 96e9, public: true }),
-  sessList: (): SessEntry[] => [ID, ...OTHERS].map((id, n) => ({ id, dir: '/demo/' + id, public: true, modified: Date.now() - n * 3600e3, meta: n ? meta.replace(ID, id) : meta, files: [...files, ...(extra['/demo/' + id] ?? [])].map((name) => ({ name, path: `/demo/${id}/${name}`, size: name.endsWith('.m4a') ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) })),
+  sessList: (): SessEntry[] => [ID, ...OTHERS].map((id, n) => ({ id, dir: '/demo/' + id, public: true, modified: Date.now() - n * 3600e3, meta: n ? meta.replace(ID, id) : meta, files: [...files, ...(extra['/demo/' + id] ?? [])].map((name) => ({ name, path: `/demo/${id}/${name}`, size: /\.(m4a|mp3)$/.test(name) ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) })),
   metaSave: (id, json) => { if (id === ID) meta = json; return true; },
   sessDelete: () => false,
   sessRename: (id, name) => { const k = OTHERS.indexOf(id); if (k < 0 || !name.trim()) return ''; OTHERS[k] = name.trim(); return OTHERS[k]; },
@@ -89,6 +89,13 @@ export const demoUsb: ListenNative = {
     return { ok: true, json: JSON.stringify({ bands, hist, rmsDb: -28, peakDb: -6, crestDb: drum ? 23 : 15, active: 0.8, rate: 48000 }) };
   },
   mixMeasure: async () => ({ ok: true, rmsDb: -21.5, peakDb: -3 }),
+  mixAlbum: (o) => new Promise((resolve) => {
+    let p = 0;
+    const t = setInterval(() => { p += 0.08; fire('onMix', { p: Math.min(1, p) }); if (p >= 1) { clearInterval(t); resolve({ ok: true, path: o.full ?? o.songs[0]?.out ?? '', seconds: 600 }); } }, 120);
+  }),
+  albumDir: (name) => `/demo/Maquettes/${name}`,
+  sessPack: async (o) => ({ ok: true, path: `/demo/${o.name}.matable.zip`, size: 280e6 }),
+  sessImport: async () => ({ ok: false, error: 'pas dans la démonstration' }),
   playerOpen: () => ({ ok: true, rate: 48000, seconds: TOTAL }),
   playerSet: () => true,
   playerPlay: (on) => {

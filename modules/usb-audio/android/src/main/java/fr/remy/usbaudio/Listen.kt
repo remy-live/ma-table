@@ -406,7 +406,7 @@ class LivePlayer(private val engine: MixEngine, private val onTick: (Double, Boo
 }
 
 /** Écrit un fichier .m4a (AAC), bien plus léger qu'un WAV. */
-class AacWriter(out: File, private val rate: Int) {
+class AacWriter(out: File, private val rate: Int) : Sink {
   private val codec = MediaCodec.createEncoderByType("audio/mp4a-latm")
   private val muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
   private val info = MediaCodec.BufferInfo()
@@ -423,7 +423,7 @@ class AacWriter(out: File, private val rate: Int) {
     codec.start()
   }
 
-  fun write(pcm: ByteArray, len: Int) {
+  override fun write(pcm: ByteArray, len: Int) {
     var off = 0
     var spins = 0
     while (off < len) {
@@ -458,7 +458,7 @@ class AacWriter(out: File, private val rate: Int) {
     }
   }
 
-  fun finish() {
+  override fun finish() {
     var spins = 0
     while (spins++ < 500) {
       val i = codec.dequeueInputBuffer(10000)
@@ -469,7 +469,7 @@ class AacWriter(out: File, private val rate: Int) {
     abort()
   }
 
-  fun abort() {
+  override fun abort() {
     try { codec.stop() } catch (e: Throwable) {}
     try { codec.release() } catch (e: Throwable) {}
     try { if (started) muxer.stop() } catch (e: Throwable) {}
@@ -477,49 +477,188 @@ class AacWriter(out: File, private val rate: Int) {
   }
 }
 
+/** Là où part le son fini : 16 bits stéréo entrelacé. */
+interface Sink { fun write(pcm: ByteArray, len: Int); fun finish(); fun abort() }
+
+class WavSink(out: File, private val rate: Int) : Sink {
+  private val raf = RandomAccessFile(out, "rw").apply { setLength(0); write(ByteArray(44)) }
+  private var bytes = 0L
+  override fun write(pcm: ByteArray, len: Int) { raf.write(pcm, 0, len); bytes += len }
+  override fun finish() {
+    val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+    h.put("RIFF".toByteArray()); h.putInt((36 + bytes).toInt()); h.put("WAVEfmt ".toByteArray())
+    h.putInt(16); h.putShort(1); h.putShort(2); h.putInt(rate); h.putInt(rate * 4); h.putShort(4); h.putShort(16)
+    h.put("data".toByteArray()); h.putInt(bytes.toInt())
+    raf.seek(0); raf.write(h.array()); raf.close()
+  }
+  override fun abort() { try { raf.close() } catch (e: Throwable) {} }
+}
+
+/** Vrai MP3 (192 kbit/s), par l'encodeur embarqué. */
+object Mp3 {
+  init { System.loadLibrary("usbiso") }
+  @JvmStatic external fun open(path: String, rate: Int, kbps: Int): Long
+  @JvmStatic external fun write(h: Long, pcm: ByteArray, len: Int)
+  @JvmStatic external fun close(h: Long): Int
+}
+class Mp3Sink(out: File, rate: Int) : Sink {
+  private var h = Mp3.open(out.absolutePath, rate, 192)
+  init { if (h == 0L) throw IllegalStateException("MP3 impossible à cette cadence ($rate Hz)") }
+  override fun write(pcm: ByteArray, len: Int) { Mp3.write(h, pcm, len) }
+  override fun finish() { val r = Mp3.close(h); h = 0L; if (r != 0) throw IllegalStateException("écriture du MP3 impossible (plus de place ?)") }
+  override fun abort() { if (h != 0L) { try { Mp3.close(h) } catch (e: Throwable) {}; h = 0L } }
+}
+
 object Exporter {
   @Volatile var cancel = false
 
-  /** Le mix (avec toutes les retouches) de `from` à `to` secondes → fichier WAV 16 bits ou M4A. */
-  fun run(engine: MixEngine, out: File, m4a: Boolean, fromSec: Double, toSec: Double, progress: (Double) -> Unit): Map<String, Any?> {
+  /** Le format suit le nom du fichier : .mp3, .m4a, sinon WAV. */
+  fun sink(out: File, rate: Int): Sink = when {
+    out.name.endsWith(".mp3") -> Mp3Sink(out, rate)
+    out.name.endsWith(".m4a") -> AacWriter(out, rate)
+    else -> WavSink(out, rate)
+  }
+
+  /** Le mix (avec toutes les retouches) de `from` à `to` secondes → un fichier. */
+  fun run(engine: MixEngine, out: File, fromSec: Double, toSec: Double, progress: (Double) -> Unit): Map<String, Any?> {
+    val r = album(listOf(Song({ engine }, out, fromSec, toSec)), null, 0.0, progress)
+    return mapOf("ok" to true, "path" to out.absolutePath, "seconds" to r)
+  }
+
+  class Song(val make: () -> MixEngine, val out: File?, val from: Double, val to: Double)
+
+  /** Plusieurs morceaux à la suite : un fichier par morceau (si demandé) et/ou un seul fichier avec tout, séparés par un silence. Rend la durée totale. */
+  fun album(songs: List<Song>, full: File?, gapSec: Double, progress: (Double) -> Unit): Double {
     cancel = false
-    val from = max(0L, (fromSec * engine.rate).toLong())
-    val to = if (toSec > 0) min(engine.total, (toSec * engine.rate).toLong()) else engine.total
-    if (to <= from) throw IllegalStateException("rien à exporter")
     val pcm = ByteArray(MixEngine.BLOCK * 4)
-    var pos = from
-    var written = 0L
-    var aac: AacWriter? = null
-    var raf: RandomAccessFile? = null
+    var all: Sink? = null
+    var one: Sink? = null
+    var engine: MixEngine? = null
+    var total = 0L
+    var rate = 48000
+    val made = ArrayList<File>()
     try {
-      if (m4a) aac = AacWriter(out, engine.rate) else { raf = RandomAccessFile(out, "rw"); raf.setLength(0); raf.write(ByteArray(44)) }
-      while (!cancel) {
-        val r = engine.render(pos, MixEngine.BLOCK, to)
-        val n = r[1].toInt()
-        if (n <= 0) break
-        MixEngine.toPcm(engine.outL, engine.outR, n, pcm)
-        if (aac != null) aac.write(pcm, n * 4) else raf?.write(pcm, 0, n * 4)
-        written += n
-        pos = r[0]
-        if ((written / MixEngine.BLOCK) % 40 == 0L) progress((pos - from).toDouble() / (to - from))
+      for ((n, song) in songs.withIndex()) {
+        val e = song.make(); engine = e
+        if (n == 0) { rate = e.rate; if (full != null) { made.add(full); all = sink(full, rate) } }
+        else if (e.rate != rate) throw IllegalStateException("les morceaux n’ont pas tous la même cadence")
+        val from = max(0L, (song.from * e.rate).toLong())
+        val to = if (song.to > 0) min(e.total, (song.to * e.rate).toLong()) else e.total
+        if (to <= from) throw IllegalStateException("rien à exporter")
+        if (song.out != null) { made.add(song.out); one = sink(song.out, rate) }
+        var pos = from
+        var written = 0L
+        while (!cancel) {
+          val r = e.render(pos, MixEngine.BLOCK, to)
+          val got = r[1].toInt()
+          if (got <= 0) break
+          MixEngine.toPcm(e.outL, e.outR, got, pcm)
+          one?.write(pcm, got * 4)
+          all?.write(pcm, got * 4)
+          written += got
+          pos = r[0]
+          if ((written / MixEngine.BLOCK) % 40 == 0L) progress((n + (pos - from).toDouble() / (to - from)) / songs.size)
+        }
+        if (cancel) throw IllegalStateException("annulé")
+        if (written == 0L) throw IllegalStateException("rien à exporter (tout est coupé ?)")
+        total += written
+        one?.finish(); one = null
+        e.close(); engine = null
+        if (all != null && n < songs.size - 1 && gapSec > 0) {
+          java.util.Arrays.fill(pcm, 0)
+          var left = (gapSec * rate).toLong()
+          while (left > 0) { val k = min(left, MixEngine.BLOCK.toLong()).toInt(); all.write(pcm, k * 4); left -= k }
+        }
       }
-      if (cancel) throw IllegalStateException("annulé")
-      if (written == 0L) throw IllegalStateException("rien à exporter (tout est coupé ?)")
-      if (aac != null) { aac.finish(); aac = null } else raf?.let {
-        val bytes = written * 4
-        val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-        h.put("RIFF".toByteArray()); h.putInt((36 + bytes).toInt()); h.put("WAVEfmt ".toByteArray())
-        h.putInt(16); h.putShort(1); h.putShort(2); h.putInt(engine.rate); h.putInt(engine.rate * 4); h.putShort(4); h.putShort(16)
-        h.put("data".toByteArray()); h.putInt(bytes.toInt())
-        it.seek(0); it.write(h.array())
-      }
+      all?.finish(); all = null
+    } catch (t: Throwable) {
+      one?.abort(); all?.abort()
+      for (f in made) try { f.delete() } catch (e2: Throwable) {}
+      throw t
     } finally {
-      aac?.abort()
-      try { raf?.close() } catch (e: Throwable) {}
-      engine.close()
+      engine?.close()
     }
     progress(1.0)
-    return mapOf("ok" to true, "path" to out.absolutePath, "seconds" to written.toDouble() / engine.rate)
+    return total.toDouble() / rate
+  }
+}
+
+/** Un enregistrement complet (pistes séparées + notes) dans un seul fichier, pour quelqu'un qui a l'appli. */
+object Pack {
+  @Volatile var cancel = false
+
+  fun make(files: List<File>, notes: String, fromSec: Double, toSec: Double, out: File, progress: (Double) -> Unit) {
+    cancel = false
+    out.parentFile?.mkdirs()
+    val buf = ByteArray(1 shl 16)
+    var done = 0L
+    val sizes = files.map { f -> val w = Mixer.Wav(f); val a = max(0L, (fromSec * w.rate).toLong()); val b = if (toSec > 0) min(w.frames, (toSec * w.rate).toLong()) else w.frames; Triple(w, a, max(a, b)) }
+    val total = max(1L, sizes.sumOf { (it.third - it.second) * it.first.fb })
+    try {
+      java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(java.io.FileOutputStream(out), 1 shl 16)).use { z ->
+        z.setLevel(1)
+        z.putNextEntry(java.util.zip.ZipEntry("notes.json")); z.write(notes.toByteArray()); z.closeEntry()
+        for ((i, f) in files.withIndex()) {
+          val (w, a, b) = sizes[i]
+          val bytes = (b - a) * w.fb
+          z.putNextEntry(java.util.zip.ZipEntry(f.name))
+          val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+          h.put("RIFF".toByteArray()); h.putInt((36 + bytes).toInt()); h.put("WAVEfmt ".toByteArray())
+          h.putInt(16); h.putShort(1); h.putShort(w.channels.toShort()); h.putInt(w.rate); h.putInt(w.rate * w.fb); h.putShort(w.fb.toShort()); h.putShort((w.bps * 8).toShort())
+          h.put("data".toByteArray()); h.putInt(bytes.toInt())
+          z.write(h.array())
+          RandomAccessFile(f, "r").use { raf ->
+            raf.seek(44 + a * w.fb)
+            var left = bytes
+            while (left > 0) {
+              if (cancel) throw IllegalStateException("annulé")
+              val r = raf.read(buf, 0, min(left, buf.size.toLong()).toInt())
+              if (r <= 0) break
+              z.write(buf, 0, r); left -= r; done += r
+              progress(done.toDouble() / total)
+            }
+          }
+          z.closeEntry()
+        }
+      }
+    } catch (t: Throwable) { try { out.delete() } catch (e: Throwable) {}; throw t }
+  }
+
+  /** Ouvrir un tel fichier : les pistes vont dans un nouveau dossier d'enregistrement. Rend son nom. */
+  fun open(ctx: Context, zip: File, name: String, progress: (Double) -> Unit): String {
+    cancel = false
+    var n = RecFiles.clean(name)
+    var k = 2
+    while (RecFiles.find(ctx, n) != null) n = RecFiles.clean(name).take(54) + " ($k)".also { k++ }
+    val dir = RecFiles.sessionDir(ctx, n).first
+    val buf = ByteArray(1 shl 16)
+    val total = max(1L, zip.length())
+    var done = 0L
+    var wavs = 0
+    var notes = ""
+    try {
+      java.util.zip.ZipInputStream(BufferedInputStream(FileInputStream(zip), 1 shl 16)).use { z ->
+        while (true) {
+          val e = z.nextEntry ?: break
+          val nm = File(e.name).name // jamais de chemin : seulement le nom
+          if (nm == "notes.json") notes = z.readBytes().toString(Charsets.UTF_8)
+          else if (nm.endsWith(".wav") && !e.isDirectory) {
+            java.io.FileOutputStream(File(dir, nm)).use { o ->
+              while (true) {
+                if (cancel) throw IllegalStateException("annulé")
+                val r = z.read(buf); if (r <= 0) break
+                o.write(buf, 0, r); done += r
+                progress(min(1.0, done.toDouble() / total))
+              }
+            }
+            wavs++
+          }
+        }
+      }
+      if (wavs == 0) throw IllegalStateException("ce fichier ne contient pas d’enregistrement Ma table")
+      if (notes.isNotEmpty()) File(RecFiles.metaDir(ctx), dir.name + ".json").writeText(notes)
+    } catch (t: Throwable) { try { dir.deleteRecursively() } catch (e: Throwable) {}; throw t }
+    return dir.name
   }
 }
 
@@ -618,14 +757,15 @@ object Analyzer {
   }
 
   /** Le volume moyen du mix tel qu'il sortirait (sur des extraits répartis), pour caler le volume final. */
-  fun measure(engine: MixEngine): Map<String, Any?> {
-    val total = engine.total
+  fun measure(engine: MixEngine, fromSec: Double = 0.0, toSec: Double = 0.0): Map<String, Any?> {
+    val start = max(0L, (fromSec * engine.rate).toLong())
+    val total = (if (toSec > 0) min(engine.total, (toSec * engine.rate).toLong()) else engine.total) - start
     val chunk = engine.rate * 3L
     val n = min(14L, max(1L, total / chunk)).toInt()
     var ss = 0.0; var cnt = 0L; var peak = 0f
     for (c in 0 until n) {
-      var pos = if (n <= 1) 0L else (total - chunk) * c / (n - 1)
-      val end = pos + chunk
+      var pos = start + (if (n <= 1) 0L else (total - chunk) * c / (n - 1))
+      val end = min(pos + chunk, start + total)
       while (pos < end) {
         val r = engine.render(pos, MixEngine.BLOCK, end)
         val got = r[1].toInt()

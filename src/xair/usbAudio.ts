@@ -32,13 +32,19 @@ export type Native = {
   mixCancel(): void;
   peaks(path: string): Promise<{ ok: boolean; error?: string; data?: string; bucket?: number; seconds?: number; channels?: number }>;
   analyze(path: string): Promise<{ ok: boolean; error?: string; json?: string }>;
-  mixMeasure(o: EngineParams & { paths: string[] }): Promise<{ ok: boolean; error?: string; rmsDb?: number; peakDb?: number }>;
+  mixMeasure(o: EngineParams & { paths: string[]; from?: number; to?: number }): Promise<{ ok: boolean; error?: string; rmsDb?: number; peakDb?: number }>;
   playerOpen(paths: string[]): { ok: boolean; error?: string; rate?: number; seconds?: number };
   playerSet(o: EngineParams): boolean;
   playerPlay(on: boolean): boolean;
   playerSeek(sec: number): boolean;
   playerClose(): boolean;
-  mixExport(o: EngineParams & { paths: string[]; out: string; m4a: boolean; from?: number; to?: number }): Promise<MixResult>;
+  mixExport(o: EngineParams & { paths: string[]; out: string; from?: number; to?: number }): Promise<MixResult>;
+  /** plusieurs morceaux à la suite : un fichier par morceau (out) et/ou un seul fichier (full) */
+  mixAlbum(o: { songs: (EngineParams & { paths: string[]; out?: string; from: number; to: number })[]; full?: string; gap?: number }): Promise<MixResult>;
+  albumDir(name: string): string;
+  /** tout un enregistrement (pistes + notes) dans un seul fichier à envoyer */
+  sessPack(o: { paths: string[]; notes: string; name: string; from?: number; to?: number }): Promise<{ ok: boolean; error?: string; path?: string; size?: number }>;
+  sessImport(path: string, name: string): Promise<{ ok: boolean; error?: string; id?: string }>;
   playAt(path: string, ms: number): boolean;
   share(path: string): Promise<boolean>;
   info(): { model: string; maker: string; android: string; sdk: number; outRate: string; dir: string };
@@ -61,7 +67,7 @@ export type Native = {
 export const usbAudio: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('UsbAudio') : null;
 
 /** Ce dont l'enregistreur et l'écran d'écoute ont besoin. Sur le web (démo) : un faux concert, pour essayer l'écran. */
-export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'sessRename' | 'fileDelete' | 'share' | 'peaks' | 'analyze' | 'mixMeasure' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixCancel' | 'addListener'>;
+export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'sessRename' | 'fileDelete' | 'share' | 'peaks' | 'analyze' | 'mixMeasure' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixAlbum' | 'albumDir' | 'sessPack' | 'sessImport' | 'mixCancel' | 'addListener'>;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const usbListen: ListenNative | null = usbAudio ?? (Platform.OS === 'web' ? (require('./usbAudioDemo') as { demoUsb: ListenNative }).demoUsb : null);
 

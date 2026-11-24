@@ -111,3 +111,29 @@ test('Placement, volume final et compression suivent les mesures', () => {
   assert.equal(compExtra('Voix', { ...flatAn(), crestDb: 22 }), 3);
   assert.equal(parseAnalysis('pas du json'), null);
 });
+
+import { songsOf, songEdits, fileSafe } from '../src/xair/listen';
+import { rtaToBands, spectrumEq } from '../src/xair/autoBalance';
+test('Maquette : les morceaux, resserrés sur ce qui joue', () => {
+  const all = new Uint8Array(500); // 100 s, un seau = 0,2 s
+  for (let i = 50; i < 200; i++) all[i] = 120;   // 10 → 40 s
+  for (let i = 300; i < 450; i++) all[i] = 120;  // 60 → 90 s
+  const s = songsOf([{ t: 0, label: 'A' }, { t: 50, label: 'B' }], 100, all, 0.2);
+  assert.equal(s.length, 2);
+  assert.ok(Math.abs(s[0].a - 9.5) < 0.01 && Math.abs(s[0].b - 42.5) < 0.01, JSON.stringify(s[0]));
+  assert.ok(Math.abs(s[1].a - 59.5) < 0.01 && Math.abs(s[1].b - 92.5) < 0.01, JSON.stringify(s[1]));
+  assert.deepEqual(songsOf([], 30).map((x) => x.label), ['Tout']);
+  assert.equal(songEdits([], s[0]).length, 2);
+  assert.equal(fileSafe('  Ça / va : bien ?  '), 'Ça va bien');
+});
+test('Balance : spectre de la table → 27 bandes → égalisation (4 bandes au plus)', () => {
+  const sum = new Float64Array(100).fill(10); // plat
+  const hz = (i: number) => 20 * Math.pow(1000, i / 99);
+  for (let i = 0; i < 100; i++) if (hz(i) > 290 && hz(i) < 350) sum[i] = 10 * 8; // +9 dB autour de 320 Hz
+  const bands = rtaToBands(sum, 10);
+  assert.equal(bands.length, 27);
+  assert.ok(bands[9] - bands[7] > 5);
+  const eq = spectrumEq('Truc', sum, 10);
+  assert.ok(eq.length >= 1 && eq.length <= 4 && eq.some((b) => b.f === 320 && b.db < 0), JSON.stringify(eq));
+  assert.deepEqual(spectrumEq('Truc', sum, 3), []);
+});

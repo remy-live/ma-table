@@ -419,3 +419,30 @@ export function loudFactor(measuredDb: number | null | undefined, want: 'nat' | 
   if (measuredDb == null || measuredDb < -70) return undefined;
   return Math.max(0.4, Math.min(5, lin(LOUD_TARGET[want] - measuredDb)));
 }
+
+
+// ───────── Maquette : les morceaux d'un enregistrement ─────────
+
+export interface SongSpan { label: string; a: number; b: number }
+/** Les morceaux d'un enregistrement (d'un repère au suivant), resserrés sur ce qui joue vraiment : pas de blanc avant ni après. */
+export function songsOf(markers: { t: number; label: string }[], total: number, all?: Uint8Array | null, bucket = 0.2): SongSpan[] {
+  const mk = markers.length ? [...markers].sort((x, y) => x.t - y.t) : [{ t: 0, label: 'Tout' }];
+  const out: SongSpan[] = [];
+  mk.forEach((m, i) => {
+    let a = Math.max(0, m.t), b = Math.min(total, mk[i + 1]?.t ?? total);
+    if (all && all.length) {
+      const LOUD = 30;
+      let i0 = Math.floor(a / bucket), i1 = Math.min(all.length, Math.ceil(b / bucket)) - 1;
+      const s0 = i0, s1 = i1;
+      while (i0 < i1 && all[i0] < LOUD) i0++;
+      while (i1 > i0 && all[i1] < LOUD) i1--;
+      if (i1 > i0) { a = Math.max(s0 * bucket, i0 * bucket - 0.5); b = Math.min((s1 + 1) * bucket, (i1 + 1) * bucket + 2.5, total); }
+    }
+    if (b - a >= 5) out.push({ label: m.label, a, b });
+  });
+  return out;
+}
+/** Les retouches d'un morceau de maquette : entrée nette, sortie en fondu. */
+export const songEdits = (edits: Edit[], s: SongSpan): Edit[] => [...edits, { type: 'fadeIn', a: s.a, b: s.a + 0.15 }, { type: 'fadeOut', a: Math.max(s.a, s.b - 2), b: s.b }];
+/** Un nom de fichier propre. */
+export const fileSafe = (n: string) => n.replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Morceau';

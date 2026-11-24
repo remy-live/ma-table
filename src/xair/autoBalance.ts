@@ -5,7 +5,7 @@
 // Garde-fous : jamais de 48 V, gain changé de 18 dB au plus par passage,
 // faders plafonnés à 0 dB, et l'écran propose « Annuler tout ».
 
-import { f } from '../osc/osc';
+import { f, i } from '../osc/osc';
 import {
   BUS_COUNT, busNamePath, CH_COUNT, chLevelPath, chNamePath, compDbToF, dynOnPath, dynThrPath, fToGainDb, gainDbToF, gateDbToF, gateOnPath,
   gateThrPath, headampGainPath, MAIN, meterIndex,
@@ -13,6 +13,8 @@ import {
 import { hasPreamp } from './guide';
 import { dbToFader, faderToDb } from './levels';
 import { XAirClient } from './XAirClient';
+import { EqBand, guessRole, tailorEq } from './listen';
+import { eqGainToF, eqOnPath, eqPath, EQ_TYPES, hzToF, qToF } from './addresses';
 import { recognize } from './smartName';
 import { applyPreset, PRESETS } from './presets';
 
@@ -84,8 +86,8 @@ const named = (client: XAirClient) =>
 
 /** Le déroulé. Complet : silence, chaque voie nommée (batterie élément par élément d'abord, voix en dernier), tous ensemble. Express : tous ensemble. */
 /** Ce que la balance automatique a le droit de régler. */
-export interface What { gain: boolean; gate: boolean; comp: boolean; fader: boolean; preset?: boolean }
-export const WHAT_ALL: What = { gain: true, gate: true, comp: true, fader: true, preset: false };
+export interface What { gain: boolean; gate: boolean; comp: boolean; fader: boolean; preset?: boolean; eq?: boolean }
+export const WHAT_ALL: What = { gain: true, gate: true, comp: true, fader: true, preset: false, eq: true };
 
 /** Préréglage de l'instrument (égaliseur, coupe-bas, comp) d'après le nom de la voie.
  *  Posé AVANT la mesure : l'égaliseur et le compresseur changent le niveau. Rend les voies touchées. */
@@ -198,6 +200,8 @@ export interface ChResult {
   comp?: number;
   faderFrom?: number;
   fader?: number;
+  /** égalisation proposée d'après le spectre écouté pendant le passage seul (4 bandes au plus) */
+  eq?: EqBand[];
   note?: string;
 }
 
@@ -302,6 +306,7 @@ export function applyResults(client: XAirClient, results: ChResult[], what: What
     if (only && !only.has(r.ch)) continue;
     if (what.gate && r.gate !== undefined) client.set(gateThrPath(r.ch), f(gateDbToF(r.gate)));
     if (what.comp && r.comp !== undefined) client.set(dynThrPath(r.ch), f(compDbToF(r.comp)));
+    if (what.eq && r.eq?.length) applyEq(client, r.ch, r.eq);
     if (what.fader && r.fader !== undefined) client.set(chLevelPath(r.ch, MAIN), f(dbToFader(r.fader)));
   }
 }
@@ -391,4 +396,42 @@ export function applyMaster(client: XAirClient, a: MasterAdvice) {
 /** Après un échange de prises, les passages suivants suivent l'instrument. */
 export function swapInSteps(steps: AutoStep[], from: number, a: number, b: number): AutoStep[] {
   return steps.map((s, k) => (k < from || !s.ch ? s : { ...s, ch: s.ch === a ? b : s.ch === b ? a : s.ch }));
+}
+
+
+// ---------- Égalisation d'après le spectre ----------
+
+/** Le spectre de la table (100 bandes de 20 Hz à 20 kHz, puissances cumulées sur n mesures) → 27 bandes de tiers d'octave en dB. */
+export function rtaToBands(sum: ArrayLike<number>, n: number): number[] {
+  const out: number[] = [];
+  for (let b = 0; b < 27; b++) {
+    const fc = 40 * Math.pow(2, b / 3);
+    let acc = 0, k = 0;
+    for (let i = 0; i < sum.length; i++) {
+      const hz = 20 * Math.pow(1000, i / (sum.length - 1));
+      if (hz >= fc / 1.1225 && hz < fc * 1.1225) { acc += sum[i]; k++; }
+    }
+    out.push(k && n && acc > 0 ? 10 * Math.log10(acc / k / n) : -120);
+  }
+  return out;
+}
+/** L'égalisation à proposer pour une voie : les 4 corrections les plus utiles (la table a 4 bandes). */
+export function spectrumEq(name: string, sum: ArrayLike<number>, n: number, hasVoice = false): EqBand[] {
+  if (n < 10) return [];
+  const bands = rtaToBands(sum, n);
+  if (Math.max(...bands) < -80) return [];
+  const role = guessRole(name);
+  return tailorEq(role, { bands, hist: [], rmsDb: 0, peakDb: 0, crestDb: 15, active: 1 }, hasVoice && role !== 'Voix').sort((x, y) => Math.abs(y.db) - Math.abs(x.db)).slice(0, 4).sort((x, y) => x.f - y.f);
+}
+/** Envoie l'égalisation à la table : les bandes non utilisées sont remises à plat. */
+export function applyEq(client: XAirClient, ch: number, eq: EqBand[]) {
+  client.set(eqOnPath(ch), i(1));
+  for (let b = 1; b <= 4; b++) {
+    const e = eq[b - 1];
+    if (!e) { client.set(eqPath(ch, b, 'g'), f(eqGainToF(0))); continue; }
+    client.set(eqPath(ch, b, 'type'), i(e.type === 0 ? EQ_TYPES.lshv : e.type === 2 ? EQ_TYPES.hshv : EQ_TYPES.peq));
+    client.set(eqPath(ch, b, 'f'), f(hzToF(e.f)));
+    client.set(eqPath(ch, b, 'g'), f(eqGainToF(e.db)));
+    client.set(eqPath(ch, b, 'q'), f(qToF(e.q)));
+  }
 }

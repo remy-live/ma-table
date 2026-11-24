@@ -481,7 +481,7 @@ class UsbAudioModule : Module() {
       }.start()
     }
 
-    Function("mixCancel") { Mixer.cancel = true; Exporter.cancel = true }
+    Function("mixCancel") { Pack.cancel = true; Mixer.cancel = true; Exporter.cancel = true }
 
     // ---- Écoute : ondes, lecteur multipiste en direct, export avec les retouches ----
 
@@ -516,7 +516,7 @@ class UsbAudioModule : Module() {
       @Suppress("UNCHECKED_CAST")
       val paths = (o["paths"] as? List<String>) ?: emptyList()
       Thread {
-        try { val e = MixEngine(paths); e.params = mixParams(o); promise.resolve(Analyzer.measure(e)) }
+        try { val e = MixEngine(paths); e.params = mixParams(o); promise.resolve(Analyzer.measure(e, dbl(o["from"]), dbl(o["to"]))) }
         catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))) }
       }.start()
     }
@@ -545,7 +545,6 @@ class UsbAudioModule : Module() {
       @Suppress("UNCHECKED_CAST")
       val paths = (o["paths"] as? List<String>) ?: emptyList()
       val out = File((o["out"] as? String) ?: "")
-      val m4a = o["m4a"] == true
       val from = (o["from"] as? Number)?.toDouble() ?: 0.0
       val to = (o["to"] as? Number)?.toDouble() ?: 0.0
       mixing = true
@@ -554,7 +553,7 @@ class UsbAudioModule : Module() {
           val e = MixEngine(paths)
           e.params = mixParams(o)
           var last = 0L
-          val r = Exporter.run(e, out, m4a, from, to) { p ->
+          val r = Exporter.run(e, out, from, to) { p ->
             val now = System.currentTimeMillis()
             if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
           }
@@ -566,6 +565,77 @@ class UsbAudioModule : Module() {
         } finally {
           mixing = false
         }
+      }.start()
+    }
+
+    // Une maquette : plusieurs morceaux (chacun avec son mix) → un fichier par morceau et/ou un seul fichier.
+    AsyncFunction("mixAlbum") { o: Map<String, Any?>, promise: Promise ->
+      if (mixing) { promise.resolve(mapOf("ok" to false, "error" to "un export est déjà en cours")); return@AsyncFunction }
+      @Suppress("UNCHECKED_CAST")
+      val list = (o["songs"] as? List<Map<String, Any?>>) ?: emptyList()
+      val full = (o["full"] as? String)?.takeIf { it.isNotEmpty() }?.let { File(it) }
+      mixing = true
+      Thread {
+        try {
+          full?.parentFile?.mkdirs()
+          @Suppress("UNCHECKED_CAST")
+          val songs = list.map { s ->
+            val out = (s["out"] as? String)?.takeIf { it.isNotEmpty() }?.let { File(it) }
+            out?.parentFile?.mkdirs()
+            Exporter.Song({ MixEngine((s["paths"] as? List<String>) ?: emptyList()).also { it.params = mixParams(s) } }, out, dbl(s["from"]), dbl(s["to"]))
+          }
+          var last = 0L
+          val secs = Exporter.album(songs, full, dbl(o["gap"], 1.5)) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
+          }
+          val made = (songs.mapNotNull { it.out?.absolutePath } + listOfNotNull(full?.absolutePath)).toTypedArray()
+          try { android.media.MediaScannerConnection.scanFile(ctx(), made, null, null) } catch (e2: Throwable) {}
+          promise.resolve(mapOf("ok" to true, "seconds" to secs, "path" to (full?.absolutePath ?: made.firstOrNull())))
+        } catch (e: Throwable) {
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        } finally { mixing = false }
+      }.start()
+    }
+
+    // Le dossier où ranger les maquettes (Musique/Ma table/Maquettes/<nom>).
+    Function("albumDir") { name: String -> File(RecFiles.sessionDir(ctx(), "Maquettes").first, RecFiles.clean(name)).apply { mkdirs() }.absolutePath }
+
+    // Tout un enregistrement (pistes + notes) dans un seul fichier à envoyer.
+    AsyncFunction("sessPack") { o: Map<String, Any?>, promise: Promise ->
+      if (mixing) { promise.resolve(mapOf("ok" to false, "error" to "un export est déjà en cours")); return@AsyncFunction }
+      @Suppress("UNCHECKED_CAST")
+      val files = ((o["paths"] as? List<String>) ?: emptyList()).map { File(it) }
+      val out = File(File(ctx().cacheDir, "envoi").apply { deleteRecursively(); mkdirs() }, RecFiles.clean((o["name"] as? String) ?: "Enregistrement") + ".matable.zip")
+      mixing = true
+      Thread {
+        try {
+          var last = 0L
+          Pack.make(files, (o["notes"] as? String) ?: "", dbl(o["from"]), dbl(o["to"]), out) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
+          }
+          promise.resolve(mapOf("ok" to true, "path" to out.absolutePath, "size" to out.length().toDouble()))
+        } catch (e: Throwable) {
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        } finally { mixing = false }
+      }.start()
+    }
+
+    // Ouvrir un enregistrement reçu (fichier .matable.zip déjà copié dans le dossier de l'appli).
+    AsyncFunction("sessImport") { path: String, name: String, promise: Promise ->
+      Thread {
+        val src = File(path.removePrefix("file://"))
+        try {
+          var last = 0L
+          val id = Pack.open(ctx(), src, name) { p ->
+            val now = System.currentTimeMillis()
+            if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
+          }
+          promise.resolve(mapOf("ok" to true, "id" to id))
+        } catch (e: Throwable) {
+          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+        } finally { try { src.delete() } catch (e: Throwable) {} }
       }.start()
     }
 
@@ -583,7 +653,7 @@ class UsbAudioModule : Module() {
     // Partager un fichier (par le catalogue de musique d'Android).
     AsyncFunction("share") { path: String, promise: Promise ->
       try {
-        val mime = if (path.endsWith(".m4a")) "audio/mp4" else "audio/x-wav"
+        val mime = if (path.endsWith(".m4a")) "audio/mp4" else if (path.endsWith(".mp3")) "audio/mpeg" else "audio/x-wav"
         android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(path), arrayOf(mime)) { _, uri ->
           try {
             if (uri == null) { promise.resolve(false) } else {

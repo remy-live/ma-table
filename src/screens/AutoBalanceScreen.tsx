@@ -10,7 +10,7 @@ import { Theme } from '../ui/theme';
 import { CH_COUNT, chNamePath, dynOnPath, gateOnPath } from '../xair/addresses';
 import {
   addSample, applyGainNow, applyMaster, applyResults, applyReturn, AutoStep, Bleed, bleeds, buildSteps, ChResult, compute, isPlaying,
-  masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, applyInstrumentPresets, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
+  spectrumEq, masterAdvice, MasterAdvice, mergeResult, Mode, namedChannels, applyInstrumentPresets, planReturns, ReturnPlan, Samples, soloResult, swapInSteps, What, WHAT_ALL, wrongPlug,
 } from '../xair/autoBalance';
 import { roleOf } from '../xair/autoBalance';
 import { setDemoStage } from '../xair/tableModel';
@@ -74,7 +74,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
   const R = useRef({
     steps: [] as AutoStep[], idx: 0, st: 'wait' as StepState, start: 0, samples: new Map() as Samples,
     solos: new Map<number, ChResult>(), bleeds: [] as Bleed[], undo: null as Snapshot | null, lastUi: 0, voice: true, timer: null as ReturnType<typeof setTimeout> | null,
-    spoken: false, playSince: 0, manual: false, entry: 0,
+    spoken: false, playSince: 0, manual: false, entry: 0, spectra: new Map<number, { sum: Float64Array; n: number }>(),
   });
   R.current.voice = voice;
   R.current.manual = manual;
@@ -106,6 +106,8 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     setProgress(0);
     setMsg('');
     const s = r.steps[k];
+    // l'analyseur de la table suit la voie qui joue seule
+    if (s.kind === 'solo' && s.ch) { r.spectra.delete(s.ch); client.startRta(s.ch); client.stopRta(); }
     r.spoken = false;
     r.playSince = 0;
     const entry = ++r.entry;
@@ -139,6 +141,9 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
     const r = R.current;
     const m = r.samples.get(r.idx);
     const res = soloResult(client, ch, m);
+    // le spectre écouté pendant ce passage → l'égalisation proposée
+    const sp = r.spectra.get(ch);
+    if (res.heard && sp) { const eq = spectrumEq(res.name, sp.sum, sp.n, namedChans().some((c) => c !== ch && /voix|chant|vox|lead/i.test(String(client.get(`/ch/${String(c).padStart(2, '0')}/config/name`) ?? '')))); if (eq.length) res.eq = eq; }
     if (whatRef.current.gain) applyGainNow(client, res);
     else { res.gainTo = undefined; }
     r.solos.set(ch, res);
@@ -224,6 +229,22 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, client]);
+
+  // le spectre de la voie qui joue seule, cumulé pendant l'écoute
+  useEffect(() => {
+    if (phase !== 'run') return;
+    client.startRta();
+    const off = client.onRta((d) => {
+      const r = R.current;
+      const s = r.steps[r.idx];
+      if (r.st !== 'listen' || !s || s.kind !== 'solo' || !s.ch) return;
+      let sp = r.spectra.get(s.ch);
+      if (!sp) { sp = { sum: new Float64Array(d.length), n: 0 }; r.spectra.set(s.ch, sp); }
+      for (let i = 0; i < d.length; i++) sp.sum[i] += Math.pow(10, d[i] / 10);
+      sp.n++;
+    });
+    return () => { off(); client.stopRta(); };
   }, [phase, client]);
 
   const whatRef = useRef(what);
@@ -361,7 +382,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
             <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line }]}>
               <Text style={{ color: theme.text, fontWeight: '800' }}>Ce que l’appli règle</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {([['preset', 'Préréglage de l’instrument'], ['gain', word('gain')], ['gate', word('gate')], ['comp', word('comp')], ['fader', 'Volume pour le public · fader']] as [keyof What, string][]).map(([k, l]) => (
+                {([['preset', 'Préréglage de l’instrument'], ['gain', word('gain')], ['gate', word('gate')], ['comp', word('comp')], ['eq', 'Égaliseur d’après le spectre'], ['fader', 'Volume pour le public · fader']] as [keyof What, string][]).map(([k, l]) => (
                   <Pressable key={k} accessibilityRole="checkbox" accessibilityState={{ checked: what[k] }} onPress={() => setWhat((w) => ({ ...w, [k]: !w[k] }))}
                     style={[styles.chip, what[k] ? { backgroundColor: theme.ok, borderColor: theme.ok } : { borderColor: theme.line2 }]}>
                     <Text style={{ color: what[k] ? '#052E1F' : theme.muted, fontWeight: '800', fontSize: 12 }}>{what[k] ? '✓ ' : ''}{l}</Text>
@@ -510,6 +531,7 @@ export function AutoBalanceScreen(props: { client: XAirClient; theme: Theme; vis
                 r.fader !== undefined ? `Fader ${dbs(r.faderFrom)} → ${dbs(r.fader)}` : '',
                 r.gate !== undefined ? `${word('gate')} ${r.gate} dB` : '',
                 r.comp !== undefined ? `Comp ${r.comp} dB` : '',
+                r.eq?.length ? `Égaliseur : ${r.eq.map((b) => b.why).join(', ')}` : '',
               ].filter(Boolean);
               return (
                 <View key={r.ch} style={[styles.card, { backgroundColor: theme.panel, borderColor: warn ? '#7F1D1D' : theme.line, opacity: applyOn[r.ch] === false ? 0.55 : 1 }]}>

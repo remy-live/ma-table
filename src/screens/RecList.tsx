@@ -7,16 +7,20 @@ import { Analysis, loudFactor, parseAnalysis, Bar, bars, Blank, blankIsCut, buil
 import { fmtTime, parseMeta, RecMeta } from '../xair/recorder';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
 import { Tick } from './RecPrep';
+import { Maquette } from './Maquette';
+import * as DocumentPicker from 'expo-document-picker';
 
 const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} Go` : `${Math.round(b / 1e6)} Mo`);
 const isExport = (n: string) => n.startsWith('Mix') || n.startsWith('Extrait');
-export const MAGIC_FILE = 'Mix du concert.m4a';
+export const MAGIC_FILE = 'Mix du concert.mp3';
+/** le mix magique, en MP3 (ou en M4A s'il a été fait avec une ancienne version) */
+export const isMagic = (n: string) => n === MAGIC_FILE || n === 'Mix du concert.m4a';
 
-interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number; all: Uint8Array; an: Record<string, Analysis | null>; rms?: number | null }
+export interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number; all: Uint8Array; an: Record<string, Analysis | null>; rms?: number | null }
 const cache: Record<string, Loaded> = {};
 
 /** Les pistes d'un enregistrement et leurs ondes (gardées en mémoire pendant que l'écran reste ouvert). */
-async function load(e: SessEntry): Promise<Loaded | null> {
+export async function load(e: SessEntry): Promise<Loaded | null> {
   if (cache[e.id]) return cache[e.id];
   if (!usbListen) return null;
   const meta = parseMeta(e.meta);
@@ -70,6 +74,22 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
   const [offer, setOffer] = useState<{ id: string; blanks: Blank[] } | null>(null); // blancs trouvés après un mix magique
   // une prise vient de s'arrêter : on propose tout de suite de la nommer
   useEffect(() => { if (askRename && list.some((e) => e.id === askRename)) { setRen({ id: askRename, name: askRename, fresh: true }); onAsked?.(); } }, [askRename, list]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tape, setTape] = useState(false); // la maquette de plusieurs morceaux
+  // un enregistrement reçu de quelqu'un (fichier .matable.zip) : on le choisit, il s'ajoute à la liste
+  const receive = async () => {
+    if (!usbListen || busy) return;
+    try {
+      const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: ['application/zip', 'application/octet-stream', '*/*'] });
+      const f = r.canceled ? null : r.assets?.[0];
+      if (!f) return;
+      if (!/\.zip$/i.test(f.name)) { setMsg('Ce n’est pas un enregistrement Ma table (fichier « .matable.zip » attendu).'); return; }
+      setBusy('import'); setProg(0);
+      const done = await usbListen.sessImport(decodeURIComponent(f.uri.replace(/^file:\/\//, '')), f.name.replace(/(\.matable)?\.zip$/i, ''));
+      setBusy(null);
+      setMsg(done.ok ? `« ${done.id} » est ajouté à tes enregistrements.` : `Ouverture impossible : ${done.error ?? ''}`);
+      reload();
+    } catch (err) { setBusy(null); setMsg(`Ouverture impossible : ${String(err).slice(0, 120)}`); }
+  };
   const nowRef = useRef<string | null>(null);
   nowRef.current = now;
 
@@ -118,13 +138,13 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     usbListen.metaSave(e.id, JSON.stringify(meta));
     d.meta = meta;
     setOffer(null);
-    const old = e.files.find((f) => f.name === MAGIC_FILE);
+    const old = e.files.find((f) => isMagic(f.name));
     if (old) usbListen.fileDelete(old.path);
-    await magic({ ...e, files: e.files.filter((f) => f.name !== MAGIC_FILE) }, true);
+    await magic({ ...e, files: e.files.filter((f) => !isMagic(f.name)) }, true);
   };
   const magic = async (e: SessEntry, again = false) => {
     if (!usbListen || busy) return;
-    const done = e.files.find((f) => f.name === MAGIC_FILE);
+    const done = e.files.find((f) => isMagic(f.name));
     if (done) { const ok = await usbListen.share(done.path).catch(() => false); if (!ok) setMsg('Le mix est dans Musique › Ma table.'); return; }
     stop();
     setBusy(e.id); setProg(0);
@@ -133,7 +153,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     // le volume final : on mesure le mix une fois, puis on le cale
     if (d.rms == null) { const flat = paramsFor(d, false, 1); const m = await usbListen.mixMeasure({ ...flat.params, paths: flat.paths }).catch(() => null); if (m?.ok && m.rmsDb != null) d.rms = m.rmsDb; }
     const p = paramsFor(d, false);
-    const r = await usbListen.mixExport({ ...p.params, paths: p.paths, out: `${e.dir}/${MAGIC_FILE}`, m4a: true });
+    const r = await usbListen.mixExport({ ...p.params, paths: p.paths, out: `${e.dir}/${MAGIC_FILE}` });
     setBusy(null);
     if (!r.ok) { setMsg(`Mix impossible : ${r.error ?? ''}`); return; }
     reload();
@@ -170,6 +190,14 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Text style={{ flex: 1, color: theme.muted, fontSize: 12 }}>{list.length} enregistrement{list.length > 1 ? 's' : ''} · {gb(total)} · dans Musique › Ma table</Text>
+        <Pressable onPress={receive} disabled={!!busy} accessibilityLabel="Ouvrir un enregistrement reçu" style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{busy === 'import' ? `Ouverture… ${Math.round(prog * 100)} %` : '📥 Reçu…'}</Text>
+        </Pressable>
+        {list.length > 0 && (
+          <Pressable onPress={() => { stop(); setTape(true); }} disabled={!!busy} style={[styles.btn, { borderWidth: 1.5, borderColor: theme.accent }]}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>🎬 Maquette</Text>
+          </Pressable>
+        )}
         {list.length > 0 && (
           <Pressable onPress={() => { setSorting(!sorting); setPicked({}); }} accessibilityState={{ selected: sorting }} style={[styles.btn, { borderWidth: 1, borderColor: sorting ? '#DC2626' : theme.line2, backgroundColor: sorting ? '#2A1010' : 'transparent' }]}>
             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{sorting ? 'Terminé' : 'Trier · supprimer'}</Text>
@@ -184,7 +212,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
           const m = parseMeta(e.meta), d = cache[e.id], live = liveId === e.id, playing = now === e.id, on = !!picked[e.id];
           const size = e.files.reduce((a, f) => a + f.size, 0);
           const dur = d?.seconds || m?.seconds || 0;
-          const hasMix = e.files.some((f) => f.name === MAGIC_FILE), mixing = busy === e.id;
+          const hasMix = e.files.some((f) => isMagic(f.name)), mixing = busy === e.id;
           const nTracks = e.files.filter((f) => f.name.endsWith('.wav') && !isExport(f.name)).length;
           return (
             <View key={e.id} style={[styles.row, { borderColor: live ? '#DC2626' : playing ? theme.accent : on ? '#DC2626' : theme.line, backgroundColor: theme.panel }]}>
@@ -278,10 +306,11 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
       {sorting && (
         <View style={[styles.bar, { bottom: 8, borderColor: '#DC2626', backgroundColor: '#2A1010' }]}>
           <Text style={{ flex: 1, color: '#FCA5A5', fontSize: 14, fontWeight: '800' }}>{pickedList.length ? `${pickedList.length} coché${pickedList.length > 1 ? 's' : ''} · ${gb(pickedList.reduce((a, e) => a + e.files.reduce((x, f) => x + f.size, 0), 0))} à libérer` : 'Coche les enregistrements à supprimer'}</Text>
-          <Pressable onPress={() => setPicked(Object.fromEntries(list.filter((e) => e.id !== liveId && (parseMeta(e.meta)?.seconds ?? 9999) < 300 && !e.files.some((f) => f.name === MAGIC_FILE)).map((e) => [e.id, true])))} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Cocher les essais de moins de 5 min</Text></Pressable>
+          <Pressable onPress={() => setPicked(Object.fromEntries(list.filter((e) => e.id !== liveId && (parseMeta(e.meta)?.seconds ?? 9999) < 300 && !e.files.some((f) => isMagic(f.name))).map((e) => [e.id, true])))} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Cocher les essais de moins de 5 min</Text></Pressable>
           <Pressable onPress={del} style={[styles.btn, { backgroundColor: '#DC2626' }]}><Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>Supprimer</Text></Pressable>
         </View>
       )}
+      {tape && <Maquette list={list.filter((e) => e.id !== liveId)} theme={theme} onClose={() => setTape(false)} />}
     </View>
   );
 }
