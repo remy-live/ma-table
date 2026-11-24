@@ -72,6 +72,7 @@ export const demoUsb: ListenNative = {
   sessList: (): SessEntry[] => [ID, ...OTHERS].map((id, n) => ({ id, dir: '/demo/' + id, public: true, modified: Date.now() - n * 3600e3, meta: n ? meta.replace(ID, id) : meta, files: [...files, ...(extra['/demo/' + id] ?? [])].map((name) => ({ name, path: `/demo/${id}/${name}`, size: name.endsWith('.m4a') ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) })),
   metaSave: (id, json) => { if (id === ID) meta = json; return true; },
   sessDelete: () => false,
+  sessRename: (id, name) => { const k = OTHERS.indexOf(id); if (k < 0 || !name.trim()) return ''; OTHERS[k] = name.trim(); return OTHERS[k]; },
   fileDelete: (path) => { const d = path.slice(0, path.lastIndexOf('/')); extra[d] = (extra[d] ?? []).filter((n) => `${d}/${n}` !== path); return true; },
   share: async () => true,
   peaks: async (path) => {

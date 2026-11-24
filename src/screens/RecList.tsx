@@ -1,7 +1,7 @@
 // Mes enregistrements : écouter un aperçu sans ouvrir (▶ + petite onde), « Mix magique »
 // d'un seul geste, et trier / supprimer plusieurs essais d'un coup.
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Theme } from '../ui/theme';
 import { Bar, bars, Blank, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, keptSegments, lin, mergePeaks } from '../xair/listen';
 import { fmtTime, parseMeta, RecMeta } from '../xair/recorder';
@@ -64,6 +64,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
   const [sorting, setSorting] = useState(false);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState('');
+  const [ren, setRen] = useState<{ id: string; name: string } | null>(null); // renommer
   const [offer, setOffer] = useState<{ id: string; blanks: Blank[] } | null>(null); // blancs trouvés après un mix magique
   const nowRef = useRef<string | null>(null);
   nowRef.current = now;
@@ -134,6 +135,17 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
     setOffer(left.length ? { id: e.id, blanks: left } : null);
     setMsg(again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : niveaux, nettoyage de chaque piste, finition.');
   };
+  const rename = () => {
+    if (!ren || !usbListen) return;
+    const name = ren.name.trim();
+    if (!name || name === ren.id) { setRen(null); return; }
+    stop();
+    const got = usbListen.sessRename(ren.id, name);
+    if (!got) { setMsg('Impossible de renommer : ce nom existe déjà, ou le dossier est utilisé.'); setRen(null); return; }
+    delete cache[ren.id];
+    setRen(null); setMsg('');
+    reload();
+  };
   const del = () => {
     const ids = list.filter((e) => picked[e.id]).map((e) => e.id);
     if (!ids.length) return;
@@ -177,7 +189,10 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
                 <Text style={{ color: playing ? theme.onAccent : theme.text, fontSize: 20, fontWeight: '900' }}>{playing ? '❚❚' : '▶'}</Text>
               </Pressable>
               <View style={{ width: wide ? 250 : undefined, flex: wide ? undefined : 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{live ? '⏺ ' : ''}{e.id}</Text>
+                <Pressable disabled={live} onPress={() => setRen({ id: e.id, name: e.id })} accessibilityLabel={`Renommer ${e.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 26 }}>
+                  <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.text, fontSize: 16, fontWeight: '800' }}>{live ? '⏺ ' : ''}{e.id}</Text>
+                  {!live && <Text style={{ color: theme.muted, fontSize: 14 }}>✎</Text>}
+                </Pressable>
                 <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 12 }}>{live ? 'en cours…' : `${dur ? fmtTime(dur) + ' · ' : ''}${m ? `${m.markers.length} morceau${m.markers.length > 1 ? 'x' : ''} · ` : ''}${nTracks} piste${nTracks > 1 ? 's' : ''} · ${gb(size)}`}</Text>
                 {!live && <Text style={{ color: hasMix ? '#34D399' : theme.muted, fontSize: 11, fontWeight: '700' }}>{mixing ? `Je mixe… ${Math.round(prog * 100)} %` : hasMix ? 'Mix magique prêt' : 'Pas encore mixé'}</Text>}
               </View>
@@ -238,6 +253,20 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
           )}
           <Pressable onPress={stop} accessibilityLabel="Arrêter l’aperçu" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 18, fontWeight: '800' }}>✕</Text></Pressable>
         </View>
+      )}
+
+      {ren && (
+        <Pressable onPress={() => setRen(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', paddingTop: 40 }]}>
+          <Pressable onPress={() => {}} style={{ width: 460, maxWidth: '94%', borderWidth: 1, borderColor: theme.line2, borderRadius: 18, padding: 16, gap: 10, backgroundColor: theme.panel }}>
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Renommer l’enregistrement</Text>
+            <TextInput value={ren.name} onChangeText={(name) => setRen({ id: ren.id, name })} autoFocus selectTextOnFocus onSubmitEditing={rename} returnKeyType="done" accessibilityLabel="Nouveau nom" style={{ minHeight: 48, borderWidth: 1, borderColor: theme.line2, borderRadius: 10, paddingHorizontal: 12, fontSize: 16, color: theme.text, backgroundColor: theme.deep }} />
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Le dossier dans Musique › Ma table prend le même nom.</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+              <Pressable onPress={() => setRen(null)} style={[styles.btn]}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>Annuler</Text></Pressable>
+              <Pressable onPress={rename} style={[styles.btn, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>Renommer</Text></Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
       )}
 
       {sorting && (

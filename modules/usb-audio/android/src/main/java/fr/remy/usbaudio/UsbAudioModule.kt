@@ -419,6 +419,26 @@ class UsbAudioModule : Module() {
       try { File(RecFiles.metaDir(ctx()), RecFiles.clean(id) + ".json").writeText(json); true } catch (e: Throwable) { false }
     }
 
+    // Renommer un enregistrement : le dossier, ses notes et ses ondes. Rend le nouveau nom, ou "" si impossible.
+    Function("sessRename") { id: String, name: String ->
+      try {
+        val d = RecFiles.find(ctx(), id)
+        val n = RecFiles.clean(name)
+        if (d == null || n.isEmpty() || (recOn && recInfo["id"] == id)) "" else if (n == id) id else {
+          val to = File(d.parentFile, n)
+          if (to.exists() || !d.renameTo(to)) "" else {
+            val meta = File(RecFiles.metaDir(ctx()), "$id.json")
+            if (meta.exists()) meta.renameTo(File(RecFiles.metaDir(ctx()), "$n.json"))
+            val pk = File(ctx().filesDir, "rec-peaks/$id")
+            if (pk.isDirectory) pk.renameTo(File(ctx().filesDir, "rec-peaks/$n"))
+            val files = to.listFiles()?.map { it.absolutePath } ?: emptyList()
+            try { android.media.MediaScannerConnection.scanFile(ctx(), (files + d.absolutePath).toTypedArray(), null, null) } catch (e: Throwable) {}
+            n
+          }
+        }
+      } catch (e: Throwable) { "" }
+    }
+
     Function("sessDelete") { id: String ->
       val d = RecFiles.find(ctx(), id)
       val ok = d?.deleteRecursively() ?: false

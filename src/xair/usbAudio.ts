@@ -26,6 +26,7 @@ export type Native = {
   sessList(): SessEntry[];
   metaSave(id: string, json: string): boolean;
   sessDelete(id: string): boolean;
+  sessRename(id: string, name: string): string;
   fileDelete(path: string): boolean;
   mix(o: { tracks: { path: string; trim: number; pan: number; auto: boolean }[]; out: string; from?: number; to?: number }): Promise<MixResult>;
   mixCancel(): void;
@@ -58,7 +59,7 @@ export type Native = {
 export const usbAudio: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('UsbAudio') : null;
 
 /** Ce dont l'enregistreur et l'écran d'écoute ont besoin. Sur le web (démo) : un faux concert, pour essayer l'écran. */
-export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'fileDelete' | 'share' | 'peaks' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixCancel' | 'addListener'>;
+export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'sessRename' | 'fileDelete' | 'share' | 'peaks' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixCancel' | 'addListener'>;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const usbListen: ListenNative | null = usbAudio ?? (Platform.OS === 'web' ? (require('./usbAudioDemo') as { demoUsb: ListenNative }).demoUsb : null);
 
