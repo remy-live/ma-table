@@ -16,7 +16,7 @@ export interface SessFile { name: string; path: string; size: number }
 export interface SessEntry { id: string; dir: string; public: boolean; modified: number; meta: string; files: SessFile[] }
 export interface MixResult { ok: boolean; error?: string; path?: string; gains?: (number | null)[]; peakDb?: number; seconds?: number }
 
-export interface EngineParams { gains: number[]; pans: number[]; master: number; kept: number[]; regs: { a: number; b: number; g: number; k: number }[]; fades: { a: number; b: number; rising: boolean }[] }
+export interface EngineParams { gains: number[]; pans: number[]; master: number; kept: number[]; regs: { a: number; b: number; g: number; k: number }[]; fades: { a: number; b: number; rising: boolean }[]; hp?: number[]; thr?: number[]; slope?: number[]; makeup?: number[]; gate?: number[]; eq?: boolean; glue?: boolean; limit?: boolean }
 
 export type Native = {
   recStart(o: { name: string; tracks: { file: string; a: number; b: number }[] }): Promise<{ ok: boolean; error: string; id?: string; dir?: string; public?: boolean; channels?: number; bits?: number; rate?: number; files?: string[] }>;

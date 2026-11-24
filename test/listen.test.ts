@@ -38,3 +38,44 @@ test('ondes, base64, réglages du lecteur', () => {
   assert.equal(ep.fades[0].rising, true);
   assert.deepEqual(engineParams({ gains: [], pans: [], master: 1, total: 100, edits: [] }).kept, []);
 });
+
+import { buildMix, emptyMix, findBlanks, guessRole, procFor } from '../src/xair/listen';
+
+test('instrument deviné au nom de la voie, même tronqué', () => {
+  assert.equal(guessRole('Voix_41'), 'Voix');
+  assert.equal(guessRole('Voix 2_41'), 'Chœurs');
+  assert.equal(guessRole('09 Grosse ca_3'), 'Grosse caisse');
+  assert.equal(guessRole('C. claire_4'), 'Caisse claire');
+  assert.equal(guessRole('Tom floor_8'), 'Tom');
+  assert.equal(guessRole('Oh droite_10'), 'Cymbales');
+  assert.equal(guessRole('Basse_18'), 'Basse');
+  assert.equal(guessRole('Guitare E_17'), 'Guitare');
+  assert.equal(guessRole('Acoustic_17'), 'Guitare');
+  assert.equal(guessRole('Truc'), 'Autre');
+});
+
+test('nettoyage : débrayable, et plus fort = plus de compression', () => {
+  const soft = procFor('Voix', -20, 0, () => false), hard = procFor('Voix', -20, 2, () => false);
+  assert.ok(hard.redDb > soft.redDb && hard.thr < soft.thr);
+  assert.equal(procFor('Voix', -20, 1, (k) => k === 'comp').thr, 0);
+  assert.equal(procFor('Voix', -20, 1, () => false).gate, 0);
+  assert.ok(procFor('Tom', -20, 1, () => false).gate > 0);
+  assert.equal(procFor('Tom', null, 1, () => false).hp, 0);
+});
+
+test('blancs : début, milieu, fin', () => {
+  const p = new Uint8Array(500).fill(200);
+  p.fill(5, 0, 50); p.fill(5, 200, 260); p.fill(5, 300, 310); p.fill(5, 450, 500);
+  const b = findBlanks(p, 0.2, 100);
+  assert.deepEqual(b.map((x) => x.where), ['début', 'milieu', 'fin']);
+  assert.ok(b[1].a > 40 && b[1].b < 52);
+});
+
+test('mix complet : « avant » enlève nettoyage et finition', () => {
+  const tr = [{ key: 'a', name: 'Voix', pan: 0 }, { key: 'b', name: 'Basse', pan: 0 }];
+  const pk = { a: new Uint8Array(100).fill(120), b: new Uint8Array(100).fill(160) };
+  const m = buildMix(tr, pk, emptyMix(), null, 20), raw = buildMix(tr, pk, emptyMix(), null, 20, true);
+  assert.ok(m.params.eq && m.params.glue && m.params.thr[0] > 0 && m.params.hp[1] === 35);
+  assert.ok(!raw.params.eq && raw.params.thr[0] === 0 && raw.params.hp[0] === 0);
+  assert.equal(buildMix(tr, pk, emptyMix(), 1, 20).params.gains[0], 0);
+});

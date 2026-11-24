@@ -2,13 +2,16 @@
 // fichier par voie choisie (+ la façade en stéréo). Après coup : réécouter,
 // repères de morceaux, mixage automatique retouchable, partage.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Modal, PanResponder, useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { arm, disarm, startArmed, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
 import { SessEntry, usbListen as usbAudio } from '../xair/usbAudio';
 import { ListenScreen } from './ListenScreen';
+import { forgetPreview, RecList } from './RecList';
+import { RecPrep, Tick } from './RecPrep';
+import { load, save } from '../store/persist';
 import { XAirClient } from '../xair/XAirClient';
 
 const RED = '#DC2626';
@@ -130,6 +133,8 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   const [sel, setSel] = useState<number[]>([]);
   const [facade, setFacade] = useState(facadePossible());
   const [free, setFree] = useState(0);
+  const [last, setLast] = useState<number[] | null>(null);
+  const wideScreen = useWindowDimensions().width >= 900;
   const [msg, setMsg] = useState('');
   const [list, setList] = useState<SessEntry[]>([]);
   const [open, setOpen] = useState<string | null>(null);
@@ -144,6 +149,8 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
       const c = candidates(client);
       const named = c.filter((x) => x.named && !x.muted).map((x) => x.ch);
       setSel(named.length ? named : c.map((x) => x.ch));
+      // on repart de ce qui avait été coché la dernière fois
+      load<{ chans: number[]; facade: boolean } | null>('recSel', null).then((r) => { if (r?.chans) { setLast(r.chans); setSel(r.chans); setFacade(r.facade && facadePossible()); } }).catch(() => {});
     }
     try { setFree(usbAudio?.recFree().free ?? 0); } catch { setFree(0); }
     reload();
@@ -156,6 +163,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
 
   const go = async () => {
     if (!sel.length && !facade) { setMsg('Coche au moins une voie.'); return; }
+    save('recSel', { chans: sel, facade }).catch(() => {});
     setMsg('Démarrage… (accepte la fenêtre « Autoriser Ma table » si elle s’ouvre)');
     const err = await startRec(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade, false);
     setMsg(err);
@@ -163,6 +171,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   };
   const armNow = () => {
     if (!sel.length && !facade) { setMsg('Coche au moins une voie.'); return; }
+    save('recSel', { chans: sel, facade }).catch(() => {});
     arm(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade);
     onClose();
   };
@@ -188,7 +197,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
         {!usbAudio ? (
           <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>L’enregistrement se fait sur la tablette Android branchée à la table par le câble USB. Sur cet appareil, il n’est pas disponible.</Text>
         ) : entry ? (
-          <ListenScreen entry={entry} theme={theme} onBack={() => { setOpen(null); reload(); }} />
+          <ListenScreen entry={entry} theme={theme} onBack={() => { forgetPreview(entry.id); setOpen(null); reload(); }} />
         ) : (
           <>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
@@ -203,25 +212,19 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
               <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 30 }}>
                 <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>NOM DU CONCERT</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                    {['Répétition', 'Concert', 'Balance'].map((w) => (
+                      <Pressable key={w} onPress={() => setName(defaultName().replace('Concert', w))} style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: theme.line2, justifyContent: 'center' }}><Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{w}</Text></Pressable>
+                    ))}
+                  </View>
                   <TextInput value={name} onChangeText={setName} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} placeholderTextColor={theme.muted} />
                 </View>
                 <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>LES VOIES À ENREGISTRER · {sel.length} cochée{sel.length > 1 ? 's' : ''}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 12 }}>Les voies qui ont un nom sont déjà cochées. Décoche ce qui ne sert pas : ça économise de la place.</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    {cands.map((c) => {
-                      const on = sel.includes(c.ch);
-                      return (
-                        <Pressable key={c.ch} onPress={() => toggle(c.ch)} accessibilityState={{ checked: on }} style={[styles.chk, { borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}>
-                          <Text style={{ fontSize: 16 }}>{on ? '☑' : '☐'}</Text>
-                          <Text numberOfLines={1} style={{ flex: 1, color: on ? theme.text : theme.muted, fontSize: 14, fontWeight: on ? '800' : '500' }}>{c.ch} · {c.name || 'sans nom'}{c.muted ? ' (coupée)' : ''}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <RecPrep client={client} theme={theme} cands={cands} sel={sel} setSel={setSel} last={last} wide={wideScreen} />
                   {facadePossible() && (
                     <Pressable onPress={() => setFacade((v) => !v)} accessibilityState={{ checked: facade }} style={[styles.chk, { width: '100%', borderColor: facade ? theme.accent : theme.line2, backgroundColor: facade ? theme.deep : 'transparent' }]}>
-                      <Text style={{ fontSize: 16 }}>{facade ? '☑' : '☐'}</Text>
+                      <Tick on={facade} theme={theme} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>La façade en stéréo (ce que le public entend)</Text>
                         <Text style={{ color: theme.muted, fontSize: 11 }}>Un fichier prêt à écouter, avec tes réglages et les effets. La table l’envoie sur les pistes USB 17-18.</Text>
@@ -291,25 +294,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
               </ScrollView>
             )}
 
-            {tab === 'list' && (
-              <ScrollView contentContainerStyle={{ gap: 8, paddingBottom: 30 }}>
-                {!list.length && <Text style={{ color: theme.muted, fontSize: 14 }}>Pas encore d’enregistrement.</Text>}
-                {list.map((e) => {
-                  const m = parseMeta(e.meta);
-                  const size = e.files.reduce((a, f) => a + f.size, 0);
-                  const live = st.on && st.id === e.id;
-                  return (
-                    <Pressable key={e.id} onPress={() => !live && setOpen(e.id)} style={[styles.box, { borderColor: live ? RED : theme.line, backgroundColor: theme.panel }]}>
-                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{live ? '⏺ ' : ''}{e.id}</Text>
-                      <Text style={{ color: theme.muted, fontSize: 12 }}>
-                        {live ? 'en cours…' : `${m?.seconds ? fmtTime(m.seconds) + ' · ' : ''}${e.files.length} fichiers · ${gb(size)}${m ? ` · ${m.markers.length} morceau${m.markers.length > 1 ? 'x' : ''}` : ''}`}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                {!!list.length && <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Les fichiers sont dans le dossier Musique › Ma table de la tablette : tu les retrouves avec l’appli Fichiers, ou depuis un ordinateur en branchant la tablette.</Text>}
-              </ScrollView>
-            )}
+            {tab === 'list' && <RecList list={list} theme={theme} liveId={st.on ? st.id : null} wide={wideScreen} onOpen={setOpen} reload={reload} />}
           </>
         )}
       </View>

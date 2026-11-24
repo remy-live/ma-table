@@ -5,12 +5,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Theme } from '../ui/theme';
-import { activeLevel, autoGainDb, Bar, bars, decodeB64, Edit, emptyMix, engineParams, firstClip, isRemoved, keptSeconds, keptSegments, lin, mixScale, MixState, regionGain } from '../xair/listen';
-import { autoTrim, fmtTime, Marker, parseMeta, RecMeta } from '../xair/recorder';
+import { Tick } from './RecPrep';
+import { Bar, bars, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
+import { fmtTime, Marker, parseMeta, RecMeta } from '../xair/recorder';
 import { CH_PALETTE } from '../xair/smartName';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
 
 const BLUE = '#60A5FA';
+const procForShow = (role: Role, force: number) => [5, 8, 11][Math.max(0, Math.min(2, force))] * (1 - 1 / ROLES[role].ratio);
 const isExport = (n: string) => n.startsWith('Mix') || n.startsWith('Extrait');
 const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} Go` : `${Math.round(b / 1e6)} Mo`);
 const pct = (x: number) => `${(Math.max(0, Math.min(1, x)) * 100).toFixed(2)}%` as `${number}%`;
@@ -95,7 +97,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const meta0 = useMemo<RecMeta>(() => parseMeta(entry.meta) ?? { name: entry.id, startedAt: 0, tracks: [], markers: [{ t: 0, label: 'Début' }], facade: false }, [entry]);
   const [files, setFiles] = useState(entry.files);
   const [markers, setMarkers] = useState<Marker[]>(meta0.markers.length ? meta0.markers : [{ t: 0, label: 'Début' }]);
-  const [mix, setMix] = useState<MixState>(meta0.mix ?? emptyMix());
+  const [mix, setMix] = useState<MixState>({ ...emptyMix(), ...(meta0.mix ?? {}) });
   const [redo, setRedo] = useState<Edit[]>([]);
   const [solo, setSolo] = useState<number | null>(null);
   const [src, setSrc] = useState<'mix' | 'facade'>('mix');
@@ -109,6 +111,8 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const [loading, setLoading] = useState('Préparation des ondes…');
   const [sharing, setSharing] = useState<Scope | null>(null);
   const [autoOpen, setAutoOpen] = useState(false);
+  const [raw, setRaw] = useState(false); // écouter « avant » : sans nettoyage ni finition
+  const [edit, setEdit] = useState<number | null>(null); // la piste dont on ouvre les réglages
   const [pick, setPick] = useState<Record<string, boolean>>({});
   const [prog, setProg] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -147,18 +151,13 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   }, [tracks, facade]);
 
   // 2) niveaux : automatique + retouche à la main, puis le tout ramené pour ne pas taper
-  const levels = useMemo(() => tracks.map((x) => {
-    const auto = autoGainDb(activeLevel(peaks[x.file.name] ?? new Uint8Array(0)));
-    const trim = mix.trims[x.file.name] ?? autoTrim(x.name);
-    const silenced = !!mix.mute[x.file.name] || (solo != null && solo !== x.k);
-    return { auto, trim, silenced, shown: auto == null ? 0 : lin(auto + trim) };
-  }), [tracks, peaks, mix.trims, mix.mute, solo]);
-  const norm = useMemo(() => mixScale(tracks.map((x, i) => ({ peaks: peaks[x.file.name] ?? null, gain: mix.mute[x.file.name] ? 0 : levels[i].shown }))), [tracks, peaks, levels, mix.mute]);
+  const mt = useMemo(() => tracks.map((x) => ({ key: x.file.name, name: x.name, pan: x.pan })), [tracks]);
+  const built = useMemo(() => buildMix(mt, peaks, mix, solo, total || 1, raw), [mt, peaks, mix, solo, total, raw]);
+  const levels = built.levels;
+  const norm = built.norm;
   const edits = useMemo(() => (onFacade ? mix.edits.filter((e) => e.type !== 'gain' || e.k == null) : mix.edits), [mix.edits, onFacade]);
   const segs = useMemo(() => keptSegments(edits, total || 1), [edits, total]);
-  const params = useMemo(() => engineParams(onFacade
-    ? { gains: [1], pans: [0], master: lin(mix.master), edits, total }
-    : { gains: levels.map((l) => (l.silenced ? 0 : l.shown)), pans: tracks.map((x) => x.pan), master: lin(mix.master) * norm, edits, total }), [onFacade, levels, tracks, mix.master, norm, edits, total]);
+  const params = useMemo(() => (onFacade ? { ...engineParams({ gains: [1], pans: [0], master: lin(mix.master), edits, total }), limit: true } : built.params), [onFacade, built, mix.master, edits, total]);
   const paths = useMemo(() => (onFacade && facade ? [facade.path] : tracks.map((x) => x.file.path)), [onFacade, facade, tracks]);
 
   // 3) le lecteur : ouvert sur les pistes (ou la façade), il reçoit les réglages à chaque changement
@@ -200,7 +199,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const addEdit = (e: Edit, msg: string) => { setMix((m) => ({ ...m, edits: [...m.edits, e] })); setRedo([]); if (e.type === 'cut' || e.type === 'keep') setSel(null); say(msg); };
   const undo = () => { const last = mix.edits[mix.edits.length - 1]; if (!last) return; setMix((m) => ({ ...m, edits: m.edits.slice(0, -1) })); setRedo((r) => [...r, last]); say('Retouche annulée'); };
   const doRedo = () => { const last = redo[redo.length - 1]; if (!last) return; setMix((m) => ({ ...m, edits: [...m.edits, last] })); setRedo((r) => r.slice(0, -1)); say('Retouche rétablie'); };
-  const setTrim = (x: Track, d: number) => setMix((m) => ({ ...m, trims: { ...m.trims, [x.file.name]: Math.max(-24, Math.min(18, (m.trims[x.file.name] ?? autoTrim(x.name)) + d)) } }));
+  const setTrim = (x: Track, d: number) => setMix((m) => ({ ...m, trims: { ...m.trims, [x.file.name]: Math.max(-24, Math.min(18, (m.trims[x.file.name] ?? levels[x.k].trim) + d)) } }));
   const selTxt = sel ? `${fmtTime(sel.a)} → ${fmtTime(sel.b)}` : '';
   const soloName = solo != null ? tracks[solo]?.name : null;
 
@@ -216,6 +215,8 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const overBars = useMemo(() => bars(overPeaks, bucket, 0, T, wide ? 220 : 110, (tt) => regionGain(edits, -1, tt) * 1.5, segs), [overPeaks, bucket, T, wide, edits, segs]);
   const facadeBars = useMemo(() => (facade ? bars(peaks[facade.name] ?? null, bucket, va, vb, N, (tt) => lin(mix.master) * regionGain(edits, -1, tt) * 1.5, segs) : []), [facade, peaks, bucket, va, vb, N, mix.master, edits, segs]);
 
+  const blanks = useMemo(() => findBlanks(overPeaks, bucket, T), [overPeaks, bucket, T]);
+  const blanksLeft = blanks.filter((bl) => !blankIsCut(mix.edits, bl));
   const clip = useMemo(() => {
     let best: { t: number; name: string } | null = null;
     tracks.forEach((x) => { const c = firstClip(peaks[x.file.name] ?? null, bucket); if (c != null && (!best || c < best.t)) best = { t: c, name: x.name }; });
@@ -294,6 +295,13 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
             {meta0.holes != null ? (meta0.holes ? ` · ⚠ ${meta0.holes} trou${meta0.holes > 1 ? 's' : ''}` : ' · prise propre') : ''}{mix.edits.length ? ` · ${mix.edits.length} retouche${mix.edits.length > 1 ? 's' : ''}` : ''}
           </Text>
         </View>
+        {!onFacade && tracks.length > 0 && (
+          <View style={[styles.segBox, { backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.accent }]}>
+            {([[true, 'Avant'], [false, 'Après']] as const).map(([v, l]) => (
+              <Pressable key={l} onPress={() => setRaw(v)} accessibilityLabel={v ? 'Écouter avant : sans nettoyage ni finition' : 'Écouter après : le mix nettoyé'} accessibilityState={{ selected: raw === v }} style={[styles.segBtn, seg(raw === v)]}><Text style={[styles.segTxt, segFg(raw === v)]}>{l}</Text></Pressable>
+            ))}
+          </View>
+        )}
         {facade && tracks.length > 0 && (
           <View style={[styles.segBox, { backgroundColor: theme.panel }]}>
             {([['mix', 'Mon mix'], ['facade', 'La façade']] as const).map(([id, l]) => (
@@ -304,7 +312,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
         {small('↶', undo, 'Annuler la dernière retouche')}
         {small('↷', doRedo, 'Rétablir')}
         {tracks.length > 0 && !onFacade && (
-          <Pressable onPress={() => { setPick(Object.fromEntries(tracks.map((x, i) => [x.file.name, !mix.mute[x.file.name] && levels[i].auto != null]))); setAutoOpen(true); }} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 13, fontWeight: '900' }}>🎚 Mix automatique</Text></Pressable>
+          <Pressable onPress={() => { setPick(Object.fromEntries(tracks.map((x, i) => [x.file.name, !mix.mute[x.file.name] && levels[i].auto != null]))); setAutoOpen(true); }} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 13, fontWeight: '900' }}>✨ Mix magique</Text></Pressable>
         )}
       </View>
 
@@ -360,7 +368,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
 
           {/* RÈGLE DU TEMPS */}
           <View style={{ flexDirection: 'row', alignItems: 'center', height: 24 }}>
-            {wide && <Text style={{ width: 382, color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>{onFacade ? 'LA FAÇADE, TELLE QUE LE PUBLIC L’A ENTENDUE' : 'LES PISTES DE MON MIX'}</Text>}
+            {wide && <Text style={{ width: 510, color: theme.muted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }}>{onFacade ? 'LA FAÇADE, TELLE QUE LE PUBLIC L’A ENTENDUE' : 'LES PISTES DE MON MIX'}</Text>}
             <SeekArea onSeek={(f) => go(va + f * vd)} style={{ flex: 1, height: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               {[0, 0.25, 0.5, 0.75, 1].map((f) => <Text key={f} style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>{fmtTime(va + f * vd)}</Text>)}
             </SeekArea>
@@ -381,17 +389,18 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
                 const L = levels[i];
                 const empty = L.auto == null;
                 const panel = (
-                  <View style={[styles.panel, wide ? { width: 372 } : null, { borderColor: theme.line, backgroundColor: theme.panel }]}>
+                  <View style={[styles.panel, wide ? { width: 500 } : null, { borderColor: theme.line, backgroundColor: theme.panel }]}>
                     <View style={{ width: 6, alignSelf: 'stretch', marginVertical: 8, borderRadius: 3, backgroundColor: x.color }} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text numberOfLines={1} style={{ color: L.silenced || empty ? theme.muted : theme.text, fontSize: 14, fontWeight: '800' }}>{x.name}</Text>
-                      <Text numberOfLines={1} style={{ color: mix.trims[x.file.name] != null && !L.silenced ? theme.accent : theme.muted, fontSize: 10, fontWeight: '600' }}>{empty ? 'piste vide' : mix.mute[x.file.name] ? 'coupée dans le mix' : L.silenced ? 'en attente (une autre est seule)' : mix.trims[x.file.name] != null ? 'retouchée à la main' : 'niveau automatique'}</Text>
+                      <Text numberOfLines={1} style={{ color: mix.trims[x.file.name] != null && !L.silenced ? theme.accent : theme.muted, fontSize: 10, fontWeight: '600' }}>{empty ? 'piste vide' : mix.mute[x.file.name] ? 'coupée dans le mix' : L.silenced ? 'en attente (une autre est seule)' : `${L.role} · ${mix.trims[x.file.name] != null ? 'retouchée à la main' : 'niveau automatique'}`}</Text>
                     </View>
                     {small('Seule', () => setSolo(solo === x.k ? null : x.k), `Écouter ${x.name} seule`, solo === x.k, '#FBBF24')}
                     {small('Coupe', () => setMix((m) => ({ ...m, mute: { ...m.mute, [x.file.name]: !m.mute[x.file.name] } })), `Couper ${x.name} dans le mix`, !!mix.mute[x.file.name], '#F87171')}
                     {small('−', () => setTrim(x, -2), `Moins de ${x.name}`)}
                     <Text style={{ width: 44, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '800' }}>{L.trim > 0 ? '+' : ''}{L.trim} dB</Text>
                     {small('+', () => setTrim(x, 2), `Plus de ${x.name}`)}
+                    {small('Régl.', () => setEdit(x.k), `Réglages de ${x.name} : instrument, nettoyage, gauche-droite`)}
                   </View>
                 );
                 const lane = (
@@ -434,7 +443,10 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
                   <Text style={{ color: '#FCD34D', fontSize: 13, fontWeight: '700' }}>{clip.name} a saturé à {fmtTime(clip.t)} · y aller</Text>
                 </Pressable>
               )}
-              <Text style={{ flex: 1, minWidth: 160, color: theme.muted, fontSize: 12 }}>{changed ? 'Tu entends tes retouches tout de suite. Les pistes d’origine ne changent jamais.' : 'Pour retoucher un passage : glisse le doigt sur une onde. Les bords bleus se rattrapent pour ajuster.'}</Text>
+              <Text numberOfLines={2} style={{ flex: 1, minWidth: 120, color: theme.muted, fontSize: 12, display: blanksLeft.length && clip ? 'none' : 'flex' }}>{changed ? 'Tu entends tes retouches tout de suite. Les pistes d’origine ne changent jamais.' : 'Pour retoucher un passage : glisse le doigt sur une onde. Les bords bleus se rattrapent pour ajuster.'}</Text>
+              {blanksLeft.length > 0 && (
+                <Pressable onPress={() => { setPick(Object.fromEntries(tracks.map((x, i) => [x.file.name, !mix.mute[x.file.name] && levels[i].auto != null]))); setAutoOpen(true); }} style={[styles.act, { borderWidth: 1, borderColor: '#34D399', backgroundColor: '#10291F' }]}><Text style={{ color: '#BBF7D0', fontSize: 13, fontWeight: '800' }}>{blanksLeft.length} blanc{blanksLeft.length > 1 ? 's' : ''} à enlever ?</Text></Pressable>
+              )}
               <Pressable onPress={() => setSel({ a: markers[g]?.t ?? 0, b: songEnd(g) })} style={[styles.act, { borderWidth: 1, borderColor: BLUE, backgroundColor: '#14202E' }]}><Text style={{ color: '#BFDBFE', fontSize: 13, fontWeight: '800' }}>Sélectionner ce morceau</Text></Pressable>
               <View style={[styles.panel, { borderColor: theme.line, backgroundColor: theme.panel, paddingHorizontal: 6 }]}>
                 <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', paddingHorizontal: 4 }}>Volume du mix</Text>
@@ -448,11 +460,67 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
         </>
       )}
 
+      {/* RÉGLAGES D'UNE PISTE : instrument reconnu, nettoyage, gauche-droite */}
+      {edit != null && tracks[edit] && (() => {
+        const x = tracks[edit], L = levels[edit], key = x.file.name, R = ROLES[L.role];
+        const fx: [FxKind, string, string, boolean][] = [
+          ['hp', 'Coupe-bas', `enlève le grondement sous ${R.hp} Hz`, true],
+          ['comp', 'Compression', `resserre les écarts : les crêtes baissent d’environ ${Math.round(procForShow(L.role, mix.force ?? 1))} dB`, true],
+          ['gate', 'Anti-repisse', 'baisse la piste entre les frappes : moins des autres instruments', R.gate],
+        ];
+        return (
+          <Pressable onPress={() => setEdit(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
+            <Pressable onPress={() => {}} style={[styles.sheet, { width: 520, maxHeight: '94%', padding: 0, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+             <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 8, height: 28, borderRadius: 4, backgroundColor: x.color }} />
+                <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 18, fontWeight: '900' }}>{x.name}</Text>
+                {small('Seule', () => setSolo(solo === x.k ? null : x.k), `Écouter ${x.name} seule`, solo === x.k, '#FBBF24')}
+              </View>
+              <Text style={styles.kick}>C’EST QUEL INSTRUMENT ? (ÇA RÈGLE LE NETTOYAGE)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {ROLE_NAMES.map((r: Role) => (
+                  <Pressable key={r} onPress={() => setMix((m) => ({ ...m, roles: { ...m.roles, [key]: r }, trims: Object.fromEntries(Object.entries(m.trims).filter(([k2]) => k2 !== key)) }))} accessibilityState={{ selected: L.role === r }} style={[styles.act, { minHeight: 40, borderWidth: 1.5, borderColor: L.role === r ? theme.accent : theme.line2, backgroundColor: L.role === r ? theme.accent : 'transparent' }]}>
+                    <Text style={{ color: L.role === r ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{r}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.kick}>NETTOYAGE</Text>
+              {fx.filter((f) => f[3]).map(([id, title, sub]) => {
+                const on = !mix.off?.[`${key}:${id}`];
+                return (
+                  <Pressable key={id} onPress={() => setMix((m) => ({ ...m, off: { ...m.off, [`${key}:${id}`]: on } }))} accessibilityState={{ checked: on }} style={[styles.fmt, { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}>
+                    <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: on ? theme.accent : theme.muted, backgroundColor: on ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on && <Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900', lineHeight: 16 }}>✓</Text>}</View>
+                    <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{title}</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text></View>
+                  </Pressable>
+                );
+              })}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={[styles.kick, { marginRight: 4 }]}>NIVEAU</Text>
+                {small('−', () => setTrim(x, -1), `Moins de ${x.name}`)}
+                <Text style={{ width: 50, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{L.trim > 0 ? '+' : ''}{L.trim} dB</Text>
+                {small('+', () => setTrim(x, 1), `Plus de ${x.name}`)}
+                <Text style={[styles.kick, { marginLeft: 12, marginRight: 4 }]}>GAUCHE · DROITE</Text>
+                {small('◀', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.max(-1, Math.round((L.pan - 0.2) * 10) / 10) } })), 'Plus à gauche')}
+                <Text style={{ width: 64, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{Math.abs(L.pan) < 0.05 ? 'centre' : `${Math.round(Math.abs(L.pan) * 100)} % ${L.pan < 0 ? 'G' : 'D'}`}</Text>
+                {small('▶', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.min(1, Math.round((L.pan + 0.2) * 10) / 10) } })), 'Plus à droite')}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Pressable onPress={() => { const drop = (o?: Record<string, unknown>) => Object.fromEntries(Object.entries(o ?? {}).filter(([k2]) => k2 !== key && !k2.startsWith(`${key}:`))); setMix((m) => ({ ...m, trims: drop(m.trims) as Record<string, number>, roles: drop(m.roles) as Record<string, Role>, pans: drop(m.pans) as Record<string, number>, off: drop(m.off) as Record<string, boolean> })); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Revenir à l’automatique</Text></Pressable>
+                <Pressable onPress={() => setEdit(null)} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>OK</Text></Pressable>
+              </View>
+             </ScrollView>
+            </Pressable>
+          </Pressable>
+        );
+      })()}
+
       {/* MIX AUTOMATIQUE : quelles pistes, puis l'appli met tout au même niveau */}
       {autoOpen && (
         <Pressable onPress={() => setAutoOpen(false)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
-          <Pressable onPress={() => {}} style={[styles.sheet, { width: 460, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
-            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Mix automatique</Text>
+          <Pressable onPress={() => {}} style={[styles.sheet, { width: 560, maxHeight: '94%', padding: 0, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+           <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Mix magique</Text>
             <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Coche les pistes à garder. L’appli les met à peu près au même niveau (la voix un peu devant), avec tes panoramiques. Ensuite tu écoutes et tu retouches avec − / +.</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {tracks.map((x, i) => {
@@ -460,12 +528,47 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
                 const on = !!pick[x.file.name] && !empty;
                 return (
                   <Pressable key={x.file.name} disabled={empty} onPress={() => setPick((p) => ({ ...p, [x.file.name]: !p[x.file.name] }))} accessibilityState={{ checked: on }} style={{ width: '48.5%', minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 10, borderColor: on ? x.color : theme.line2, backgroundColor: on ? theme.deep : 'transparent', opacity: empty ? 0.5 : 1 }}>
-                    <Text style={{ fontSize: 16, color: theme.text }}>{on ? '☑' : '☐'}</Text>
+                    <Tick on={on} theme={theme} />
                     <Text numberOfLines={1} style={{ flex: 1, color: on ? theme.text : theme.muted, fontSize: 14, fontWeight: on ? '800' : '500' }}>{x.name}{empty ? ' (vide)' : ''}</Text>
                   </Pressable>
                 );
               })}
             </View>
+            <Text style={styles.kick}>NETTOYAGE DE CHAQUE PISTE (COUPE-BAS, COMPRESSION, ANTI-REPISSE)</Text>
+            <View style={[styles.segBox, { backgroundColor: theme.deep, alignSelf: 'flex-start' }]}>
+              {['Léger', 'Normal', 'Fort'].map((l, i) => (
+                <Pressable key={l} onPress={() => setMix((m) => ({ ...m, force: i }))} accessibilityState={{ selected: (mix.force ?? 1) === i }} style={[styles.segBtn, seg((mix.force ?? 1) === i)]}><Text style={[styles.segTxt, segFg((mix.force ?? 1) === i)]}>{l}</Text></Pressable>
+              ))}
+            </View>
+            <Text style={styles.kick}>FINITION (COMME UN MASTERING)</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {([['eq', 'Équilibre graves / aigus'], ['glue', 'Colle d’ensemble']] as const).map(([id, l]) => {
+                const on = mix[id] !== false;
+                return <Pressable key={id} onPress={() => setMix((m) => ({ ...m, [id]: !on }))} accessibilityState={{ checked: on }} style={[styles.act, { borderWidth: 1.5, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}><Text style={{ color: on ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>{on ? '✓ ' : ''}{l}</Text></Pressable>;
+              })}
+              <View style={[styles.segBox, { backgroundColor: theme.deep }]}>
+                {([['nat', 'Naturel'], ['std', 'Standard'], ['fort', 'Fort']] as const).map(([id, l]) => (
+                  <Pressable key={id} onPress={() => setMix((m) => ({ ...m, loud: id }))} accessibilityLabel={`Volume final : ${l}`} accessibilityState={{ selected: (mix.loud ?? 'std') === id }} style={[styles.segBtn, seg((mix.loud ?? 'std') === id)]}><Text style={[styles.segTxt, segFg((mix.loud ?? 'std') === id)]}>{l}</Text></Pressable>
+                ))}
+              </View>
+            </View>
+            {blanks.length > 0 && (
+              <>
+                <Text style={styles.kick}>LES BLANCS TROUVÉS · À TOI DE DÉCIDER</Text>
+                <ScrollView style={{ maxHeight: 132 }}>
+                  {blanks.map((bl, i) => {
+                    const done = blankIsCut(mix.edits, bl);
+                    return (
+                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}>
+                        <Pressable onPress={() => { go(Math.max(0, bl.a - 2)); usbListen?.playerPlay(true); setPlaying(true); }} accessibilityLabel="Écouter ce blanc" style={[styles.sq, { width: 40, height: 40, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 14 }}>▶</Text></Pressable>
+                        <Text style={{ flex: 1, color: done ? theme.muted : theme.text, fontSize: 13 }}>{bl.where === 'début' ? 'Avant le début' : bl.where === 'fin' ? 'Après la fin' : 'Entre deux morceaux'} · {fmtTime(bl.a)} → {fmtTime(bl.b)} · {Math.round(bl.b - bl.a)} s</Text>
+                        <Pressable disabled={done} onPress={() => addEdit({ type: 'cut', a: bl.a, b: bl.b }, `Blanc coupé (${Math.round(bl.b - bl.a)} s)`)} style={[styles.act, { minHeight: 40, borderWidth: 1.5, borderColor: done ? '#34D399' : theme.line2, backgroundColor: done ? '#10291F' : 'transparent' }]}><Text style={{ color: done ? '#BBF7D0' : theme.text, fontSize: 12, fontWeight: '800' }}>{done ? 'Coupé' : 'Couper'}</Text></Pressable>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable onPress={() => setPick(Object.fromEntries(tracks.map((x) => [x.file.name, true])))} style={[styles.act, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Tout cocher</Text></Pressable>
               <View style={{ flex: 1 }} />
@@ -475,7 +578,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
               onPress={() => {
                 const n = tracks.filter((x, i) => pick[x.file.name] && levels[i].auto != null).length;
                 if (!n) { say('Coche au moins une piste'); return; }
-                setMix((m) => ({ ...m, trims: {}, master: 0, mute: Object.fromEntries(tracks.filter((x) => !pick[x.file.name]).map((x) => [x.file.name, true])) }));
+                setMix((m) => ({ ...m, trims: {}, master: 0, off: {}, pans: {}, mute: Object.fromEntries(tracks.filter((x) => !pick[x.file.name]).map((x) => [x.file.name, true])) }));
                 setSolo(null); setAutoOpen(false);
                 go(markers[g]?.t ?? 0);
                 usbListen?.playerPlay(true); setPlaying(true);
@@ -486,6 +589,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
               <Text style={{ color: theme.onAccent, fontSize: 16, fontWeight: '900' }}>Équilibrer et écouter ▶</Text>
             </Pressable>
             {mix.edits.length > 0 && <Pressable onPress={() => { setMix(emptyMix()); setRedo([]); setSolo(null); setAutoOpen(false); say('Tout est remis à zéro : ni coupe ni retouche'); }} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '700' }}>Enlever aussi les {mix.edits.length} coupes et retouches</Text></Pressable>}
+           </ScrollView>
           </Pressable>
         </Pressable>
       )}
@@ -544,6 +648,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
 }
 
 const styles = StyleSheet.create({
+  kick: { color: '#9AA3AD', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 2 },
   sq: { minWidth: 44, height: 44, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   act: { minHeight: 44, paddingHorizontal: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   playBtn: { width: 72, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },

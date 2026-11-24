@@ -9,8 +9,126 @@ export type Edit =
   | { type: 'fadeIn'; a: number; b: number }
   | { type: 'fadeOut'; a: number; b: number };
 
-export interface MixState { trims: Record<string, number>; mute: Record<string, boolean>; master: number; edits: Edit[] }
-export const emptyMix = (): MixState => ({ trims: {}, mute: {}, master: 0, edits: [] });
+export type Role = 'Voix' | 'Chœurs' | 'Guitare' | 'Basse' | 'Grosse caisse' | 'Caisse claire' | 'Tom' | 'Cymbales' | 'Clavier' | 'Autre';
+/** Par instrument : coupe-bas (Hz), taux de compression, anti-repisse (pour les fûts), niveau de départ (dB). */
+export const ROLES: Record<Role, { hp: number; ratio: number; gate: boolean; trim: number }> = {
+  'Voix': { hp: 90, ratio: 3, gate: false, trim: 3 },
+  'Chœurs': { hp: 100, ratio: 3, gate: false, trim: 0 },
+  'Guitare': { hp: 80, ratio: 2.5, gate: false, trim: -2 },
+  'Basse': { hp: 35, ratio: 4, gate: false, trim: 0 },
+  'Grosse caisse': { hp: 30, ratio: 3, gate: true, trim: -1 },
+  'Caisse claire': { hp: 90, ratio: 3, gate: true, trim: -1 },
+  'Tom': { hp: 60, ratio: 3, gate: true, trim: -4 },
+  'Cymbales': { hp: 200, ratio: 2, gate: false, trim: -5 },
+  'Clavier': { hp: 50, ratio: 2, gate: false, trim: -2 },
+  'Autre': { hp: 60, ratio: 2.5, gate: false, trim: -2 },
+};
+export const ROLE_NAMES = Object.keys(ROLES) as Role[];
+
+/** L'instrument, deviné au nom de la voie (« Grosse ca_3 », « C. claire_4 », « Oh droite_10 »…). */
+export function guessRole(name: string): Role {
+  const n = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^\d+\s+/, '').replace(/_\d+$/, '');
+  if (/ch(o|oe|œ)ur|back|voix ?[2-9]|vox ?[2-9]/.test(n)) return 'Chœurs';
+  if (/voix|vox|vocal|chant|lead|micro/.test(n)) return 'Voix';
+  if (/grosse|kick|\bgc\b|\bbd\b/.test(n)) return 'Grosse caisse';
+  if (/claire|snare|\bcc\b/.test(n)) return 'Caisse claire';
+  if (/tom/.test(n)) return 'Tom';
+  if (/\boh\b|overhead|cymb|charl|hi.?hat|\bhh\b|ride/.test(n)) return 'Cymbales';
+  if (/basse|bass/.test(n)) return 'Basse';
+  if (/guit|gtr|acoust|elec|folk/.test(n)) return 'Guitare';
+  if (/clav|piano|synth|key|orgue/.test(n)) return 'Clavier';
+  return 'Autre';
+}
+
+export type FxKind = 'hp' | 'comp' | 'gate';
+export interface MixState {
+  trims: Record<string, number>; mute: Record<string, boolean>; master: number; edits: Edit[];
+  /** rôle corrigé à la main, par piste */
+  roles?: Record<string, Role>;
+  /** réglage retiré à la main : clé « fichier:hp », « fichier:comp », « fichier:gate » */
+  off?: Record<string, boolean>;
+  /** panoramique corrigé à la main (−1..1) */
+  pans?: Record<string, number>;
+  /** force du nettoyage : 0 léger, 1 normal, 2 fort */
+  force?: number;
+  /** finition : équilibre, colle ; volume final */
+  eq?: boolean; glue?: boolean; loud?: 'nat' | 'std' | 'fort';
+}
+export const emptyMix = (): MixState => ({ trims: {}, mute: {}, master: 0, edits: [], roles: {}, off: {}, pans: {}, force: 1, eq: true, glue: true, loud: 'std' });
+
+export interface Proc { hp: number; thr: number; slope: number; makeup: number; gate: number; redDb: number }
+/** Le nettoyage d'une piste, calculé d'après son niveau « quand ça joue ». */
+export function procFor(role: Role, level: number | null, force: number, off: (k: FxKind) => boolean): Proc {
+  const R = ROLES[role];
+  if (level == null) return { hp: 0, thr: 0, slope: 0, makeup: 1, gate: 0, redDb: 0 };
+  const depth = [5, 8, 11][Math.max(0, Math.min(2, force))];
+  const comp = !off('comp');
+  const redDb = comp ? depth * (1 - 1 / R.ratio) : 0; // ce que la compression enlève sur une crête typique
+  return {
+    hp: off('hp') ? 0 : R.hp,
+    thr: comp ? lin(level - depth) : 0, slope: 1 / R.ratio - 1, makeup: lin(redDb * 0.6),
+    gate: R.gate && !off('gate') ? lin(level - [26, 22, 18][Math.max(0, Math.min(2, force))]) : 0,
+    redDb,
+  };
+}
+
+export interface MixTrack { key: string; name: string; pan: number }
+export interface Level { role: Role; auto: number | null; trim: number; silenced: boolean; shown: number; proc: Proc; pan: number }
+/**
+ * Tout le mix d'un coup : pour chaque piste son rôle, son niveau et son nettoyage, puis la finition.
+ * `raw` = écouter « avant » : niveaux automatiques seulement, sans nettoyage ni finition.
+ */
+export function buildMix(tracks: MixTrack[], peaks: Record<string, Uint8Array>, mix: MixState, solo: number | null, total: number, raw = false) {
+  const force = mix.force ?? 1;
+  const levels: Level[] = tracks.map((x, k) => {
+    const role = mix.roles?.[x.key] ?? guessRole(x.name);
+    const level = activeLevel(peaks[x.key] ?? new Uint8Array(0));
+    const auto = autoGainDb(level);
+    const trim = mix.trims[x.key] ?? ROLES[role].trim;
+    const silenced = !!mix.mute[x.key] || (solo != null && solo !== k);
+    const proc = raw ? procFor(role, null, force, () => true) : procFor(role, level, force, (f) => !!mix.off?.[`${x.key}:${f}`]);
+    return { role, auto, trim, silenced, shown: auto == null ? 0 : lin(auto + trim), proc, pan: mix.pans?.[x.key] ?? x.pan };
+  });
+  const norm = mixScale(tracks.map((x, i) => ({ peaks: peaks[x.key] ?? null, gain: mix.mute[x.key] ? 0 : levels[i].shown })));
+  const loud = raw ? 1 : { nat: 1, std: 1.5, fort: 2.2 }[mix.loud ?? 'std'];
+  const params = {
+    ...engineParams({ gains: levels.map((l) => (l.silenced ? 0 : l.shown)), pans: levels.map((l) => l.pan), master: lin(mix.master) * norm * loud, edits: mix.edits, total }),
+    hp: levels.map((l) => l.proc.hp), thr: levels.map((l) => l.proc.thr), slope: levels.map((l) => l.proc.slope), makeup: levels.map((l) => l.proc.makeup), gate: levels.map((l) => l.proc.gate),
+    eq: !raw && mix.eq !== false, glue: !raw && mix.glue !== false, limit: true,
+  };
+  return { levels, norm, params };
+}
+
+/** Les crêtes de toutes les pistes réunies (le plus fort à chaque instant). */
+export function mergePeaks(list: (Uint8Array | null | undefined)[]): Uint8Array {
+  const len = Math.max(0, ...list.map((p) => p?.length ?? 0));
+  const out = new Uint8Array(len);
+  for (const p of list) if (p) for (let i = 0; i < p.length; i++) if (p[i] > out[i]) out[i] = p[i];
+  return out;
+}
+
+export interface Blank { a: number; b: number; where: 'début' | 'fin' | 'milieu' }
+/** Les blancs : passages d'au moins `minLen` secondes où presque rien ne joue. On laisse un peu d'air autour. */
+export function findBlanks(peaks: Uint8Array, bucket: number, total: number, minLen = 6): Blank[] {
+  const QUIET = 30; // ≈ −37 dB
+  const out: Blank[] = [];
+  let start = -1;
+  for (let i = 0; i <= peaks.length; i++) {
+    const quiet = i < peaks.length && peaks[i] < QUIET;
+    if (quiet && start < 0) start = i;
+    if (!quiet && start >= 0) {
+      const a = start * bucket, b = Math.min(total, i * bucket);
+      const head = start === 0, tail = i >= peaks.length;
+      if (head && b - 0.8 > 2) out.push({ a: 0, b: b - 0.8, where: 'début' });
+      else if (tail && b - (a + 2) > 2) out.push({ a: a + 2, b, where: 'fin' });
+      else if (!head && !tail && b - a >= minLen) out.push({ a: a + 1.5, b: b - 1.2, where: 'milieu' });
+      start = -1;
+    }
+  }
+  return out;
+}
+/** Ce blanc est-il déjà coupé ? */
+export const blankIsCut = (edits: Edit[], bl: Blank) => edits.some((e) => e.type === 'cut' && e.a <= bl.a + 0.5 && e.b >= bl.b - 0.5);
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 export function decodeB64(s: string): Uint8Array {

@@ -590,7 +590,8 @@ class UsbAudioModule : Module() {
     val kept = ((o["kept"] as? List<Any?>) ?: emptyList()).map { dbl(it) }.toDoubleArray()
     val regs = ((o["regs"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Reg(dbl(it["a"]), dbl(it["b"]), dbl(it["g"], 1.0).toFloat(), dbl(it["k"], -1.0).toInt()) }
     val fades = ((o["fades"] as? List<Map<String, Any?>>) ?: emptyList()).map { MixEngine.Fade(dbl(it["a"]), dbl(it["b"]), it["rising"] == true) }
-    return MixEngine.Params(gains, pans, dbl(o["master"], 1.0).toFloat(), kept, regs, fades)
+    fun fa(k: String) = ((o[k] as? List<Any?>) ?: emptyList()).map { dbl(it).toFloat() }.toFloatArray()
+    return MixEngine.Params(gains, pans, dbl(o["master"], 1.0).toFloat(), kept, regs, fades, fa("hp"), fa("thr"), fa("slope"), fa("makeup"), fa("gate"), o["eq"] == true, o["glue"] == true, o["limit"] == true)
   }
 
   private fun num(o: Map<String, Any?>, k: String, d: Int): Int = (o[k] as? Number)?.toInt() ?: d

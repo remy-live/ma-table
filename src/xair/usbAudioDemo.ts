@@ -36,7 +36,8 @@ function peaksB64(k: number): string {
 const ID = '2026-11-28 20h30 Concert (démo)';
 const DIR = '/demo/' + ID;
 const files = [...TR.map(([n], k) => `${String(k + 1).padStart(2, '0')} ${n}.wav`), 'Façade (stéréo).wav'];
-let extra: string[] = [];
+const extra: Record<string, string[]> = {};
+const OTHERS = ['2026-11-28 19h10 Balance (démo)', '2026-11-27 21h02 Répétition (démo)'];
 let meta = JSON.stringify({
   name: ID, startedAt: Date.now() - 3600e3, facade: true, seconds: TOTAL, rate: 48000, holes: 0, maxGapMs: 9,
   tracks: [...TR.map(([n], k) => ({ ch: k, name: n, file: files[k].replace('.wav', ''), pan: [0, -0.3, 0.4, 0, 0, 0.1, 0][k] })), { ch: 16, name: 'Façade', file: 'Façade (stéréo)', stereo: true, pan: 0 }],
@@ -68,10 +69,10 @@ export const demoUsb: ListenNative = {
     return null;
   },
   recFree: () => ({ free: 96e9, public: true }),
-  sessList: (): SessEntry[] => [{ id: ID, dir: DIR, public: true, modified: Date.now(), meta, files: [...files, ...extra].map((name) => ({ name, path: `${DIR}/${name}`, size: name.endsWith('.m4a') ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) }],
+  sessList: (): SessEntry[] => [ID, ...OTHERS].map((id, n) => ({ id, dir: '/demo/' + id, public: true, modified: Date.now() - n * 3600e3, meta: n ? meta.replace(ID, id) : meta, files: [...files, ...(extra['/demo/' + id] ?? [])].map((name) => ({ name, path: `/demo/${id}/${name}`, size: name.endsWith('.m4a') ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) })),
   metaSave: (id, json) => { if (id === ID) meta = json; return true; },
   sessDelete: () => false,
-  fileDelete: (path) => { extra = extra.filter((n) => `${DIR}/${n}` !== path); return true; },
+  fileDelete: (path) => { const d = path.slice(0, path.lastIndexOf('/')); extra[d] = (extra[d] ?? []).filter((n) => `${d}/${n}` !== path); return true; },
   share: async () => true,
   peaks: async (path) => {
     const k = files.findIndex((n) => path.endsWith(n));
@@ -93,7 +94,7 @@ export const demoUsb: ListenNative = {
     const t = setInterval(() => {
       p += 0.1;
       fire('onMix', { p: Math.min(1, p) });
-      if (p >= 1) { clearInterval(t); const name = o.out.split('/').pop() ?? 'Mix.wav'; if (!extra.includes(name)) extra.push(name); resolve({ ok: true, path: o.out, seconds: 60 }); }
+      if (p >= 1) { clearInterval(t); const name = o.out.split('/').pop() ?? 'Mix.wav', d = o.out.slice(0, o.out.lastIndexOf('/')); if (!(extra[d] ??= []).includes(name)) extra[d].push(name); resolve({ ok: true, path: o.out, seconds: 60 }); }
     }, 120);
   }),
   mixCancel: () => {},

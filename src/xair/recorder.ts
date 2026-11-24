@@ -4,7 +4,7 @@
 import { i } from '../osc/osc';
 import { load, save } from '../store/persist';
 import { chNamePath, chOnPath, fToPan, MODEL, panPath } from './addresses';
-import { recognize } from './smartName';
+import { guessRole, ROLES } from './listen';
 import { RecSummary, usbListen as usbAudio } from './usbAudio';
 import { XAirClient } from './XAirClient';
 
@@ -146,14 +146,7 @@ export function mark() {
 export const currentSong = () => st.meta?.markers[st.meta.markers.length - 1] ?? null;
 
 /** Réglage de départ du mixage automatique, selon l'instrument reconnu au nom. */
-export function autoTrim(name: string): number {
-  const g = recognize(name);
-  if (!g) return -1;
-  if (g.group === 'Voix') return g.label === 'Chœurs' ? 0 : 3;
-  if (g.group === 'Batterie') return g.label === 'Kick' || g.label === 'Caisse claire' ? -1 : -5;
-  if (g.label === 'Basse') return 0;
-  return -2;
-}
+export const autoTrim = (name: string): number => ROLES[guessRole(name)].trim;
 
 export function parseMeta(json: string): RecMeta | null {
   try { const m = JSON.parse(json) as RecMeta; return m && Array.isArray(m.tracks) ? m : null; } catch { return null; }
