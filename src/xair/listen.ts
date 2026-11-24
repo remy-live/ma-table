@@ -9,13 +9,17 @@ export type Edit =
   | { type: 'fadeIn'; a: number; b: number }
   | { type: 'fadeOut'; a: number; b: number };
 
-export type Role = 'Voix' | 'Chœurs' | 'Guitare' | 'Basse' | 'Grosse caisse' | 'Caisse claire' | 'Tom' | 'Cymbales' | 'Clavier' | 'Autre';
+export type Role = 'Voix' | 'Chœurs' | 'Guitare' | 'Ampli' | 'Basse' | 'Batterie entière' | 'Grosse caisse' | 'Caisse claire' | 'Tom' | 'Cymbales' | 'Clavier' | 'Autre';
 /** Par instrument : coupe-bas (Hz), taux de compression, anti-repisse (pour les fûts), niveau de départ (dB). */
 export const ROLES: Record<Role, { hp: number; ratio: number; gate: boolean; trim: number }> = {
   'Voix': { hp: 90, ratio: 3, gate: false, trim: 3 },
   'Chœurs': { hp: 100, ratio: 3, gate: false, trim: 0 },
   'Guitare': { hp: 80, ratio: 2.5, gate: false, trim: -2 },
+  // un micro devant un ampli : pas d'anti-repisse, on garde le corps
+  'Ampli': { hp: 70, ratio: 2.5, gate: false, trim: -2 },
   'Basse': { hp: 35, ratio: 4, gate: false, trim: 0 },
+  // UN seul micro pour toute la batterie : surtout pas d'anti-repisse ni de coupe-bas haut (grosse caisse ET cymbales dedans)
+  'Batterie entière': { hp: 30, ratio: 2, gate: false, trim: 0 },
   'Grosse caisse': { hp: 30, ratio: 3, gate: true, trim: -1 },
   'Caisse claire': { hp: 90, ratio: 3, gate: true, trim: -1 },
   'Tom': { hp: 60, ratio: 3, gate: true, trim: -4 },
@@ -34,6 +38,8 @@ export function guessRole(name: string): Role {
   if (/claire|snare|\bcc\b/.test(n)) return 'Caisse claire';
   if (/tom/.test(n)) return 'Tom';
   if (/\boh\b|overhead|cymb|charl|hi.?hat|\bhh\b|ride/.test(n)) return 'Cymbales';
+  if (/batt|drum|kit\b/.test(n)) return 'Batterie entière';
+  if (/ampli|\bamp\b|cab/.test(n)) return 'Ampli';
   if (/basse|bass/.test(n)) return 'Basse';
   if (/guit|gtr|acoust|elec|folk/.test(n)) return 'Guitare';
   if (/clav|piano|synth|key|orgue/.test(n)) return 'Clavier';

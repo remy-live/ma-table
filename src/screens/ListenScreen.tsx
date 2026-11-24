@@ -112,7 +112,9 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const [sharing, setSharing] = useState<Scope | null>(null);
   const [autoOpen, setAutoOpen] = useState(false);
   const [raw, setRaw] = useState(false); // écouter « avant » : sans nettoyage ni finition
-  const [edit, setEdit] = useState<number | null>(null); // la piste dont on ouvre les réglages
+  const [edit, setEdit] = useState<number | null>(null);
+  const [win, setWin] = useState<{ a: number; b: number } | null>(null); // la loupe
+  const [cutOpen, setCutOpen] = useState(false); // la piste dont on ouvre les réglages
   const [pick, setPick] = useState<Record<string, boolean>>({});
   const [prog, setProg] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -190,9 +192,20 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const T = total || 1;
   const g = Math.max(0, markers.reduce((acc, m, i) => (t >= m.t ? i : acc), 0));
   const songEnd = (k: number) => markers[k + 1]?.t ?? T;
-  const va = view === 'song' ? markers[g]?.t ?? 0 : 0;
-  const vb = view === 'song' ? songEnd(g) : T;
+  // la loupe : une fenêtre plus serrée que le morceau, qui suit la lecture
+  const base: [number, number] = view === 'song' ? [markers[g]?.t ?? 0, songEnd(g)] : [0, T];
+  const zoomed = win && win.b > win.a ? win : null;
+  const va = zoomed ? zoomed.a : base[0];
+  const vb = zoomed ? zoomed.b : base[1];
   const vd = Math.max(0.5, vb - va);
+  const zoom = (f: number) => {
+    const span = (vb - va) * f;
+    if (span >= base[1] - base[0] || span >= T) { setWin(null); return; }
+    const w = Math.max(8, span), a = Math.max(0, Math.min(T - w, t - w / 2));
+    setWin({ a, b: a + w });
+  };
+  // pendant la lecture, la loupe tourne la page quand la tête sort de l'écran
+  useEffect(() => { if (zoomed && (t > zoomed.b || t < zoomed.a)) { const w = zoomed.b - zoomed.a, a = Math.max(0, Math.min(T - w, t < zoomed.a ? t - w * 0.1 : t - w * 0.05)); setWin({ a, b: a + w }); } }, [t]); // eslint-disable-line react-hooks/exhaustive-deps
   const go = (x: number) => { const v = Math.max(0, Math.min(T - 0.05, x)); setT(v); usbListen?.playerSeek(v); };
   const toggle = () => { usbListen?.playerPlay(!playing); setPlaying(!playing); };
 
@@ -359,10 +372,13 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
             {markers.length > 1 && (
               <View style={[styles.segBox, { backgroundColor: theme.panel }]}>
                 {([['song', 'Ce morceau'], ['all', 'Tout']] as const).map(([id, l]) => (
-                  <Pressable key={id} onPress={() => setView(id)} accessibilityState={{ selected: view === id }} style={[styles.segBtn, seg(view === id)]}><Text style={[styles.segTxt, segFg(view === id)]}>{l}</Text></Pressable>
+                  <Pressable key={id} onPress={() => { setView(id); setWin(null); }} accessibilityState={{ selected: view === id }} style={[styles.segBtn, seg(view === id)]}><Text style={[styles.segTxt, segFg(view === id)]}>{l}</Text></Pressable>
                 ))}
               </View>
             )}
+            {small('🔍−', () => zoom(2), 'Voir plus large')}
+            {small('🔍+', () => zoom(0.5), 'Voir de plus près, pour viser juste')}
+            <Pressable onPress={() => setCutOpen(true)} style={[styles.act, { backgroundColor: '#E8EAED' }]}><Text style={{ color: '#111418', fontSize: 13, fontWeight: '900' }}>✂ Couper…</Text></Pressable>
             <Pressable onPress={addMarker} style={[styles.act, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>+ Repère</Text></Pressable>
           </View>
 
@@ -459,6 +475,33 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
           )}
         </>
       )}
+
+      {/* COUPER : les coupes les plus courantes, d'un seul geste, là où se trouve la tête de lecture */}
+      {cutOpen && (() => {
+        const here = blanks.find((bl) => t >= bl.a - 1 && t <= bl.b + 1 && !blankIsCut(mix.edits, bl));
+        const opts: [string, string, () => void][] = [
+          [`Tout ce qui est avant ${fmtTime(t)}`, 'le début jusqu’à la tête de lecture', () => addEdit({ type: 'cut', a: 0, b: t }, `Début coupé jusqu’à ${fmtTime(t)}`)],
+          [`Tout ce qui est après ${fmtTime(t)}`, 'de la tête de lecture jusqu’à la fin', () => addEdit({ type: 'cut', a: t, b: T }, `Fin coupée à partir de ${fmtTime(t)}`)],
+          ...(markers.length > 1 ? [[`Tout « ${markers[g]?.label} »`, `le morceau entier · ${fmtTime(songEnd(g) - (markers[g]?.t ?? 0))}`, () => addEdit({ type: 'cut', a: markers[g]?.t ?? 0, b: songEnd(g) }, `« ${markers[g]?.label} » retiré du mix`)] as [string, string, () => void]] : []),
+          ...(here ? [[`Le blanc ici · ${Math.round(here.b - here.a)} s`, `${fmtTime(here.a)} → ${fmtTime(here.b)}`, () => addEdit({ type: 'cut', a: here.a, b: here.b }, 'Blanc coupé')] as [string, string, () => void]] : []),
+          ...(blanksLeft.length > 1 ? [[`Tous les blancs · ${blanksLeft.length}`, `${Math.round(blanksLeft.reduce((x, bl) => x + bl.b - bl.a, 0))} s en moins`, () => { setMix((m) => ({ ...m, edits: [...m.edits, ...blanksLeft.map((bl) => ({ type: 'cut' as const, a: bl.a, b: bl.b }))] })); setRedo([]); say(`${blanksLeft.length} blancs coupés`); }] as [string, string, () => void]] : []),
+        ];
+        return (
+          <Pressable onPress={() => setCutOpen(false)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
+            <Pressable onPress={() => {}} style={[styles.sheet, { width: 460, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>✂ Couper quoi ?</Text>
+              {opts.map(([title, sub, run]) => (
+                <Pressable key={title} onPress={() => { run(); setCutOpen(false); }} style={[styles.fmt, { minHeight: 54, borderColor: theme.line2, backgroundColor: theme.deep }]}>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{title}</Text>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text>
+                </Pressable>
+              ))}
+              <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 17 }}>Pour un passage précis : glisse le doigt sur une onde, puis « Couper ». Rien n’est effacé, ↶ annule.</Text>
+              <Pressable onPress={() => setCutOpen(false)} style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', paddingHorizontal: 8 }}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>Fermer</Text></Pressable>
+            </Pressable>
+          </Pressable>
+        );
+      })()}
 
       {/* RÉGLAGES D'UNE PISTE : instrument reconnu, nettoyage, gauche-droite */}
       {edit != null && tracks[edit] && (() => {

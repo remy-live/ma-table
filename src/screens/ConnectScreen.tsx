@@ -15,6 +15,8 @@ import { HOTSPOT_PREFIXES, sweep } from '../xair/network';
 import { load, save, setSandbox } from '../store/persist';
 import * as dbg from '../debug/log';
 import { DebugScreen } from './DebugScreen';
+import { RecorderSheet } from './RecorderSheet';
+import { recAvailable } from '../xair/recorder';
 import { Theme } from '../ui/theme';
 
 // une seule tentative automatique par lancement de l'appli (pas après « Quitter »)
@@ -24,6 +26,7 @@ interface MyTable { ip: string; name: string; model: string; at: number; ssid?: 
 
 export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig, musician?: boolean, prep?: boolean) => void; invite?: MonConfig | null }) {
   const [code, setCode] = useState('');
+  const [recOpen, setRecOpen] = useState(false);
   const [lastMon, setLastMon] = useState<MonConfig | null>(null);
   const [found, setFound] = useState<TableInfo[]>([]);
   const [searching, setSearching] = useState(false);
@@ -306,6 +309,16 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </View>
           </Pressable>
 
+          {recAvailable() && (
+            <Pressable onPress={() => setRecOpen(true)} accessibilityLabel="Mes enregistrements : écouter, mixer, partager" style={[styles.card, { borderColor: theme.accent, borderWidth: 2, backgroundColor: theme.panel, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+              <Text style={{ fontSize: 28 }}>🎵</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>Mes enregistrements</Text>
+                <Text style={{ color: theme.muted, fontSize: 13 }}>Réécouter, mixer et partager. Pas besoin de la table.</Text>
+              </View>
+            </Pressable>
+          )}
+
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -411,6 +424,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
       {busy && <ActivityIndicator color={theme.accent} style={{ marginTop: 12 }} />}
       {!!error && <Text style={{ color: theme.mute, marginTop: 8, fontWeight: '700' }}>{error}</Text>}
       <DebugScreen client={null} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
+      <RecorderSheet client={null} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
     </ScrollView>
       {auto && (
         <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, zIndex: 50 }}>

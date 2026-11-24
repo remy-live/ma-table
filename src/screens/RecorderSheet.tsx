@@ -6,7 +6,7 @@ import { Alert, Animated, Modal, PanResponder, useWindowDimensions, Pressable, S
 import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
-import { arm, disarm, startArmed, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
+import { arm, clearAskName, disarm, startArmed, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
 import { SessEntry, usbAudio as realUsb, usbListen as usbAudio } from '../xair/usbAudio';
 import { ListenScreen } from './ListenScreen';
 import { forgetPreview, RecList } from './RecList';
@@ -126,9 +126,17 @@ export function RecPill({ wide, onOpen }: { wide: boolean; onOpen: () => void })
   );
 }
 
-export function RecorderSheet({ client, theme, visible, onClose }: { client: XAirClient; theme: Theme; visible: boolean; onClose: () => void }) {
+/** Une prise vient de s'arrêter : on ouvre l'enregistreur pour lui donner un nom. */
+export function RecAskName({ onOpen }: { onOpen: () => void }) {
   const st = useRec();
-  const [tab, setTab] = useState<'rec' | 'list'>('rec');
+  useEffect(() => { if (st.askName) onOpen(); }, [st.askName]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+/** `client` absent (écran d'accueil, sans table) : on n'a que « Mes enregistrements ». */
+export function RecorderSheet({ client, theme, visible, onClose }: { client: XAirClient | null; theme: Theme; visible: boolean; onClose: () => void }) {
+  const st = useRec();
+  const [tab, setTab] = useState<'rec' | 'list'>(client ? 'rec' : 'list');
   const [name, setName] = useState(defaultName());
   const [sel, setSel] = useState<number[]>([]);
   const [facade, setFacade] = useState(facadePossible());
@@ -150,7 +158,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   const [msg, setMsg] = useState('');
   const [list, setList] = useState<SessEntry[]>([]);
   const [open, setOpen] = useState<string | null>(null);
-  const cands = useMemo(() => (visible ? candidates(client) : []), [visible, client]);
+  const cands = useMemo(() => (visible && client ? candidates(client) : []), [visible, client]);
 
   const reload = () => setList(usbAudio?.sessList() ?? []);
   useEffect(() => {
@@ -158,18 +166,20 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
     setMsg('');
     if (!st.on) {
       setName(defaultName());
-      const c = candidates(client);
+      const c = client ? candidates(client) : [];
       const named = c.filter((x) => x.named && !x.muted).map((x) => x.ch);
       setSel(named.length ? named : c.map((x) => x.ch));
       // on repart de ce qui avait été coché la dernière fois
       load<{ chans: number[]; facade: boolean } | null>('recSel', null).then((r) => { if (r?.chans) { setLast(r.chans); setSel(r.chans); setFacade(r.facade && facadePossible()); } }).catch(() => {});
     }
     try { setFree(usbAudio?.recFree().free ?? 0); } catch { setFree(0); }
-    if (!st.on && !st.armed) probe();
+    if (client && !st.on && !st.armed) probe();
+    if (!client) setTab('list');
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
   useEffect(() => { if (!st.on && st.last) reload(); }, [st.on, st.last]);
+  useEffect(() => { if (visible && st.askName) { reload(); setOpen(null); setTab('list'); } }, [visible, st.askName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const planned = [...sel.map(() => ({ stereo: false })), ...(facade ? [{ stereo: true }] : [])];
   const hours = hoursLeft(st.on ? st.free : free, st.on ? st.meta?.tracks ?? [] : planned);
@@ -178,6 +188,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
     if (!sel.length && !facade) { setMsg('Coche au moins une voie.'); return; }
     save('recSel', { chans: sel, facade }).catch(() => {});
     setMsg('Démarrage… (accepte la fenêtre « Autoriser Ma table » si elle s’ouvre)');
+    if (!client) return;
     const err = await startRec(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade, false);
     setMsg(err);
     if (!err) onClose(); // c'est parti : retour à la table, la pastille rouge prend le relais
@@ -185,6 +196,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   const armNow = () => {
     if (!sel.length && !facade) { setMsg('Coche au moins une voie.'); return; }
     save('recSel', { chans: sel, facade }).catch(() => {});
+    if (!client) return;
     arm(client, name.trim() || defaultName(), [...sel].sort((a, b) => a - b), facade);
     onClose();
   };
@@ -201,7 +213,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
       <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
         <View style={[styles.head, entry ? { display: 'none' } : null]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: theme.text }]}>Enregistrer le concert</Text>
+            <Text style={[styles.title, { color: theme.text }]}>{client ? 'Enregistrer le concert' : 'Mes enregistrements'}</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>La tablette branchée en USB sur la table · un fichier par voie</Text>
           </View>
           <CloseX theme={theme} onPress={onClose} />
@@ -213,7 +225,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
           <ListenScreen entry={entry} theme={theme} onBack={() => { forgetPreview(entry.id); setOpen(null); reload(); }} />
         ) : (
           <>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10, display: client ? 'flex' : 'none' }}>
               {([['rec', st.on ? '⏺ En cours' : '⏺ Enregistrer'], ['list', `🎵 Mes enregistrements${list.length ? ` (${list.length})` : ''}`]] as const).map(([k, l]) => (
                 <Pressable key={k} onPress={() => setTab(k)} style={[styles.tab, { borderColor: tab === k ? theme.accent : theme.line2, backgroundColor: tab === k ? theme.accent : 'transparent' }]}>
                   <Text style={{ color: tab === k ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 14 }}>{l}</Text>
@@ -234,7 +246,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
                 </View>
                 <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>LES VOIES À ENREGISTRER · {sel.length} cochée{sel.length > 1 ? 's' : ''}</Text>
-                  <RecPrep client={client} theme={theme} cands={cands} sel={sel} setSel={setSel} last={last} wide={wideScreen} usb={usb} />
+                  {client && <RecPrep client={client} theme={theme} cands={cands} sel={sel} setSel={setSel} last={last} wide={wideScreen} usb={usb} />}
                   {realUsb && <Pressable onPress={probe} disabled={probing} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{probing ? 'J’écoute les prises…' : usb ? '↻ Revérifier ce qui est branché' : usbMsg || '↻ Vérifier ce qui est branché (par le câble USB)'}</Text></Pressable>}
                   {facadePossible() && (
                     <Pressable onPress={() => setFacade((v) => !v)} accessibilityState={{ checked: facade }} style={[styles.chk, { width: '100%', borderColor: facade ? theme.accent : theme.line2, backgroundColor: facade ? theme.deep : 'transparent' }]}>
@@ -308,7 +320,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
               </ScrollView>
             )}
 
-            {tab === 'list' && <RecList list={list} theme={theme} liveId={st.on ? st.id : null} wide={wideScreen} onOpen={setOpen} reload={reload} />}
+            {tab === 'list' && <RecList list={list} theme={theme} liveId={st.on ? st.id : null} wide={wideScreen} onOpen={setOpen} reload={reload} askRename={st.askName} onAsked={clearAskName} />}
           </>
         )}
       </View>

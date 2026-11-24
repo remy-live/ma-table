@@ -30,7 +30,7 @@ import { FirstRun } from './src/screens/FirstRun';
 import { LarsenWatch } from './src/screens/LarsenWatch';
 import { KillBanner, KillButton } from './src/ui/KillSwitch';
 import { LinkBadge } from './src/ui/LinkBadge';
-import { RecPill, RecorderSheet } from './src/screens/RecorderSheet';
+import { RecAskName, RecPill, RecorderSheet } from './src/screens/RecorderSheet';
 import { setLevel, setLevelSaver } from './src/ui/words';
 import { installBigText } from './src/ui/bigText';
 
@@ -298,6 +298,7 @@ export default function App() {
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
       {/* pendant un enregistrement : la télécommande flotte sur tous les écrans */}
       {!recOpen && <RecPill wide={wide} onOpen={() => setRecOpen(true)} />}
+      <RecAskName onOpen={() => setRecOpen(true)} />
       <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}

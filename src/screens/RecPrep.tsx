@@ -12,8 +12,8 @@ import { XAirClient } from '../xair/XAirClient';
 
 const FAMILIES: [string, string, Role[]][] = [
   ['Voix', '#F472B6', ['Voix', 'Chœurs']],
-  ['Instruments', '#FB923C', ['Guitare', 'Basse', 'Clavier', 'Autre']],
-  ['Batterie', '#60A5FA', ['Grosse caisse', 'Caisse claire', 'Tom', 'Cymbales']],
+  ['Instruments', '#FB923C', ['Guitare', 'Ampli', 'Basse', 'Clavier', 'Autre']],
+  ['Batterie', '#60A5FA', ['Batterie entière', 'Grosse caisse', 'Caisse claire', 'Tom', 'Cymbales']],
 ];
 const famOf = (name: string) => FAMILIES.find((f) => f[2].includes(guessRole(name)));
 

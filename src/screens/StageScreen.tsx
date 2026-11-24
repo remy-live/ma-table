@@ -54,6 +54,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [journalOpen, setJournalOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
+  const [levelsView, setLevelsView] = useState(false); // vignettes, ou toutes les voies en barres de niveau
   const [openG, setOpenG] = useState<number[]>([]);
   const [gainCh, setGainCh] = useState<number | null>(null);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
@@ -124,6 +125,22 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const grouped = new Set(groups.flatMap((g) => g.members));
   const solos = Array.from({ length: CH_COUNT }, (_, c) => c + 1).filter((c) => !grouped.has(c) && !!String(client.get(chNamePath(c)) ?? ''));
   const mixColor = (t: Target) => MIX_COLORS[mixes.findIndex((m) => targetId(m) === targetId(t))] ?? theme.text;
+  const named = Array.from({ length: CH_COUNT }, (_, c) => c + 1).filter((c) => !!String(client.get(chNamePath(c)) ?? ''));
+  const viewSwitch = (
+    <View style={{ flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 12, padding: 3, gap: 3, backgroundColor: theme.deep }}>
+      {([[false, 'Vignettes'], [true, 'Niveaux']] as const).map(([v, l]) => (
+        <Pressable key={l} onPress={() => setLevelsView(v)} accessibilityState={{ selected: levelsView === v }} style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center', backgroundColor: levelsView === v ? theme.accent : 'transparent' }}>
+          <Text style={{ color: levelsView === v ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{l}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+  const levelCols = (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, paddingBottom: 4, minHeight: 300, flexGrow: 1 }}>
+      {named.map((c) => <LevelCol key={c} client={client} ch={c} mix={mix} theme={theme} live={chLive(c)} onNudge={(d) => nudgeCh(c, d)} />)}
+      {!named.length && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies pour les voir ici.</Text>}
+    </ScrollView>
+  );
   const nudgeCh = (c: number, db: number) => {
     const p = chLevelPath(c, mix);
     const v = Number(client.get(p) ?? 0);
@@ -218,10 +235,13 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
               })}
             </ScrollView>
           </View>
-          <Text style={{ color: theme.muted, fontSize: 11 }}>Puis quoi : chaque appui = 2 dB</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ flex: 1, color: theme.muted, fontSize: 11 }}>Puis quoi : chaque appui = 2 dB</Text>
+            {viewSwitch}
+          </View>
           {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
           <View style={{ flex: 1 }} onLayout={(e) => { setGridH(e.nativeEvent.layout.height); setGridW(e.nativeEvent.layout.width); }}>
-            {fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
+            {levelsView ? levelCols : fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
           </View>
         </View>
       </View>
@@ -293,7 +313,9 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
           </ScrollView>
           <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Puis : quoi ? <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 12 }}>(chaque appui = 2 dB)</Text></Text>
           {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
-          <View style={styles.grid}>
+          {viewSwitch}
+          {levelsView && <View style={{ height: 340 }}>{levelCols}</View>}
+          <View style={[styles.grid, levelsView ? { display: 'none' } : null]}>
             <MasterTile client={client} mix={mix} name={mix.kind === 'main' ? 'Le public' : mixName(mix)} color={mixColor(mix)} theme={theme} w={wide ? '24%' : '48.6%'} live={outLive} />
             {groups.map((g) => (
               <React.Fragment key={'g' + g.k}>
@@ -367,6 +389,27 @@ function LiveBar({ v, theme }: { v: number; theme: Theme }) {
   );
 }
 const playing = (v?: number) => (v ?? 0) > 0.45;
+
+/** Vue « niveaux » : une colonne par voie, le son qui arrive en barre, le réglage en trait, + et − aux deux bouts. */
+function LevelCol({ client, ch, mix, theme, live, onNudge }: { client: XAirClient; ch: number; mix: Target; theme: Theme; live: number; onNudge: (db: number) => void }) {
+  const v = Number(useParam<number>(client, chLevelPath(ch, mix), 0));
+  const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
+  const col = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
+  const d = faderToDb(v);
+  const lv = Math.max(0, Math.min(1, live));
+  return (
+    <View style={{ width: 72, borderWidth: 1, borderColor: playing(live) ? col : theme.line, borderRadius: 12, backgroundColor: theme.deep, padding: 5, gap: 5, alignItems: 'center' }}>
+      <Pressable onPress={() => onNudge(2)} accessibilityLabel={`Monter ${name}`} style={{ alignSelf: 'stretch', minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: theme.line2, backgroundColor: theme.panel, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>+</Text></Pressable>
+      <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>{!isFinite(d) || v <= 0 ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(0)}`}</Text>
+      <View style={{ flex: 1, minHeight: 90, width: 26, borderRadius: 6, backgroundColor: theme.line, overflow: 'hidden', justifyContent: 'flex-end' }}>
+        <View style={{ height: `${Math.round(lv * 100)}%`, backgroundColor: lv > 0.92 ? '#EF4444' : lv > 0.75 ? '#FACC15' : '#22C55E' }} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`, height: 3, backgroundColor: col }} />
+      </View>
+      <Pressable onPress={() => onNudge(-2)} accessibilityLabel={`Baisser ${name}`} style={{ alignSelf: 'stretch', minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: theme.line2, backgroundColor: theme.panel, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>−</Text></Pressable>
+      <Text numberOfLines={2} style={{ color: theme.text, fontSize: 11, fontWeight: '700', textAlign: 'center', minHeight: 28 }}>{name}</Text>
+    </View>
+  );
+}
 
 function ChTile(props: { live?: number; client: XAirClient; ch: number; mix: Target; theme: Theme; wide: boolean; onNudge: (db: number) => void; w?: string | number; h?: number }) {
   const { client, ch, mix, theme } = props;

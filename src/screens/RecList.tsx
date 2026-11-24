@@ -54,7 +54,7 @@ const Wave = React.memo(function Wave({ data, played, color, dim }: { data: Bar[
   );
 });
 
-export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: SessEntry[]; theme: Theme; liveId: string | null; wide: boolean; onOpen: (id: string) => void; reload: () => void }) {
+export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, onAsked }: { list: SessEntry[]; theme: Theme; liveId: string | null; wide: boolean; onOpen: (id: string) => void; reload: () => void; askRename?: string | null; onAsked?: () => void }) {
   const [ready, setReady] = useState(0); // +1 à chaque onde chargée
   const [now, setNow] = useState<string | null>(null);
   const [t, setT] = useState(0);
@@ -64,8 +64,10 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
   const [sorting, setSorting] = useState(false);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState('');
-  const [ren, setRen] = useState<{ id: string; name: string } | null>(null); // renommer
+  const [ren, setRen] = useState<{ id: string; name: string; fresh?: boolean } | null>(null); // renommer
   const [offer, setOffer] = useState<{ id: string; blanks: Blank[] } | null>(null); // blancs trouvés après un mix magique
+  // une prise vient de s'arrêter : on propose tout de suite de la nommer
+  useEffect(() => { if (askRename && list.some((e) => e.id === askRename)) { setRen({ id: askRename, name: askRename, fresh: true }); onAsked?.(); } }, [askRename, list]); // eslint-disable-line react-hooks/exhaustive-deps
   const nowRef = useRef<string | null>(null);
   nowRef.current = now;
 
@@ -258,11 +260,11 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
       {ren && (
         <Pressable onPress={() => setRen(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', paddingTop: 40 }]}>
           <Pressable onPress={() => {}} style={{ width: 460, maxWidth: '94%', borderWidth: 1, borderColor: theme.line2, borderRadius: 18, padding: 16, gap: 10, backgroundColor: theme.panel }}>
-            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>Renommer l’enregistrement</Text>
-            <TextInput value={ren.name} onChangeText={(name) => setRen({ id: ren.id, name })} autoFocus selectTextOnFocus onSubmitEditing={rename} returnKeyType="done" accessibilityLabel="Nouveau nom" style={{ minHeight: 48, borderWidth: 1, borderColor: theme.line2, borderRadius: 10, paddingHorizontal: 12, fontSize: 16, color: theme.text, backgroundColor: theme.deep }} />
+            <Text style={{ color: theme.text, fontSize: 17, fontWeight: '900' }}>{ren.fresh ? 'C’est enregistré. Tu l’appelles comment ?' : 'Renommer l’enregistrement'}</Text>
+            <TextInput value={ren.name} onChangeText={(name) => setRen({ ...ren, name })} autoFocus selectTextOnFocus onSubmitEditing={rename} returnKeyType="done" accessibilityLabel="Nouveau nom" style={{ minHeight: 48, borderWidth: 1, borderColor: theme.line2, borderRadius: 10, paddingHorizontal: 12, fontSize: 16, color: theme.text, backgroundColor: theme.deep }} />
             <Text style={{ color: theme.muted, fontSize: 12 }}>Le dossier dans Musique › Ma table prend le même nom.</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-              <Pressable onPress={() => setRen(null)} style={[styles.btn]}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>Annuler</Text></Pressable>
+              <Pressable onPress={() => setRen(null)} style={[styles.btn]}><Text style={{ color: theme.muted, fontSize: 14, fontWeight: '700' }}>{ren.fresh ? 'Garder ce nom' : 'Annuler'}</Text></Pressable>
               <Pressable onPress={rename} style={[styles.btn, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>Renommer</Text></Pressable>
             </View>
           </Pressable>
