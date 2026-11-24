@@ -25,14 +25,24 @@ export function Tick({ on, theme }: { on: boolean; theme: Theme }) {
   );
 }
 
-export function RecPrep({ client, theme, cands, sel, setSel, last, wide }: { client: XAirClient; theme: Theme; cands: Candidate[]; sel: number[]; setSel: (s: number[]) => void; last: number[] | null; wide: boolean }) {
+/**
+ * Branché ou pas ? La table ne le sait pas, mais le bruit de fond le trahit (écouté 1 s par l'USB) :
+ * une entrée vide est presque muette (sous −86 dB), un micro branché souffle toujours un peu.
+ */
+export type Plug = 'vide' | 'branché' | 'son';
+export const plugOf = (peakDb: number | undefined): Plug | null => (peakDb == null ? null : peakDb < -86 ? 'vide' : peakDb < -45 ? 'branché' : 'son');
+
+export function RecPrep({ client, theme, cands, sel, setSel, last, wide, usb }: { client: XAirClient; theme: Theme; cands: Candidate[]; sel: number[]; setSel: (s: number[]) => void; last: number[] | null; wide: boolean; usb: number[] | null }) {
   const lv = useLevels(client, cands.map((c) => c.ch), meterIndex.ch, 200);
   const has = (ch: number) => sel.includes(ch);
   const named = cands.filter((c) => c.named && !c.muted).map((c) => c.ch);
   const live = cands.filter((c) => (lv[c.ch] ?? 0) > 0.08).map((c) => c.ch);
+  const plug = (ch: number) => plugOf(usb?.[ch - 1]);
+  const plugged = usb ? cands.filter((c) => plug(c.ch) !== 'vide').map((c) => c.ch) : [];
   const same = (a: number[]) => a.length === sel.length && a.every(has);
   const quick: [string, number[]][] = [
     ...(last?.length ? [['Comme la dernière fois', last] as [string, number[]]] : []),
+    ...(usb ? [['Celles qui sont branchées', plugged] as [string, number[]]] : []),
     ['Celles qui reçoivent du son', live], ['Celles qui ont un nom', named], ['Tout', cands.map((c) => c.ch)], ['Rien', []],
   ];
   return (
@@ -67,10 +77,11 @@ export function RecPrep({ client, theme, cands, sel, setSel, last, wide }: { cli
                 <Tick on={on} theme={theme} />
                 <Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>{c.ch}</Text>
                 <View style={{ flex: 1 }} />
+{plug(c.ch) === 'vide' && <Text style={{ color: theme.muted, fontSize: 10, fontWeight: '800' }}>VIDE</Text>}
                 {fam && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: fam[1] }} />}
               </View>
               <Text numberOfLines={1} style={{ color: on ? theme.text : theme.muted, fontSize: 15, fontWeight: '800' }}>{c.name || 'sans nom'}</Text>
-              <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontWeight: '600' }}>{c.muted ? 'coupée sur la table' : level > 0.08 ? 'reçoit du son' : 'silencieuse pour l’instant'}</Text>
+              <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 10, fontWeight: '600' }}>{c.muted ? 'coupée sur la table' : level > 0.08 || plug(c.ch) === 'son' ? 'reçoit du son' : plug(c.ch) === 'vide' ? 'rien de branché, on dirait' : plug(c.ch) === 'branché' ? 'branchée, silencieuse' : 'silencieuse pour l’instant'}</Text>
               <View style={{ position: 'absolute', left: 0, bottom: 0, height: 5, width: `${Math.round(level * 100)}%`, backgroundColor: level > 0.8 ? '#FACC15' : '#34D399' }} />
             </Pressable>
           );

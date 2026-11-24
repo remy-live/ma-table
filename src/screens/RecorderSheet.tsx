@@ -7,7 +7,7 @@ import { bottomPad } from '../ui/immersive';
 import { CloseX } from '../ui/kit';
 import { Theme } from '../ui/theme';
 import { arm, disarm, startArmed, candidates, currentSong, defaultName, facadePossible, fmtTime, hoursLeft, mark, onRec, parseMeta, recState, RecMeta, startRec, stopRec } from '../xair/recorder';
-import { SessEntry, usbListen as usbAudio } from '../xair/usbAudio';
+import { SessEntry, usbAudio as realUsb, usbListen as usbAudio } from '../xair/usbAudio';
 import { ListenScreen } from './ListenScreen';
 import { forgetPreview, RecList } from './RecList';
 import { RecPrep, Tick } from './RecPrep';
@@ -134,6 +134,18 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   const [facade, setFacade] = useState(facadePossible());
   const [free, setFree] = useState(0);
   const [last, setLast] = useState<number[] | null>(null);
+  const [usb, setUsb] = useState<number[] | null>(null); // crête de chaque prise, écoutée 1 s par l'USB
+  const [probing, setProbing] = useState(false);
+  const [usbMsg, setUsbMsg] = useState('');
+  const probe = async () => {
+    if (!realUsb || recState().on) return;
+    setProbing(true);
+    try {
+      const r = await realUsb.directProbe();
+      if (r.ok && r.peakDb) { setUsb(r.peakDb); setUsbMsg(''); } else { setUsb(null); setUsbMsg(`Prises non vérifiées (${r.error || 'table non vue sur l’USB'}) · réessayer`); }
+    } catch { setUsb(null); }
+    setProbing(false);
+  };
   const wideScreen = useWindowDimensions().width >= 900;
   const [msg, setMsg] = useState('');
   const [list, setList] = useState<SessEntry[]>([]);
@@ -153,6 +165,7 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
       load<{ chans: number[]; facade: boolean } | null>('recSel', null).then((r) => { if (r?.chans) { setLast(r.chans); setSel(r.chans); setFacade(r.facade && facadePossible()); } }).catch(() => {});
     }
     try { setFree(usbAudio?.recFree().free ?? 0); } catch { setFree(0); }
+    if (!st.on && !st.armed) probe();
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -221,7 +234,8 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
                 </View>
                 <View style={[styles.box, { borderColor: theme.line, backgroundColor: theme.panel }]}>
                   <Text style={[styles.kicker, { color: theme.muted }]}>LES VOIES À ENREGISTRER · {sel.length} cochée{sel.length > 1 ? 's' : ''}</Text>
-                  <RecPrep client={client} theme={theme} cands={cands} sel={sel} setSel={setSel} last={last} wide={wideScreen} />
+                  <RecPrep client={client} theme={theme} cands={cands} sel={sel} setSel={setSel} last={last} wide={wideScreen} usb={usb} />
+                  {realUsb && <Pressable onPress={probe} disabled={probing} style={{ minHeight: 40, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{probing ? 'J’écoute les prises…' : usb ? '↻ Revérifier ce qui est branché' : usbMsg || '↻ Vérifier ce qui est branché (par le câble USB)'}</Text></Pressable>}
                   {facadePossible() && (
                     <Pressable onPress={() => setFacade((v) => !v)} accessibilityState={{ checked: facade }} style={[styles.chk, { width: '100%', borderColor: facade ? theme.accent : theme.line2, backgroundColor: facade ? theme.deep : 'transparent' }]}>
                       <Tick on={facade} theme={theme} />
@@ -236,11 +250,11 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
                   Place libre : {gb(free)} · environ {hours >= 10 ? Math.round(hours) : hours.toFixed(1)} h d’enregistrement avec ce choix.
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                  <Pressable onPress={go} disabled={st.starting} style={[styles.go, { flex: 1, minWidth: 240, backgroundColor: RED, opacity: st.starting ? 0.5 : 1 }]}>
+                  <Pressable onPress={go} disabled={st.starting || probing} style={[styles.go, { flex: 1, minWidth: 240, backgroundColor: RED, opacity: st.starting ? 0.5 : 1 }]}>
                     <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 18 }}>⏺ Enregistrer tout de suite</Text>
                     <Text style={{ color: '#FEE2E2', fontSize: 11 }}>ça part maintenant, et tu reviens sur la table</Text>
                   </Pressable>
-                  <Pressable onPress={armNow} disabled={st.starting} style={[styles.go, { flex: 1, minWidth: 240, borderWidth: 2, borderColor: RED }]}>
+                  <Pressable onPress={armNow} disabled={st.starting || probing} style={[styles.go, { flex: 1, minWidth: 240, borderWidth: 2, borderColor: RED }]}>
                     <Text style={{ color: '#FCA5A5', fontWeight: '900', fontSize: 18 }}>Préparer, je démarre plus tard</Text>
                     <Text style={{ color: theme.muted, fontSize: 11 }}>un bouton « ⏺ Démarrer » t’attend sur la table</Text>
                   </Pressable>

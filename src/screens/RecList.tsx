@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../ui/theme';
-import { Bar, bars, buildMix, decodeB64, emptyMix, engineParams, keptSegments, lin, mergePeaks } from '../xair/listen';
+import { Bar, bars, Blank, blankIsCut, buildMix, decodeB64, Edit, emptyMix, engineParams, findBlanks, keptSegments, lin, mergePeaks } from '../xair/listen';
 import { fmtTime, parseMeta, RecMeta } from '../xair/recorder';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
 import { Tick } from './RecPrep';
@@ -12,7 +12,7 @@ const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} Go` : `${Math.rou
 const isExport = (n: string) => n.startsWith('Mix') || n.startsWith('Extrait');
 export const MAGIC_FILE = 'Mix du concert.m4a';
 
-interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number }
+interface Loaded { meta: RecMeta | null; tracks: { key: string; name: string; pan: number; path: string }[]; facade: SessFile | null; peaks: Record<string, Uint8Array>; bucket: number; seconds: number; over: Bar[]; first: number; all: Uint8Array }
 const cache: Record<string, Loaded> = {};
 
 /** Les pistes d'un enregistrement et leurs ondes (gardées en mémoire pendant que l'écran reste ouvert). */
@@ -33,7 +33,7 @@ async function load(e: SessEntry): Promise<Loaded | null> {
   const all = (facade && peaks[facade.name]) || mergePeaks(tracks.map((x) => peaks[x.key]));
   let first = 0;
   for (let i = 0; i < all.length; i++) if (all[i] > 40) { first = Math.max(0, i * bucket - 1); break; }
-  const d: Loaded = { meta, tracks, facade, peaks, bucket, seconds, over: bars(all, bucket, 0, seconds || 1, 90, () => 1.5, [[0, seconds || 1]]), first };
+  const d: Loaded = { meta, tracks, facade, peaks, bucket, seconds, over: bars(all, bucket, 0, seconds || 1, 90, () => 1.5, [[0, seconds || 1]]), first, all };
   cache[e.id] = d;
   return d;
 }
@@ -64,6 +64,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
   const [sorting, setSorting] = useState(false);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState('');
+  const [offer, setOffer] = useState<{ id: string; blanks: Blank[] } | null>(null); // blancs trouvés après un mix magique
   const nowRef = useRef<string | null>(null);
   nowRef.current = now;
 
@@ -100,7 +101,23 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
     usbListen?.playerPlay(true);
     setT(start); setNow(e.id); setMsg('');
   };
-  const magic = async (e: SessEntry) => {
+  /** Les blancs pas encore coupés de cet enregistrement. */
+  const blanksOf = (d: Loaded) => findBlanks(d.all, d.bucket, d.seconds || 1).filter((bl) => !blankIsCut(d.meta?.mix?.edits ?? [], bl));
+  /** Après « oui » : on note les coupes avec l'enregistrement et on refait le mix. */
+  const cutBlanks = async (e: SessEntry, blanks: Blank[]) => {
+    const d = cache[e.id];
+    if (!d || !usbListen) return;
+    const base: RecMeta = d.meta ?? { name: e.id, startedAt: 0, tracks: [], markers: [{ t: 0, label: 'Début' }], facade: false };
+    const cuts: Edit[] = blanks.map((bl) => ({ type: 'cut', a: bl.a, b: bl.b }));
+    const meta: RecMeta = { ...base, mix: { ...emptyMix(), ...(base.mix ?? {}), edits: [...(base.mix?.edits ?? []), ...cuts] } };
+    usbListen.metaSave(e.id, JSON.stringify(meta));
+    d.meta = meta;
+    setOffer(null);
+    const old = e.files.find((f) => f.name === MAGIC_FILE);
+    if (old) usbListen.fileDelete(old.path);
+    await magic({ ...e, files: e.files.filter((f) => f.name !== MAGIC_FILE) }, true);
+  };
+  const magic = async (e: SessEntry, again = false) => {
     if (!usbListen || busy) return;
     const done = e.files.find((f) => f.name === MAGIC_FILE);
     if (done) { const ok = await usbListen.share(done.path).catch(() => false); if (!ok) setMsg('Le mix est dans Musique › Ma table.'); return; }
@@ -113,7 +130,9 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
     setBusy(null);
     if (!r.ok) { setMsg(`Mix impossible : ${r.error ?? ''}`); return; }
     reload();
-    setMsg('Mix magique prêt : niveaux, nettoyage de chaque piste, finition. Ouvre l’enregistrement pour retoucher ou enlever les blancs.');
+    const left = again ? [] : blanksOf(d);
+    setOffer(left.length ? { id: e.id, blanks: left } : null);
+    setMsg(again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : niveaux, nettoyage de chaque piste, finition.');
   };
   const del = () => {
     const ids = list.filter((e) => picked[e.id]).map((e) => e.id);
@@ -184,6 +203,19 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload }: { list: S
                   <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>Studio ›</Text>
                 </Pressable>
               )}
+              {offer?.id === e.id && !mixing && (() => {
+                const edge = offer.blanks.filter((bl) => bl.where !== 'milieu'), mid = offer.blanks.filter((bl) => bl.where === 'milieu');
+                const secs = (l: Blank[]) => Math.round(l.reduce((a, bl) => a + bl.b - bl.a, 0));
+                return (
+                  <View style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: theme.line, paddingTop: 8 }}>
+                    <Text style={{ flex: 1, minWidth: 200, color: theme.text, fontSize: 13 }}>J’ai trouvé des blancs. Je les enlève ?</Text>
+                    {edge.length > 0 && <Pressable onPress={() => cutBlanks(e, edge)} style={[styles.btn, { borderWidth: 1.5, borderColor: '#34D399', backgroundColor: '#10291F' }]}><Text style={{ color: '#BBF7D0', fontSize: 13, fontWeight: '800' }}>Début et fin · {secs(edge)} s</Text></Pressable>}
+                    {mid.length > 0 && <Pressable onPress={() => cutBlanks(e, mid)} style={[styles.btn, { borderWidth: 1.5, borderColor: '#34D399', backgroundColor: '#10291F' }]}><Text style={{ color: '#BBF7D0', fontSize: 13, fontWeight: '800' }}>Entre les morceaux · {mid.length} · {secs(mid)} s</Text></Pressable>}
+                    {edge.length > 0 && mid.length > 0 && <Pressable onPress={() => cutBlanks(e, offer.blanks)} style={[styles.btn, { backgroundColor: '#34D399' }]}><Text style={{ color: '#06281A', fontSize: 13, fontWeight: '900' }}>Tous</Text></Pressable>}
+                    <Pressable onPress={() => setOffer(null)} style={[styles.btn]}><Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Non, garder</Text></Pressable>
+                  </View>
+                );
+              })()}
             </View>
           );
         })}
@@ -223,7 +255,7 @@ const waveW: { current: Record<string, number> } = { current: {} };
 export const forgetPreview = (id: string) => { delete cache[id]; };
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
   play: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   wave: { flex: 1, minWidth: 0, height: 56, borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   btn: { minHeight: 44, paddingHorizontal: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
