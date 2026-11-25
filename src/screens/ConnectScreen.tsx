@@ -433,6 +433,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           </Pressable>
           {adv && <LangPicker theme={theme} />}
           {adv && advBlock}
+          {adv && notices}
         </View>
   );
   // Grand écran : la même colonne d'icônes que dans l'appli, une rubrique à la fois — rien à faire défiler
@@ -475,6 +476,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         </View>
       </View>
     </View>
+  );
+  const notices = (
+    <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}>Ma table n’est pas affiliée à Behringer, Midas ni Soundcraft ; ces noms appartiennent à leurs propriétaires. Les fichiers MP3 sont fabriqués par l’encodeur libre Shine (licence LGPL), livré comme bibliothèque séparée : github.com/toots/shine.</Text>
   );
   const railItems: [Page | 'rec' | 'partager', 'table' | 'rec' | 'play' | 'casque' | 'partager' | 'reglages', string][] = [
     ['table', 'table', 'Ma table'],
@@ -539,7 +543,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         {page === 'essayer' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'stretch' }}><View style={{ flex: 1 }}>{tryCard}</View><View style={{ flex: 1 }}>{prepCard}</View></View>}
         {page === 'aide' && helpBlock}
         {page === 'musicien' && <View style={{ maxWidth: 560 }}>{musicianCard}</View>}
-        {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}><LangPicker theme={theme} />{advBlock}</View>}
+        {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}><LangPicker theme={theme} />{advBlock}{notices}</View>}
       </ScrollView>
     </View>
   );

@@ -323,6 +323,7 @@
 "MUTE : coupe cette voie pour tout le monde.": "MUTE: mutes this channel for everyone.",
 "Ma soirée": "My gig",
 "Ma table": "My mixer",
+"Ma table n’est pas affiliée à Behringer, Midas ni Soundcraft ; ces noms appartiennent à leurs propriétaires. Les fichiers MP3 sont fabriqués par l’encodeur libre Shine (licence LGPL), livré comme bibliothèque séparée : github.com/toots/shine.": "Ma table is not affiliated with Behringer, Midas or Soundcraft; these names belong to their owners. MP3 files are made by the free Shine encoder (LGPL licence), shipped as a separate library: github.com/toots/shine.",
 "Maquette prête, dans Musique › Ma table › Maquettes ›": "Demo ready, in Music › Ma table › Maquettes ›",
 "Mes enregistrements": "My recordings",
 "Mes enregistrements : écouter, mixer, partager": "My recordings: listen, mix, share",

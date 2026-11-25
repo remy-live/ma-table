@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.13)
 project(usbiso C)
+# L encodeur MP3 « shine » (LGPL) est une bibliotheque a part : libshine.so, remplacable sans toucher au reste.
 file(GLOB SHINE shine/*.c)
-add_library(usbiso SHARED usbiso.c mp3jni.c ${SHINE})
+add_library(shine SHARED ${SHINE})
+target_compile_options(shine PRIVATE -O2)
+target_link_libraries(shine m)
+add_library(usbiso SHARED usbiso.c mp3jni.c)
 target_compile_options(usbiso PRIVATE -O2 -Wall)
-target_link_libraries(usbiso log m)
+target_link_libraries(usbiso shine log m)

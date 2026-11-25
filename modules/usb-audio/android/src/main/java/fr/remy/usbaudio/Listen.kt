@@ -496,7 +496,8 @@ class WavSink(out: File, private val rate: Int) : Sink {
 
 /** Vrai MP3 (192 kbit/s), par l'encodeur embarqué. */
 object Mp3 {
-  init { System.loadLibrary("usbiso") }
+  // l'encodeur (libshine.so, LGPL) est chargé à part, puis notre code qui l'appelle
+  init { System.loadLibrary("shine"); System.loadLibrary("usbiso") }
   @JvmStatic external fun open(path: String, rate: Int, kbps: Int): Long
   @JvmStatic external fun write(h: Long, pcm: ByteArray, len: Int)
   @JvmStatic external fun close(h: Long): Int
