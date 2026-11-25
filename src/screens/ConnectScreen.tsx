@@ -337,6 +337,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           </View>
         </View>
   );
+  const notices = (
+    <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}>Ma table n’est pas affiliée à Behringer, Midas ni Soundcraft ; ces noms appartiennent à leurs propriétaires. Les fichiers MP3 sont fabriqués par l’encodeur libre Shine (licence LGPL), livré comme bibliothèque séparée : github.com/toots/shine.</Text>
+  );
   const musicianCard = (
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: '#34D399' }]}>MON RETOUR · JE JOUE, QUELQU’UN D’AUTRE TIENT LA TABLE</Text>
@@ -476,9 +479,6 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         </View>
       </View>
     </View>
-  );
-  const notices = (
-    <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}>Ma table n’est pas affiliée à Behringer, Midas ni Soundcraft ; ces noms appartiennent à leurs propriétaires. Les fichiers MP3 sont fabriqués par l’encodeur libre Shine (licence LGPL), livré comme bibliothèque séparée : github.com/toots/shine.</Text>
   );
   const railItems: [Page | 'rec' | 'partager', 'table' | 'rec' | 'play' | 'casque' | 'partager' | 'reglages', string][] = [
     ['table', 'table', 'Ma table'],
