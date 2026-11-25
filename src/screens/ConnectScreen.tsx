@@ -25,7 +25,7 @@ let autoTried = false;
 
 interface MyTable { ip: string; name: string; model: string; at: number; ssid?: string; mode?: number }
 
-type Page = 'table' | 'essayer' | 'musicien' | 'avance';
+type Page = 'table' | 'essayer' | 'musicien' | 'avance' | 'aide';
 
 export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig, musician?: boolean, prep?: boolean) => void; invite?: MonConfig | null }) {
   const [code, setCode] = useState('');
@@ -331,7 +331,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   );
   const musicianCard = (
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
-            <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
+            <Text style={[styles.kicker, { color: '#34D399' }]}>MON RETOUR · JE JOUE, QUELQU’UN D’AUTRE TIENT LA TABLE</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput value={code} onChangeText={setCode} placeholder="172.20.10.2 · 1" placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} style={[styles.input, { color: theme.text, borderColor: theme.line2, backgroundColor: theme.deep }]} />
               <Pressable onPress={join} style={[styles.go, { backgroundColor: '#34D399', opacity: code ? 1 : 0.5 }]}>
@@ -427,18 +427,59 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         </View>
   );
   // Grand écran : la même colonne d'icônes que dans l'appli, une rubrique à la fois — rien à faire défiler
+  const helpStep = (n: number, title: string, text: string) => (
+    <View key={n} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+      <Num n={n} c={theme.accent} theme={theme} />
+      <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{title}</Text><Text style={{ color: theme.muted, fontSize: 13, lineHeight: 19 }}>{text}</Text></View>
+    </View>
+  );
+  const helpLine = (icon: string, title: string, text: string) => (
+    <View key={title} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+      <Text style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{icon}</Text>
+      <Text style={{ flex: 1, color: theme.muted, fontSize: 13, lineHeight: 19 }}><Text style={{ color: theme.text, fontWeight: '800' }}>{title}</Text> — {text}</Text>
+    </View>
+  );
+  const helpBlock = (
+    <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>
+      <View style={[styles.card, { flex: wide ? 1 : undefined, alignSelf: 'stretch', backgroundColor: theme.panel, borderColor: theme.accent, gap: 12 }]}>
+        <Text style={[styles.kicker, { color: theme.accent }]}>RELIER LA TABLETTE À LA TABLE</Text>
+        {helpStep(1, 'Allume la table', 'Sur la XR18, le petit interrupteur « Remote » est sur « Access Point » : la table fabrique son propre Wi-Fi.')}
+        {helpStep(2, 'Choisis son Wi-Fi', 'Dans les réglages Wi-Fi de la tablette, prends le réseau qui porte son nom (XR18-…). Pas de mot de passe au départ.')}
+        {helpStep(3, 'Reviens ici', 'La table apparaît toute seule dans « Ma table ». Touche « Connecter ». Les fois suivantes, l’appli la retrouve seule.')}
+        <Pressable onPress={openWifi} style={[styles.go, { backgroundColor: theme.accent, alignItems: 'center' }]}><Text style={{ color: theme.onAccent, fontWeight: '800', fontSize: 15 }}>Ouvrir le Wi-Fi de la tablette</Text></Pressable>
+      </View>
+      <View style={{ flex: wide ? 1 : undefined, alignSelf: 'stretch', gap: 12 }}>
+        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+          <Text style={[styles.kicker, { color: '#FCD34D' }]}>LA TABLE N’APPARAÎT PAS ?</Text>
+          {helpLine('📶', 'Le Wi-Fi', 'la tablette est peut-être restée sur la box de la maison. Vérifie qu’elle est bien sur le réseau de la table.')}
+          {helpLine('↻', 'Chercher', 'touche « Chercher » dans « Ma table » : la recherche repart.')}
+          {helpLine('📱', 'Les données mobiles', 'sur un téléphone, coupe-les un instant : Android préfère parfois la 4G à un Wi-Fi sans internet.')}
+          {helpLine('🔌', 'En dernier recours', 'éteins et rallume la table, puis dans « Avancé » tape son adresse : 192.168.1.1.')}
+        </View>
+        <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
+          <Text style={[styles.kicker, { color: theme.muted }]}>À QUOI SERT CHAQUE ICÔNE</Text>
+          {helpLine('🎛', 'Ma table', 'se connecter à la table de mixage.')}
+          {helpLine('⏺', 'Enregistrements', 'réécouter, mixer, faire une maquette. Pas besoin de la table. Pour enregistrer : un câble USB entre la table et la tablette.')}
+          {helpLine('▶', 'Essayer', 'une table imaginaire pour découvrir, ou préparer une soirée chez soi.')}
+          {helpLine('🎧', 'Mon retour', 'je joue et quelqu’un d’autre tient la table : je règle ce que j’entends, avec son code.')}
+          {helpLine('🤝', 'Réglages d’un ami', 'échanger scène, soirées et préréglages avec quelqu’un qui a l’appli.')}
+        </View>
+      </View>
+    </View>
+  );
   const railItems: [Page | 'rec' | 'partager', 'table' | 'rec' | 'play' | 'casque' | 'partager' | 'reglages', string][] = [
     ['table', 'table', 'Ma table'],
     ...(recAvailable() ? [['rec', 'rec', 'Enregistrements'] as ['rec', 'rec', string]] : []),
     ['essayer', 'play', 'Essayer'],
-    ['musicien', 'casque', 'Musicien'],
-    ['partager', 'partager', 'Partager'],
+    ['musicien', 'casque', 'Mon retour'],
+    ['partager', 'partager', 'Réglages\nd’un ami'],
     ['avance', 'reglages', 'Avancé'],
   ];
   const pageTitle: Record<Page, [string, string]> = {
     table: ['Ma table', 'Relie la tablette à la table de mixage'],
     essayer: ['Essayer, préparer', 'Sans table : pour découvrir l’appli ou préparer une soirée chez toi'],
-    musicien: ['Je suis musicien', 'Régler mon retour depuis mon téléphone, avec le code du sondier'],
+    musicien: ['Mon retour', 'Je joue, quelqu’un d’autre tient la table : je règle ce que j’entends, avec son code'],
+    aide: ['Aide', 'Par où commencer, et quoi faire si la table n’apparaît pas'],
     avance: ['Avancé', 'Adresse IP, partage de connexion, démonstrations, débogage'],
   };
   const widePage = (
@@ -447,16 +488,20 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         <View style={[styles.logo, { width: 48, height: 48, borderRadius: 14, marginBottom: 12, backgroundColor: theme.accent }]}>
           {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 5, height: 30 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
         </View>
+        <Pressable onPress={() => setPage('aide')} accessibilityRole="tab" accessibilityState={{ selected: page === 'aide' }} accessibilityLabel="Aide : par où commencer" style={{ width: 84, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10, backgroundColor: '#13261E', borderColor: page === 'aide' ? '#6EE7B7' : '#1F6F4A' }}>
+          <Icon id="aide" color="#6EE7B7" size={26} />
+          <Text style={{ color: '#A7F3D0', fontSize: 11, fontWeight: '800' }}>Aide-moi</Text>
+        </Pressable>
         {railItems.map(([id, icon, label]) => {
           const on = id === page;
           const c = on ? theme.accent : theme.muted;
           return (
             <React.Fragment key={id}>
               {id === 'avance' && <View style={{ flex: 1 }} />}
-              <Pressable onPress={() => (id === 'rec' ? setRecOpen(true) : id === 'partager' ? setShare(true) : setPage(id))} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label} style={{ width: 88, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: on ? theme.panel : 'transparent' }}>
+              <Pressable onPress={() => (id === 'rec' ? setRecOpen(true) : id === 'partager' ? setShare(true) : setPage(id))} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label.replace('\n', ' ')} style={{ width: 88, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: on ? theme.panel : 'transparent' }}>
                 {on && <View style={{ position: 'absolute', left: -4, top: 18, width: 4, height: 28, borderRadius: 2, backgroundColor: theme.accent }} />}
                 <Icon id={icon} color={c} size={26} />
-                <Text numberOfLines={1} style={{ color: c, fontSize: 11, fontWeight: on ? '800' : '600' }}>{label}</Text>
+                <Text numberOfLines={2} style={{ color: c, fontSize: 11, lineHeight: 13, textAlign: 'center', fontWeight: on ? '800' : '600' }}>{label}</Text>
               </Pressable>
             </React.Fragment>
           );
@@ -471,6 +516,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         {!!error && <Text style={{ color: '#FCA5A5', fontWeight: '700' }}>{error}</Text>}
         {page === 'table' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>{colA}{colB}</View>}
         {page === 'essayer' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'stretch' }}><View style={{ flex: 1 }}>{tryCard}</View><View style={{ flex: 1 }}>{prepCard}</View></View>}
+        {page === 'aide' && helpBlock}
         {page === 'musicien' && <View style={{ maxWidth: 560 }}>{musicianCard}</View>}
         {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}>{advBlock}</View>}
       </ScrollView>
@@ -488,7 +534,12 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           <Text style={[styles.title, wide && { fontSize: 24 }, { color: theme.text }]}>Ma table</Text>
           <Text style={{ color: theme.muted, fontSize: 13 }}>Pilote ta table de mixage, simplement</Text>
         </View>
+        <Pressable onPress={() => setPage(page === 'aide' ? 'table' : 'aide')} accessibilityState={{ expanded: page === 'aide' }} accessibilityLabel="Aide : par où commencer" style={{ height: 48, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#13261E', borderColor: '#1F6F4A' }}>
+          <Icon id="aide" color="#6EE7B7" size={20} />
+          <Text style={{ color: '#A7F3D0', fontSize: 13, fontWeight: '800' }}>Aide-moi</Text>
+        </Pressable>
       </View>
+      {page === 'aide' && helpBlock}
 
       <View style={{ flexDirection: wide ? 'row' : 'column', gap: 14 }}>
         {/* téléphone sans table en vue : d'abord les deux étapes Wi-Fi */}
