@@ -1,14 +1,38 @@
 // La maquette : on coche des morceaux dans ses enregistrements, l'appli les mixe un par un
 // (même son, même volume, sans blanc avant ni après) et en fait des fichiers à faire écouter.
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Theme } from '../ui/theme';
-import { bestExcerpt, buildMix, emptyMix, fileSafe, loudFactor, songEdits, songsOf, SongSpan } from '../xair/listen';
+import { bars, bestExcerpt, buildMix, emptyMix, fileSafe, loudFactor, songEdits, songsOf, SongSpan } from '../xair/listen';
 import { fmtTime, parseMeta } from '../xair/recorder';
 import { SessEntry, usbListen } from '../xair/usbAudio';
 import { load, Loaded } from './RecList';
 
 interface Row extends SongSpan { key: string; id: string }
+
+/** La bande sonore d'un morceau, avec la fenêtre de l'extrait : on pose le doigt et on la fait glisser. */
+function Strip({ all, bucket, song, a, b, t, theme, onMove }: { all: Uint8Array | null | undefined; bucket: number; song: SongSpan; a: number; b: number; t: number | null; theme: Theme; onMove: (start: number, done: boolean) => void }) {
+  const w = useRef(1), x0 = useRef(0), grab = useRef(0);
+  const span = Math.max(1, song.b - song.a), len = b - a;
+  const data = useMemo(() => bars(all ?? null, bucket, song.a, song.b, 140, () => 1, [[song.a, song.b]]), [all, bucket, song.a, song.b]);
+  const tOf = (e: GestureResponderEvent) => song.a + Math.max(0, Math.min(1, (e.nativeEvent.pageX - x0.current) / w.current)) * span;
+  const put = (e: GestureResponderEvent, done: boolean) => onMove(Math.max(song.a, Math.min(song.b - len, tOf(e) - grab.current)), done);
+  const pct = (x: number) => `${Math.max(0, Math.min(100, ((x - song.a) / span) * 100))}%` as const;
+  return (
+    <View
+      onLayout={(e) => { w.current = Math.max(1, e.nativeEvent.layout.width); }}
+      onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true} onResponderTerminationRequest={() => false}
+      onResponderGrant={(e) => { x0.current = e.nativeEvent.pageX - e.nativeEvent.locationX; const at = tOf(e); grab.current = at >= a && at <= b ? at - a : len / 2; put(e, false); }}
+      onResponderMove={(e) => put(e, false)} onResponderRelease={(e) => put(e, true)}
+      accessibilityLabel="Bande sonore du morceau : glisse la fenêtre pour choisir l’extrait"
+      style={{ height: 54, borderRadius: 10, backgroundColor: theme.meterBg, overflow: 'hidden', flexDirection: 'row', alignItems: 'center' }}
+    >
+      {data.map((d, i) => { const tm = song.a + ((i + 0.5) / data.length) * span, inside = tm >= a && tm <= b; return <View key={i} pointerEvents="none" style={{ flex: 1, marginHorizontal: 0.5, height: `${Math.round(d.h * 92)}%`, borderRadius: 1, backgroundColor: inside ? theme.accent : theme.muted, opacity: inside ? 1 : 0.4 }} />; })}
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: pct(a), width: `${(len / span) * 100}%`, borderWidth: 2, borderColor: theme.accent, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+      {t != null && t >= song.a && t <= song.b && <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: pct(t), width: 2, backgroundColor: '#FFFFFF' }} />}
+    </View>
+  );
+}
 
 export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: Theme; onClose: () => void }) {
   const [data, setData] = useState<Record<string, Loaded>>({});
@@ -19,6 +43,20 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
   const [each, setEach] = useState(true);
   const [full, setFull] = useState(true);
   const [cut, setCut] = useState(0); // 0 = morceaux entiers ; sinon la durée des extraits, en secondes
+  const [starts, setStarts] = useState<Record<string, number>>({}); // extraits placés à la main (début, en secondes)
+  const [lens, setLens] = useState<Record<string, number>>({});     // durée propre à un morceau
+  const [play, setPlay] = useState<{ key: string; t: number } | null>(null);
+  const playRef = useRef<{ key: string; end: number } | null>(null);
+  const stopPlay = () => { if (playRef.current) usbListen?.playerClose(); playRef.current = null; setPlay(null); };
+  useEffect(() => {
+    const s = usbListen?.addListener('onPlay', (e) => {
+      const p = playRef.current;
+      if (!p) return;
+      if (e.ended || e.t >= p.end) stopPlay(); else setPlay({ key: p.key, t: e.t });
+    });
+    return () => { s?.remove(); if (playRef.current) usbListen?.playerClose(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [prog, setProg] = useState<number | null>(null);
   const [step, setStep] = useState('');
   const [msg, setMsg] = useState('');
@@ -48,7 +86,29 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
   }).filter((x) => x.rows.length), [list, data]);
   const byKey = useMemo(() => Object.fromEntries(groups.flatMap((x) => x.rows.map((r) => [r.key, r]))), [groups]);
   // en extraits : l'appli garde, dans chaque morceau, le passage où ça joue le plus
-  const chosen = (order.map((k) => byKey[k]).filter(Boolean) as Row[]).map((r) => (cut ? { ...r, ...bestExcerpt(data[r.id]?.all, data[r.id]?.bucket ?? 0.2, r, cut) } : r));
+  const excerpt = (r: Row): SongSpan => {
+    if (!cut) return r;
+    const len = Math.min(r.b - r.a, lens[r.key] ?? cut);
+    if (starts[r.key] == null) return bestExcerpt(data[r.id]?.all, data[r.id]?.bucket ?? 0.2, r, len);
+    const a = Math.max(r.a, Math.min(r.b - len, starts[r.key]));
+    return { label: r.label, a, b: a + len };
+  };
+  const chosen = (order.map((k) => byKey[k]).filter(Boolean) as Row[]).map((r) => ({ ...r, ...excerpt(r) }));
+  /** Écouter un extrait (avec son mix), ou l'arrêter. */
+  const listen = (r: Row, from?: number) => {
+    if (!usbListen) return;
+    if (playRef.current?.key === r.key && from == null) { stopPlay(); return; }
+    const d = data[r.id], x = excerpt(r);
+    const mix = { ...emptyMix(), ...(d.meta?.mix ?? {}) };
+    const opened = usbListen.playerOpen(d.tracks.map((t) => t.path));
+    if (!opened?.ok) { setMsg(`Écoute impossible : ${opened?.error ?? ''}`); return; }
+    usbListen.playerSet(buildMix(d.tracks, d.peaks, mix, null, d.seconds || 1, false, { an: d.an }).params);
+    const a = from ?? x.a;
+    usbListen.playerSeek(a);
+    usbListen.playerPlay(true);
+    playRef.current = { key: r.key, end: a + (x.b - x.a) };
+    setPlay({ key: r.key, t: a });
+  };
   const secs = chosen.reduce((n, r) => n + r.b - r.a, 0);
   const titleOf = (r: Row) => titles[r.key] ?? r.label;
   const toggle = (k: string) => setOrder((o) => (o.includes(k) ? o.filter((x) => x !== k) : [...o, k]));
@@ -56,6 +116,7 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
 
   const make = async () => {
     if (!usbListen || !chosen.length || prog != null) return;
+    stopPlay();
     setMsg(''); setDone(null); setProg(0);
     const dir = usbListen.albumDir(fileSafe(name));
     const songs = [];
@@ -95,13 +156,14 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
             {rows.map((r) => {
               const n = order.indexOf(r.key), on = n >= 0;
               return (
-                <View key={r.key} style={[styles.row, box(on)]}>
+                <View key={r.key} style={[{ borderRadius: 12, paddingHorizontal: 10 }, box(on)]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Pressable onPress={() => toggle(r.key)} accessibilityState={{ checked: on }} accessibilityLabel={`${on ? 'Retirer' : 'Ajouter'} ${titleOf(r)}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minHeight: 48 }}>
                     <View style={[styles.num, { borderColor: on ? theme.accent : theme.muted, backgroundColor: on ? theme.accent : 'transparent' }]}>{on && <Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>{n + 1}</Text>}</View>
                     {on
                       ? <TextInput value={titleOf(r)} onChangeText={(v) => setTitles((x) => ({ ...x, [r.key]: v }))} accessibilityLabel="Titre du morceau" selectTextOnFocus style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '800', paddingVertical: 6 }} />
                       : <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '600' }}>{r.label}</Text>}
-                    <Text style={{ color: theme.muted, fontSize: 12, fontVariant: ['tabular-nums'] }}>{on && cut ? (() => { const x = bestExcerpt(data[r.id]?.all, data[r.id]?.bucket ?? 0.2, r, cut); return `${fmtTime(x.a)} → ${fmtTime(x.b)}`; })() : fmtTime(r.b - r.a)}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 12, fontVariant: ['tabular-nums'] }}>{fmtTime(r.b - r.a)}</Text>
                   </Pressable>
                   {on && order.length > 1 && (
                     <>
@@ -110,6 +172,26 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
                     </>
                   )}
                 </View>
+                {on && !!cut && r.b - r.a > 12 && (() => {
+                  const x = excerpt(r), len = x.b - x.a, mine = starts[r.key] != null || lens[r.key] != null;
+                  const setLen = (v: number) => setLens((o) => ({ ...o, [r.key]: Math.max(10, Math.min(Math.floor(r.b - r.a), v)) }));
+                  return (
+                    <View style={{ gap: 6, paddingBottom: 10 }}>
+                      <Strip all={data[r.id]?.all} bucket={data[r.id]?.bucket ?? 0.2} song={r} a={x.a} b={x.b} t={play?.key === r.key ? play.t : null} theme={theme}
+                        onMove={(st, done) => { setStarts((o) => ({ ...o, [r.key]: st })); if (done && playRef.current?.key === r.key) listen(r, st); }} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Pressable onPress={() => listen(r)} accessibilityLabel={play?.key === r.key ? 'Arrêter' : 'Écouter cet extrait'} style={[styles.btn, { minHeight: 44, backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 13, fontWeight: '900' }}>{play?.key === r.key ? '■ Arrêter' : '▶ Écouter'}</Text></Pressable>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{fmtTime(x.a)} → {fmtTime(x.b)}</Text>
+                        <View style={{ flex: 1 }} />
+                        <Pressable onPress={() => setLen(len - 5)} accessibilityLabel="Extrait plus court de 5 secondes" style={[styles.arrow, { borderWidth: 1, borderColor: theme.line2, borderRadius: 10 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', minWidth: 46, textAlign: 'center' }}>{Math.round(len)} s</Text>
+                        <Pressable onPress={() => setLen(len + 5)} accessibilityLabel="Extrait plus long de 5 secondes" style={[styles.arrow, { borderWidth: 1, borderColor: theme.line2, borderRadius: 10 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
+                        {mine && <Pressable onPress={() => { setStarts((o) => { const n = { ...o }; delete n[r.key]; return n; }); setLens((o) => { const n = { ...o }; delete n[r.key]; return n; }); }} style={[styles.btn, { minHeight: 44, borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '800' }}>↺ Choix automatique</Text></Pressable>}
+                      </View>
+                    </View>
+                  );
+                })()}
+                </View>
               );
             })}
           </View>
@@ -117,10 +199,17 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
       </ScrollView>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Je garde :</Text>
-        {([[0, 'les morceaux entiers'], [30, 'un extrait de 30 s'], [45, '45 s'], [60, '1 min']] as const).map(([v, l]) => (
-          <Pressable key={v} onPress={() => setCut(v)} accessibilityState={{ selected: cut === v }} style={[styles.btn, box(cut === v)]}><Text style={{ color: cut === v ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>{l}</Text></Pressable>
-        ))}
-        {!!cut && <Text style={{ color: theme.muted, fontSize: 12, flexBasis: '100%' }}>Dans chaque morceau, l’appli choisit toute seule le passage où ça joue le plus (souvent le refrain), avec un fondu au début et à la fin.</Text>}
+        <Pressable onPress={() => { stopPlay(); setCut(0); }} accessibilityState={{ selected: !cut }} style={[styles.btn, box(!cut)]}><Text style={{ color: !cut ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>les morceaux entiers</Text></Pressable>
+        <Pressable onPress={() => setCut(cut || 30)} accessibilityState={{ selected: !!cut }} style={[styles.btn, box(!!cut)]}><Text style={{ color: cut ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>des extraits</Text></Pressable>
+        {!!cut && (
+          <>
+            <Pressable onPress={() => setCut(Math.max(10, cut - 5))} accessibilityLabel="Extraits plus courts de 5 secondes" style={[styles.arrow, { borderWidth: 1, borderColor: theme.line2, borderRadius: 10 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>−</Text></Pressable>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '900', minWidth: 64, textAlign: 'center' }}>{cut >= 60 ? `${Math.floor(cut / 60)} min${cut % 60 ? ` ${cut % 60}` : ''}` : `${cut} s`}</Text>
+            <Pressable onPress={() => setCut(Math.min(300, cut + 5))} accessibilityLabel="Extraits plus longs de 5 secondes" style={[styles.arrow, { borderWidth: 1, borderColor: theme.line2, borderRadius: 10 }]}><Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>+</Text></Pressable>
+            {[20, 30, 45, 60, 90].map((v) => <Pressable key={v} onPress={() => setCut(v)} style={[styles.btn, { minHeight: 44, paddingHorizontal: 10 }, box(cut === v)]}><Text style={{ color: cut === v ? theme.text : theme.muted, fontSize: 12, fontWeight: '800' }}>{v >= 60 ? `${v / 60 === 1 ? '1 min' : '1 min 30'}` : `${v} s`}</Text></Pressable>)}
+          </>
+        )}
+        {!!cut && <Text style={{ color: theme.muted, fontSize: 12, flexBasis: '100%' }}>L’appli propose le passage où ça joue le plus. Sous chaque morceau coché : glisse la fenêtre sur la bande sonore pour choisir toi-même, écoute, et règle sa durée.</Text>}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <TextInput value={name} onChangeText={setName} accessibilityLabel="Nom de la maquette" style={{ flexGrow: 1, minWidth: 200, minHeight: 46, color: theme.text, fontSize: 15, fontWeight: '700', borderWidth: 1, borderColor: theme.line2, borderRadius: 12, paddingHorizontal: 12 }} />
