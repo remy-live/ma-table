@@ -175,6 +175,7 @@ export default function App() {
       return;
     }
     setRecOpen(false);
+    setMixes(false);
     setTab(t);
   };
 
@@ -292,7 +293,7 @@ export default function App() {
   return (
     <View key={getLang()} style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} recActive={recOpen} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} onRec={recAvailable() ? () => setRecOpen(true) : undefined} />}
+      {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} recActive={recOpen} mixesActive={mixes && !recOpen} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => { setRecOpen(false); setMixes(true); }} onRec={recAvailable() ? () => { setMixes(false); setRecOpen(true); } : undefined} />}
       {!wide && !(navHidden && tab === 'branchements') && (
         <View key="haut" style={{ height: 68, paddingTop: 36, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 5 }}>
           <LinkBadge client={client} theme={theme} small row />
@@ -300,7 +301,8 @@ export default function App() {
         </View>
       )}
       {wide && recOpen ? <View key="rec" style={{ flex: 1 }}><RecorderSheet inline client={client} theme={theme} visible onClose={() => setRecOpen(false)} /></View> : null}
-      {wide ? <View key="corps" style={{ flex: 1, display: recOpen ? 'none' : 'flex' }}>{body}</View> : <View key="corps-tel" style={{ flex: 1, marginTop: navHidden && tab === 'branchements' ? 0 : -36 }}>{body}</View>}
+      {wide && mixes && !recOpen ? <View key="mixages" style={{ flex: 1, padding: 14 }}><SessionsScreen embedded client={client} theme={theme} visible onClose={() => setMixes(false)} /></View> : null}
+      {wide ? <View key="corps" style={{ flex: 1, display: recOpen || mixes ? 'none' : 'flex' }}>{body}</View> : <View key="corps-tel" style={{ flex: 1, marginTop: navHidden && tab === 'branchements' ? 0 : -36 }}>{body}</View>}
       {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMore={() => (locked ? go('table') : setMore(true))} />}
       <MoreSheet theme={theme} visible={more} current={tab} onGo={go} onRec={recAvailable() ? () => setRecOpen(true) : undefined} onMixes={() => setMixes(true)} onQuit={disconnect} onClose={() => setMore(false)} />
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
@@ -309,7 +311,7 @@ export default function App() {
       <RecAskName onOpen={() => setRecOpen(true)} />
       {!wide && <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
-      {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
+      {mixes && !wide && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}
       <Tutorial theme={theme} visible={tuto} onClose={() => { setTuto(false); save('tutoVu', true); }} />
       <FirstRun client={client} theme={theme} visible={firstRun} onClose={() => { setFirstRun(false); save('demarrageVu', true); }} onGestures={() => setTuto(true)} onTryHere={(cfg) => setMonitor({ cfg, owner: true })} />

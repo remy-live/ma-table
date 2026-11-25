@@ -83,7 +83,7 @@ export function MoreSheet(props: { theme: Theme; visible: boolean; current: Sect
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void; onRec?: () => void; recActive?: boolean }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void; onRec?: () => void; recActive?: boolean; mixesActive?: boolean }) {
   const { theme, vertical } = props;
   const rec = useRec();
   // écran peu haut (tablette couchée) : les boutons du côté se serrent pour tous tenir
@@ -125,7 +125,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         <Text style={{ color: '#A7F3D0', fontSize: vertical ? 11 : 10, fontWeight: '800' }}>Aide-moi</Text>
       </Pressable>
       {ITEMS.map(([id, label]) => {
-        const on = props.current === id && !props.recActive;
+        const on = props.current === id && !props.recActive && !props.mixesActive;
         const dim = props.locked && id !== 'scene';
         const c = on ? theme.accent : dim ? theme.line2 : theme.muted;
         return (
@@ -146,9 +146,10 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         );
       })}
       {props.onMixes && vertical && (
-        <Pressable onPress={props.onMixes} onLongPress={() => showTip('Mes mixages : nouveau mixage avec son nom, modèles (artiste solo, groupe…), reprendre un ancien.')} accessibilityLabel="Mes mixages" style={[styles.item, tight && { height: 58 }]}>
-          <Icon id="mixages" color={theme.muted} size={26} />
-          <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>Mixages</Text>
+        <Pressable onPress={props.onMixes} onLongPress={() => showTip('Mes mixages : nouveau mixage avec son nom, modèles (artiste solo, groupe…), reprendre un ancien.')} accessibilityLabel="Mes mixages" style={[styles.item, tight && { height: 58 }, props.mixesActive && { backgroundColor: theme.panel }]}>
+          {props.mixesActive && <View style={[styles.mark, { backgroundColor: theme.accent }]} />}
+          <Icon id="mixages" color={props.mixesActive ? theme.accent : theme.muted} size={26} />
+          <Text numberOfLines={1} style={{ color: props.mixesActive ? theme.accent : theme.muted, fontSize: 11, fontWeight: props.mixesActive ? '800' : '600' }}>Mixages</Text>
         </Pressable>
       )}
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
