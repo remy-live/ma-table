@@ -1,3 +1,4 @@
+import { Icon } from '../ui/NavBar';
 import React, { useEffect, useState } from 'react';
 import { QrScanner } from '../ui/QrScanner';
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
@@ -24,6 +25,8 @@ let autoTried = false;
 
 interface MyTable { ip: string; name: string; model: string; at: number; ssid?: string; mode?: number }
 
+type Page = 'table' | 'essayer' | 'musicien' | 'avance';
+
 export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; onConnected: (c: XAirClient, mon?: MonConfig, musician?: boolean, prep?: boolean) => void; invite?: MonConfig | null }) {
   const [code, setCode] = useState('');
   const [recOpen, setRecOpen] = useState(false);
@@ -40,6 +43,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const [mine, setMine] = useState<MyTable | null>(null);
   const win = useWindowDimensions();
   const wide = win.width >= 900;
+  const [page, setPage] = useState<Page>('table');
   // grand écran : tout tient sans faire défiler (la liste des Wi-Fi prend la place qui reste)
   const netsMax = wide ? Math.max(120, Math.min(340, win.height - 420)) : 340;
   useEffect(() => { load<MyTable | null>('maTable', null).then(setMine); }, []);
@@ -180,9 +184,8 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     else Linking.openSettings();
   };
 
-  const quick = (
-        <>
-          {recAvailable() && (
+  const recCard = recAvailable() ? (
+
             <Pressable onPress={() => setRecOpen(true)} accessibilityLabel="Mes enregistrements : écouter, mixer, partager" style={[styles.card, { borderColor: theme.accent, borderWidth: 2, backgroundColor: theme.panel, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
               <Text style={{ fontSize: 28 }}>🎵</Text>
               <View style={{ flex: 1 }}>
@@ -190,7 +193,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
                 <Text style={{ color: theme.muted, fontSize: 13 }}>Réécouter, mixer et partager. Pas besoin de la table.</Text>
               </View>
             </Pressable>
-          )}
+          
+  ) : null;
+  const tryCard = (
           <Pressable onPress={() => connect('demo', true)} accessibilityLabel="Essayer sans table" style={[styles.card, { borderColor: theme.ok, borderWidth: 2, backgroundColor: theme.panel, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
             <Text style={{ fontSize: 28 }}>▶️</Text>
             <View style={{ flex: 1 }}>
@@ -198,8 +203,8 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               <Text style={{ color: theme.muted, fontSize: 13 }}>Une table imaginaire pour découvrir l’appli. Rien n’est envoyé.</Text>
             </View>
           </Pressable>
-        </>
   );
+  const quick = <>{recCard}{tryCard}</>;
   const colA = (
         <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
           {/* TA TABLE */}
@@ -247,8 +252,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </Pressable>
           ))}
 
-          {wide && quick}
-        </View>
+                </View>
   );
   const colB = (
         <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
@@ -325,9 +329,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
           </View>
         </View>
   );
-  const colC = (
-        <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
-          {!wide && quick}
+  const musicianCard = (
           <View style={[styles.card, { backgroundColor: theme.panel, borderColor: theme.line, gap: 8 }]}>
             <Text style={[styles.kicker, { color: '#34D399' }]}>JE SUIS MUSICIEN · MON RETOUR</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -347,11 +349,14 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
               if (cfg) connect(cfg.host, false, cfg); else setError('Ce QR code n’est pas une invitation « Ma table ».');
             }} />
           </View>
-
+  );
+  const prepCard = (
           <Pressable onPress={() => connect('demo', true, undefined, false, true)} style={[styles.card, { borderColor: theme.accent, backgroundColor: theme.panel }]}>
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🏠 Préparer chez moi, sans table</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Noms, couleurs, groupes, qui entend quoi… puis tout est envoyé à la table en arrivant (sauf les gains et le 48 V).</Text>
           </Pressable>
+  );
+  const shareCard = (
           <Pressable onPress={() => setShare(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: theme.line2, borderRadius: 12, padding: 10 }}>
             <Text style={{ fontSize: 20 }}>🤝</Text>
             <View style={{ flex: 1 }}>
@@ -360,12 +365,9 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </View>
             <Text style={{ color: theme.muted, fontSize: 18 }}>›</Text>
           </Pressable>
-          <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={null} />
-          <Pressable onPress={() => setAdv((v) => !v)} accessibilityState={{ expanded: adv }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}>
-            <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '800', flex: 1 }}>⚙ Avancé</Text>
-            <Text style={{ color: theme.muted, fontSize: 16 }}>{adv ? '▴' : '▾'}</Text>
-          </Pressable>
-          {adv && (<>
+  );
+  const advBlock = (
+        <>
           <Pressable onPress={searchHotspot} disabled={sweeping} style={[styles.card, { borderColor: theme.line2 }]}>
             <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{sweeping ? 'Recherche adresse par adresse…' : 'Chercher sur mon partage de connexion'}</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>Quand la table a rejoint le Wi-Fi de ton téléphone ou d’un routeur.</Text>
@@ -409,11 +411,74 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             </Pressable>
           </View>
           <Pressable onPress={() => setDbgOpen(true)} style={[styles.small, { borderColor: theme.line2, alignSelf: 'flex-start' }]}><Text style={{ color: theme.muted, fontSize: 12, fontWeight: '700' }}>Débogage · {BUILD_VERSION === 'dev' ? 'version de développement' : `v${BUILD_VERSION}`}</Text></Pressable>
-          </>)}
+        </>
+  );
+  const colC = (
+        <View style={{ flex: wide ? 1 : undefined, gap: 12 }}>
+          {!wide && quick}
+          {musicianCard}
+          {prepCard}
+          {shareCard}
+          <Pressable onPress={() => setAdv((v) => !v)} accessibilityState={{ expanded: adv }} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}>
+            <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '800', flex: 1 }}>⚙ Avancé</Text>
+            <Text style={{ color: theme.muted, fontSize: 16 }}>{adv ? '▴' : '▾'}</Text>
+          </Pressable>
+          {adv && advBlock}
         </View>
+  );
+  // Grand écran : la même colonne d'icônes que dans l'appli, une rubrique à la fois — rien à faire défiler
+  const railItems: [Page | 'rec' | 'partager', 'table' | 'rec' | 'play' | 'casque' | 'partager' | 'reglages', string][] = [
+    ['table', 'table', 'Ma table'],
+    ...(recAvailable() ? [['rec', 'rec', 'Enregistrements'] as ['rec', 'rec', string]] : []),
+    ['essayer', 'play', 'Essayer'],
+    ['musicien', 'casque', 'Musicien'],
+    ['partager', 'partager', 'Partager'],
+    ['avance', 'reglages', 'Avancé'],
+  ];
+  const pageTitle: Record<Page, [string, string]> = {
+    table: ['Ma table', 'Relie la tablette à la table de mixage'],
+    essayer: ['Essayer, préparer', 'Sans table : pour découvrir l’appli ou préparer une soirée chez toi'],
+    musicien: ['Je suis musicien', 'Régler mon retour depuis mon téléphone, avec le code du sondier'],
+    avance: ['Avancé', 'Adresse IP, partage de connexion, démonstrations, débogage'],
+  };
+  const widePage = (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.bg }}>
+      <View style={{ width: 96, borderRightWidth: 1, borderColor: theme.line, backgroundColor: theme.deep, paddingTop: 22, paddingBottom: 14, alignItems: 'center', gap: 4 }}>
+        <View style={[styles.logo, { width: 48, height: 48, borderRadius: 14, marginBottom: 12, backgroundColor: theme.accent }]}>
+          {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 5, height: 30 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
+        </View>
+        {railItems.map(([id, icon, label]) => {
+          const on = id === page;
+          const c = on ? theme.accent : theme.muted;
+          return (
+            <React.Fragment key={id}>
+              {id === 'avance' && <View style={{ flex: 1 }} />}
+              <Pressable onPress={() => (id === 'rec' ? setRecOpen(true) : id === 'partager' ? setShare(true) : setPage(id))} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label} style={{ width: 88, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: on ? theme.panel : 'transparent' }}>
+                {on && <View style={{ position: 'absolute', left: -4, top: 18, width: 4, height: 28, borderRadius: 2, backgroundColor: theme.accent }} />}
+                <Icon id={icon} color={c} size={26} />
+                <Text numberOfLines={1} style={{ color: c, fontSize: 11, fontWeight: on ? '800' : '600' }}>{label}</Text>
+              </Pressable>
+            </React.Fragment>
+          );
+        })}
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, paddingTop: 22, gap: 16, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <View>
+          <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>{pageTitle[page][0]}</Text>
+          <Text style={{ color: theme.muted, fontSize: 13 }}>{pageTitle[page][1]}</Text>
+        </View>
+        {busy && <ActivityIndicator color={theme.accent} />}
+        {!!error && <Text style={{ color: '#FCA5A5', fontWeight: '700' }}>{error}</Text>}
+        {page === 'table' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>{colA}{colB}</View>}
+        {page === 'essayer' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'stretch' }}><View style={{ flex: 1 }}>{tryCard}</View><View style={{ flex: 1 }}>{prepCard}</View></View>}
+        {page === 'musicien' && <View style={{ maxWidth: 560 }}>{musicianCard}</View>}
+        {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}>{advBlock}</View>}
+      </ScrollView>
+    </View>
   );
   return (
     <View style={{ flex: 1 }}>
+    {wide ? widePage : (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={[styles.root, wide && { paddingHorizontal: 28, paddingTop: 14, paddingBottom: 14, gap: 12, flexGrow: 1 }]} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={[styles.logo, wide && { width: 44, height: 44, borderRadius: 13 }, { backgroundColor: theme.accent }]}>
@@ -432,9 +497,11 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
 
       {busy && <ActivityIndicator color={theme.accent} style={{ marginTop: 12 }} />}
       {!!error && <Text style={{ color: theme.mute, marginTop: 8, fontWeight: '700' }}>{error}</Text>}
+    </ScrollView>
+    )}
       <DebugScreen client={null} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
       <RecorderSheet client={null} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
-    </ScrollView>
+      <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={null} />
       {auto && (
         <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, zIndex: 50 }}>
           <ActivityIndicator size="large" color={theme.accent} />

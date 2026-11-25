@@ -21,10 +21,13 @@ const ITEMS: [Section, string][] = [
   ['reglages', 'Réglages'],
 ];
 
-function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mixages' | 'rec'; color: string; size?: number }) {
+export function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mixages' | 'rec' | 'play' | 'casque' | 'partager'; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
+      {id === 'play' && (<><Circle cx={12} cy={12} r={9} {...p} /><Path d="M10 8.5l6 3.5-6 3.5z" {...p} fill={color} /></>)}
+      {id === 'casque' && (<><Path d="M4 14v-2a8 8 0 0 1 16 0v2" {...p} /><Rect x={3} y={14} width={4} height={6} rx={1.5} {...p} /><Rect x={17} y={14} width={4} height={6} rx={1.5} {...p} /></>)}
+      {id === 'partager' && (<><Circle cx={6} cy={12} r={2.5} {...p} /><Circle cx={18} cy={6} r={2.5} {...p} /><Circle cx={18} cy={18} r={2.5} {...p} /><Path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8" {...p} /></>)}
       {id === 'rec' && (<><Circle cx={12} cy={12} r={9} {...p} /><Circle cx={12} cy={12} r={4.5} {...p} fill={color} /></>)}
       {id === 'mixages' && (<><Rect x={4} y={4} width={16} height={16} rx={3} {...p} /><Line x1={8} y1={9} x2={16} y2={9} {...p} /><Line x1={8} y1={13} x2={16} y2={13} {...p} /><Line x1={8} y1={17} x2={12} y2={17} {...p} /></>)}
       {id === 'table' && (<><Line x1={6} y1={4} x2={6} y2={20} {...p} /><Line x1={12} y1={4} x2={12} y2={20} {...p} /><Line x1={18} y1={4} x2={18} y2={20} {...p} /><Rect x={3.5} y={12} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={9.5} y={7} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={15.5} y={14} width={5} height={3} rx={1} {...p} fill={color} /></>)}
