@@ -52,6 +52,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [invite, setInvite] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
   const [levelsView, setLevelsView] = useState(false); // vignettes, ou toutes les voies en barres de niveau
@@ -153,9 +154,9 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [gridH, setGridH] = useState(0);
   const [gridW, setGridW] = useState(0);
   const tiles = 1 + groups.reduce((n, g) => n + 1 + (openG.includes(g.k) ? g.members.length : 0), 0) + solos.length;
-  const cols = tiles <= 6 ? 3 : tiles <= 12 ? 4 : tiles <= 20 ? 5 : 6;
+  const cols = tiles <= 6 ? 3 : tiles <= 8 ? 4 : tiles <= 15 ? 5 : tiles <= 24 ? 6 : 7;
   const rows = Math.max(1, Math.ceil(tiles / cols));
-  const tileH = gridH ? Math.max(92, Math.min(230, Math.floor((gridH - (rows - 1) * 8) / rows))) : 120;
+  const tileH = gridH ? Math.max(92, Math.min(290, Math.floor((gridH - (rows - 1) * 8) / rows))) : 120;
   const fits = !gridH || rows * tileH + (rows - 1) * 8 <= gridH + 1;
   const tw = gridW ? Math.floor((gridW - (cols - 1) * 8) / cols) : `${(100 - cols * 2) / cols}%`;
   const toolBtn = (label: string, sub: string, onPress: () => void, colors?: { bg: string; bd: string; fg: string; sub: string }) => (
@@ -178,74 +179,71 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   );
   if (wide) return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <ScreenHeader theme={theme} title="Concert" sub="Gros boutons, l’essentiel, tout sur un écran">
-        <View style={{ flexDirection: 'row', gap: 8 }}>{nightBtn}{lockBar}</View>
-      </ScreenHeader>
-      <View style={{ flex: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 14, paddingBottom: 12 }}>
-        {/* colonne de gauche : ma soirée, urgences, outils */}
-        <View style={{ width: 300, gap: 8 }}>
-          <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
-            <Pressable onPress={() => setSessOpen(true)} accessibilityLabel="Renommer, changer de mixage, sauvegardes">
-              <Text style={[styles.kicker, { color: theme.muted }]}>MON MIXAGE</Text>
-              <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{cur?.name ?? '…'} <Text style={{ color: theme.muted, fontSize: 12 }}>✎</Text></Text>
-            </Pressable>
-            <Text numberOfLines={2} style={{ color: !snap ? theme.muted : changed ? SEM.warnSoft : theme.ok, fontSize: 11, fontWeight: '700' }}>
-              {!snap ? 'Pas encore enregistré : quand le son est bon, enregistre.' : changed ? `Enregistré à ${hhmm(snap.at)} · ${changed} réglage${changed > 1 ? 's' : ''} bougé${changed > 1 ? 's' : ''}` : `✓ Enregistré à ${hhmm(snap.at)} · rien n’a bougé`}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <Btn theme={theme} small kind={!snap || changed ? 'primary' : 'outline'} icon="💾" label={busy ? '…' : 'Enregistrer'} onPress={saveNow} style={{ flex: 1 }} />
-              <Btn theme={theme} small icon="↺" label="Revenir" a11y="Revenir à l’enregistrement" disabled={!snap || !changed || locked} onPress={askRestore} style={{ flex: 1 }} />
-            </View>
-          </View>
-          <RecCard theme={theme} onOpen={() => setRecOpen(true)} />
-          <View style={[styles.cardS, { backgroundColor: theme.panel, borderColor: '#7F1D1D' }]}>
-            <Text style={[styles.kicker, { color: '#FCA5A5' }]}>EN CAS DE PROBLÈME</Text>
-            <RescueButton client={client} theme={theme} />
-            <SpeakButton client={client} theme={theme} locked={locked} />
+      {/* en haut, une seule ligne : pour qui je règle, comment je regarde, nuit, verrou */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>Concert</Text>
+        <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '800', marginLeft: 6 }}>Je règle pour</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
+          {mixes.map((t, k) => {
+            const on = targetId(t) === targetId(mix);
+            const c = MIX_COLORS[k] ?? theme.text;
+            return (
+              <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mixS, { minHeight: 44, paddingHorizontal: 14 }, on ? { backgroundColor: c, borderColor: c } : { backgroundColor: theme.deep, borderColor: c }]}>
+                <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 13 }}>{t.kind === 'main' ? '👥 Le public' : `🎧 ${mixName(t)}`}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        {viewSwitch}{nightBtn}{lockBar}
+      </View>
+      {/* au milieu : plus fort / moins fort, sur toute la largeur */}
+      <View style={[styles.card, { flex: 1, marginHorizontal: 14, backgroundColor: theme.panel, borderColor: mixColor(mix), paddingBottom: 10 }]}>
+        {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
+        <View style={{ flex: 1 }} onLayout={(e) => { setGridH(e.nativeEvent.layout.height); setGridW(e.nativeEvent.layout.width); }}>
+          {levelsView ? levelCols : fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
+        </View>
+      </View>
+      {/* en bas, toujours au même endroit : les trois gestes d'urgence, puis ma soirée et les outils */}
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 8, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12 }}>
+        <View style={{ flex: 1.2 }}><RescueButton client={client} theme={theme} /></View>
+        <View style={{ flex: 1 }}><SpeakButton client={client} theme={theme} locked={locked} /></View>
+        <View style={{ flex: 1.2 }}>
             {locked && lrOn ? (
-              <HoldButton label="⏸ Pause : couper le son du public (façade)" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 46 }} />
+              <HoldButton label="⏸ Pause · couper le public" sub="verrouillé : reste appuyé" color="#EF4444" bg="transparent" fg="#FCA5A5" subFg={theme.muted} onHold={() => client.set('/lr/mix/on', i(0))} style={{ minHeight: 46 }} />
             ) : (
             <Pressable onPress={() => client.set('/lr/mix/on', i(lrOn ? 0 : 1))} style={[styles.pause, { minHeight: 46, borderColor: '#EF4444', backgroundColor: lrOn ? 'transparent' : '#EF4444' }]}>
-              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 14 }}>{lrOn ? '⏸ Pause : couper le son du public (façade)' : '▶ Remettre le son'}</Text>
+              <Text style={{ color: lrOn ? '#FCA5A5' : '#1A0505', fontWeight: '800', fontSize: 14 }}>{lrOn ? '⏸ Pause · couper le public' : '▶ Remettre le son du public'}</Text>
               <Text style={{ color: lrOn ? theme.muted : '#1A0505', fontSize: 10 }}>les retours des musiciens continuent</Text>
             </Pressable>
             )}
-          </View>
-          <ClipHistoryCard client={client} theme={theme} onOpen={setGainCh} />
-          <View style={{ flex: 1 }} />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {toolBtn('📱 Inviter', 'il règle son retour', () => setInvite(true), { bg: '#13261E', bd: '#1F6F4A', fg: '#A7F3D0', sub: '#6EE7B7' })}
-            {toolBtn('✅ Check-list', 'tout est prêt ?', () => setCheckOpen(true))}
-            {toolBtn('🗺 Plan de scène', 'qui est branché où', () => setPlanOpen(true))}
-            {toolBtn('📓 Journal', 'qui a changé quoi', () => setJournalOpen(true))}
-          </View>
         </View>
-        {/* à droite : plus fort / moins fort, les tuiles prennent toute la place */}
-        <View style={[styles.card, { flex: 1, backgroundColor: theme.panel, borderColor: mixColor(mix), paddingBottom: 10 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Pour</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 5 }}>
-              {mixes.map((t, k) => {
-                const on = targetId(t) === targetId(mix);
-                const c = MIX_COLORS[k] ?? theme.text;
-                return (
-                  <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mixS, on ? { backgroundColor: c, borderColor: c } : { backgroundColor: theme.deep, borderColor: c }]}>
-                    <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 12 }}>{t.kind === 'main' ? '👥 Le public' : `🎧 ${mixName(t)}`}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ flex: 1, color: theme.muted, fontSize: 11 }}>Puis quoi : chaque appui = 2 dB</Text>
-            {viewSwitch}
-          </View>
-          {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
-          <View style={{ flex: 1 }} onLayout={(e) => { setGridH(e.nativeEvent.layout.height); setGridW(e.nativeEvent.layout.width); }}>
-            {levelsView ? levelCols : fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
-          </View>
-        </View>
+        <Pressable onPress={saveNow} accessibilityLabel="Enregistrer mon mixage" style={[styles.pause, { minHeight: 46, paddingHorizontal: 14, borderColor: !snap || changed ? theme.accent : theme.line2, backgroundColor: !snap || changed ? theme.accent : 'transparent' }]}>
+          <Text numberOfLines={1} style={{ color: !snap || changed ? theme.onAccent : theme.text, fontWeight: '800', fontSize: 14 }}>{busy ? '…' : !snap ? '💾 Enregistrer mon mixage' : changed ? `💾 Enregistrer · ${changed} changé${changed > 1 ? 's' : ''}` : '✓ Mixage enregistré'}</Text>
+          <Text numberOfLines={1} style={{ color: !snap || changed ? theme.onAccent : theme.muted, fontSize: 10 }}>{snap ? `la dernière fois à ${hhmm(snap.at)}` : 'quand le son est bon'}</Text>
+        </Pressable>
+        <Pressable onPress={() => setToolsOpen(true)} accessibilityLabel="Outils : inviter, check-list, plan de scène, journal" style={[styles.pause, { minHeight: 46, paddingHorizontal: 16, borderColor: theme.line2, backgroundColor: 'transparent' }]}>
+          <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>•••</Text>
+          <Text style={{ color: theme.muted, fontSize: 10 }}>Outils</Text>
+        </Pressable>
       </View>
+      {toolsOpen && (
+        <Pressable onPress={() => setToolsOpen(false)} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 14, paddingBottom: 84 }}>
+          <Pressable onPress={() => {}} style={[styles.card, { width: 380, gap: 8, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+            <Pressable onPress={() => { setToolsOpen(false); setSessOpen(true); }} accessibilityLabel="Renommer, changer de mixage, sauvegardes" style={{ minHeight: 44, justifyContent: 'center' }}>
+              <Text style={[styles.kicker, { color: theme.muted }]}>MON MIXAGE</Text>
+              <Text numberOfLines={1} style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{cur?.name ?? '…'} <Text style={{ color: theme.muted, fontSize: 12 }}>✎ renommer, changer</Text></Text>
+            </Pressable>
+            <Btn theme={theme} small icon="↺" label="Revenir au mixage enregistré" a11y="Revenir à l’enregistrement" disabled={!snap || !changed || locked} onPress={() => { setToolsOpen(false); askRestore(); }} />
+            <ClipHistoryCard client={client} theme={theme} onOpen={(c) => { setToolsOpen(false); setGainCh(c); }} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {toolBtn('📱 Inviter', 'il règle son retour', () => { setToolsOpen(false); setInvite(true); }, { bg: '#13261E', bd: '#1F6F4A', fg: '#A7F3D0', sub: '#6EE7B7' })}
+              {toolBtn('✅ Check-list', 'tout est prêt ?', () => { setToolsOpen(false); setCheckOpen(true); })}
+              {toolBtn('🗺 Plan de scène', 'qui est branché où', () => { setToolsOpen(false); setPlanOpen(true); })}
+              {toolBtn('📓 Journal', 'qui a changé quoi', () => { setToolsOpen(false); setJournalOpen(true); })}
+            </View>
+          </Pressable>
+        </Pressable>
+      )}
       <SessionsScreen client={client} theme={theme} visible={sessOpen} onClose={() => { setSessOpen(false); reload(); }} />
       <ChecklistSheet client={client} theme={theme} visible={checkOpen} onClose={() => setCheckOpen(false)} />
       <JournalSheet theme={theme} visible={journalOpen} onClose={() => setJournalOpen(false)} />
@@ -295,7 +293,6 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
 
         <ClipHistoryCard client={client} theme={theme} onOpen={setGainCh} />
 
-        <RecCard theme={theme} onOpen={() => setRecOpen(true)} />
 
         {/* 2. PENDANT */}
         <View style={[styles.card, { backgroundColor: theme.panel, borderColor: mixColor(mix) }]}>
