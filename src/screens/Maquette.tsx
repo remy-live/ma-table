@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Theme } from '../ui/theme';
-import { buildMix, emptyMix, fileSafe, loudFactor, songEdits, songsOf, SongSpan } from '../xair/listen';
+import { bestExcerpt, buildMix, emptyMix, fileSafe, loudFactor, songEdits, songsOf, SongSpan } from '../xair/listen';
 import { fmtTime, parseMeta } from '../xair/recorder';
 import { SessEntry, usbListen } from '../xair/usbAudio';
 import { load, Loaded } from './RecList';
@@ -18,6 +18,7 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
   const [name, setName] = useState(`Maquette ${new Date().toISOString().slice(0, 10)}`);
   const [each, setEach] = useState(true);
   const [full, setFull] = useState(true);
+  const [cut, setCut] = useState(0); // 0 = morceaux entiers ; sinon la durée des extraits, en secondes
   const [prog, setProg] = useState<number | null>(null);
   const [step, setStep] = useState('');
   const [msg, setMsg] = useState('');
@@ -46,7 +47,8 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
     return { e, rows };
   }).filter((x) => x.rows.length), [list, data]);
   const byKey = useMemo(() => Object.fromEntries(groups.flatMap((x) => x.rows.map((r) => [r.key, r]))), [groups]);
-  const chosen = order.map((k) => byKey[k]).filter(Boolean) as Row[];
+  // en extraits : l'appli garde, dans chaque morceau, le passage où ça joue le plus
+  const chosen = (order.map((k) => byKey[k]).filter(Boolean) as Row[]).map((r) => (cut ? { ...r, ...bestExcerpt(data[r.id]?.all, data[r.id]?.bucket ?? 0.2, r, cut) } : r));
   const secs = chosen.reduce((n, r) => n + r.b - r.a, 0);
   const titleOf = (r: Row) => titles[r.key] ?? r.label;
   const toggle = (k: string) => setOrder((o) => (o.includes(k) ? o.filter((x) => x !== k) : [...o, k]));
@@ -61,7 +63,7 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
       const r = chosen[i], d = data[r.id];
       setStep(`Je règle « ${titleOf(r)} »… ${i + 1} / ${chosen.length}`);
       const mix0 = { ...emptyMix(), ...(d.meta?.mix ?? {}) };
-      const mix = { ...mix0, edits: songEdits(mix0.edits, r) };
+      const mix = { ...mix0, edits: songEdits(mix0.edits, r, !!cut) };
       const paths = d.tracks.map((x) => x.path);
       // même volume pour tous : chaque morceau est mesuré, puis calé sur le même niveau
       const flat = buildMix(d.tracks, d.peaks, mix, null, d.seconds || 1, false, { an: d.an, loud: 1 }).params;
@@ -70,7 +72,7 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
       songs.push({ ...params, paths, from: r.a, to: r.b, out: each ? `${dir}/${String(i + 1).padStart(2, '0')} ${fileSafe(titleOf(r))}.mp3` : undefined });
     }
     setStep('Je fabrique les fichiers…');
-    const res = await usbListen.mixAlbum({ songs, full: full || !each ? `${dir}/${fileSafe(name)}.mp3` : undefined, gap: 1.5 });
+    const res = await usbListen.mixAlbum({ songs, full: full || !each ? `${dir}/${fileSafe(name)}.mp3` : undefined, gap: cut ? 0.6 : 1.5 });
     setProg(null); setStep('');
     if (!res.ok || !res.path) { setMsg(`Maquette impossible : ${res.error ?? ''}`); return; }
     setDone({ path: res.path, dir });
@@ -99,7 +101,7 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
                     {on
                       ? <TextInput value={titleOf(r)} onChangeText={(v) => setTitles((x) => ({ ...x, [r.key]: v }))} accessibilityLabel="Titre du morceau" selectTextOnFocus style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '800', paddingVertical: 6 }} />
                       : <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 15, fontWeight: '600' }}>{r.label}</Text>}
-                    <Text style={{ color: theme.muted, fontSize: 12, fontVariant: ['tabular-nums'] }}>{fmtTime(r.b - r.a)}</Text>
+                    <Text style={{ color: theme.muted, fontSize: 12, fontVariant: ['tabular-nums'] }}>{on && cut ? (() => { const x = bestExcerpt(data[r.id]?.all, data[r.id]?.bucket ?? 0.2, r, cut); return `${fmtTime(x.a)} → ${fmtTime(x.b)}`; })() : fmtTime(r.b - r.a)}</Text>
                   </Pressable>
                   {on && order.length > 1 && (
                     <>
@@ -113,6 +115,13 @@ export function Maquette({ list, theme, onClose }: { list: SessEntry[]; theme: T
           </View>
         ))}
       </ScrollView>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '700' }}>Je garde :</Text>
+        {([[0, 'les morceaux entiers'], [30, 'un extrait de 30 s'], [45, '45 s'], [60, '1 min']] as const).map(([v, l]) => (
+          <Pressable key={v} onPress={() => setCut(v)} accessibilityState={{ selected: cut === v }} style={[styles.btn, box(cut === v)]}><Text style={{ color: cut === v ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>{l}</Text></Pressable>
+        ))}
+        {!!cut && <Text style={{ color: theme.muted, fontSize: 12, flexBasis: '100%' }}>Dans chaque morceau, l’appli choisit toute seule le passage où ça joue le plus (souvent le refrain), avec un fondu au début et à la fin.</Text>}
+      </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <TextInput value={name} onChangeText={setName} accessibilityLabel="Nom de la maquette" style={{ flexGrow: 1, minWidth: 200, minHeight: 46, color: theme.text, fontSize: 15, fontWeight: '700', borderWidth: 1, borderColor: theme.line2, borderRadius: 12, paddingHorizontal: 12 }} />
         <Pressable onPress={() => setEach(!each)} accessibilityState={{ checked: each }} style={[styles.btn, box(each)]}><Text style={{ color: each ? theme.text : theme.muted, fontSize: 13, fontWeight: '800' }}>{each ? '✓ ' : ''}Un MP3 par morceau</Text></Pressable>

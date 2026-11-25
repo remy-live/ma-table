@@ -126,7 +126,7 @@ export default function App() {
   // QR code scanné avec l'appareil photo → l'appli s'ouvre sur matable://retour?…
   useEffect(() => {
     const handle = (url: string | null | undefined) => {
-      if (url && /^(file|content):\/\//.test(url)) {
+      if (Platform.OS !== 'web' && url && /^(file|content):\/\//.test(url)) {
         readBundleFile(url).then((b) => b && setIncoming(b)).catch((e) => Alert.alert('Fichier illisible', String(e?.message ?? e)));
         return;
       }
@@ -218,6 +218,7 @@ export default function App() {
             setClient(c);
           }}
         />
+        <AlertHost theme={theme} />
       </>
     );
   }

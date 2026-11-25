@@ -61,6 +61,25 @@ export interface MixState {
   eq?: boolean; glue?: boolean; loud?: 'nat' | 'std' | 'fort';
   /** un peu de salle (réverbération), la voix devant, le placement gauche-droite automatique */
   rev?: boolean; front?: boolean; wide?: boolean;
+  /** l'égaliseur réglé à la main, piste par piste (4 points) */
+  ueq?: Record<string, UserBand[]>;
+}
+/** Un point de l'égaliseur à la main : type 1 = plateau grave, 2 = cloche, 4 = plateau aigu (comme sur la table). */
+export interface UserBand { type: number; hz: number; db: number; q: number }
+export const userEqDefault = (): UserBand[] => [{ type: 1, hz: 100, db: 0, q: 0.7 }, { type: 2, hz: 400, db: 0, q: 1.2 }, { type: 2, hz: 2500, db: 0, q: 1.2 }, { type: 4, hz: 8000, db: 0, q: 0.7 }];
+/** Le spectre mesuré d'une piste, mis à l'échelle du graphe de l'égaliseur (100 bandes de 20 Hz à 20 kHz, le plus fort vers −12 dB). */
+export function spectrumForGraph(a: Analysis | null | undefined): Float32Array | null {
+  if (!a) return null;
+  const top = Math.max(...a.bands);
+  const out = new Float32Array(100);
+  for (let k = 0; k < 100; k++) {
+    const hz = 20 * Math.pow(1000, k / 99);
+    const b = 3 * Math.log2(hz / 40);
+    if (b < -1 || b > 27) { out[k] = -90; continue; }
+    const i = Math.max(0, Math.min(25, Math.floor(b))), f = Math.max(0, Math.min(1, b - i));
+    out[k] = Math.max(-90, a.bands[i] * (1 - f) + a.bands[i + 1] * f - top - 12);
+  }
+  return out;
 }
 export const emptyMix = (): MixState => ({ trims: {}, mute: {}, master: 0, edits: [], roles: {}, off: {}, pans: {}, force: 1, eq: true, glue: true, loud: 'std', rev: true, front: true, wide: true });
 
@@ -89,7 +108,7 @@ export function procFor(role: Role, level: number | null, force: number, off: (k
 }
 
 export interface MixTrack { key: string; name: string; pan: number }
-export interface Level { role: Role; auto: number | null; trim: number; silenced: boolean; shown: number; proc: Proc; pan: number; eq: EqBand[]; rev: number }
+export interface Level { role: Role; auto: number | null; trim: number; silenced: boolean; shown: number; proc: Proc; pan: number; eq: EqBand[]; rev: number; ueq: UserBand[] }
 /**
  * Tout le mix d'un coup : pour chaque piste son rôle, son niveau et son nettoyage, puis la finition.
  * `raw` = écouter « avant » : niveaux automatiques seulement, sans nettoyage ni finition.
@@ -110,7 +129,7 @@ export function buildMix(tracks: MixTrack[], peaks: Record<string, Uint8Array>, 
     const proc = raw ? procFor(role, null, force, () => true) : procFor(role, level, force, off, an);
     const eq = an && !off('eq') && level != null ? tailorEq(role, an, hasVoice && role !== 'Voix') : [];
     const rev = raw || mix.rev === false || off('rev') ? 0 : REV[role] ?? 0;
-    return { role, auto: autoDb, trim, silenced, shown: autoDb == null ? 0 : lin(autoDb + trim), proc, pan: mix.pans?.[x.key] ?? (auto && x.pan === 0 ? auto[k] : x.pan), eq, rev };
+    return { role, auto: autoDb, trim, silenced, shown: autoDb == null ? 0 : lin(autoDb + trim), proc, pan: mix.pans?.[x.key] ?? (auto && x.pan === 0 ? auto[k] : x.pan), eq, rev, ueq: raw ? [] : (mix.ueq?.[x.key] ?? []).filter((b) => Math.abs(b.db) >= 0.25) };
   });
   const norm = mixScale(tracks.map((x, i) => ({ peaks: peaks[x.key] ?? null, gain: mix.mute[x.key] ? 0 : levels[i].shown })));
   const loud = raw ? 1 : extra.loud ?? { nat: 1, std: 1.5, fort: 2.2 }[mix.loud ?? 'std'];
@@ -122,7 +141,7 @@ export function buildMix(tracks: MixTrack[], peaks: Record<string, Uint8Array>, 
     ...engineParams({ gains: levels.map((l) => (l.silenced ? 0 : l.shown)), pans: levels.map((l) => l.pan), master: lin(mix.master) * norm * loud, edits: mix.edits, total }),
     hp: levels.map((l) => l.proc.hp), thr: levels.map((l) => l.proc.thr), slope: levels.map((l) => l.proc.slope), makeup: levels.map((l) => l.proc.makeup), gate: levels.map((l) => l.proc.gate),
     eq: !raw && mix.eq !== false, glue: !raw && mix.glue !== false, limit: true,
-    teq: levels.map((l) => l.eq.flatMap((b) => [b.type, b.f, b.db, b.q])),
+    teq: levels.map((l) => [...l.eq.flatMap((b) => [b.type, b.f, b.db, b.q]), ...l.ueq.flatMap((b) => [b.type === 1 ? 0 : b.type === 4 ? 2 : 1, b.hz, b.db, b.q])]),
     rev: levels.some((l) => l.rev > 0) ? levels.map((l) => l.rev) : [],
     key: duckOn ? levels.map((l) => (l.role === 'Voix' && !l.silenced ? 1 : 0)) : [],
     duck: duckOn ? levels.map((l) => (l.role === 'Guitare' || l.role === 'Ampli' || l.role === 'Clavier' ? 1 : 0)) : [],
@@ -426,7 +445,12 @@ export function loudFactor(measuredDb: number | null | undefined, want: 'nat' | 
 export interface SongSpan { label: string; a: number; b: number }
 /** Les morceaux d'un enregistrement (d'un repère au suivant), resserrés sur ce qui joue vraiment : pas de blanc avant ni après. */
 export function songsOf(markers: { t: number; label: string }[], total: number, all?: Uint8Array | null, bucket = 0.2): SongSpan[] {
-  const mk = markers.length ? [...markers].sort((x, y) => x.t - y.t) : [{ t: 0, label: 'Tout' }];
+  let mk = markers.length ? [...markers].sort((x, y) => x.t - y.t) : [{ t: 0, label: 'Tout' }];
+  // pas de repères posés : on découpe tout seul aux silences (4 s ou plus) entre les morceaux
+  if (mk.length <= 1 && all && all.length) {
+    const cuts = findBlanks(all, bucket, total, 4).filter((x) => x.where === 'milieu').map((x) => (x.a + x.b) / 2);
+    if (cuts.length) mk = [0, ...cuts].map((t, i) => ({ t, label: `Morceau ${i + 1}` }));
+  }
   const out: SongSpan[] = [];
   mk.forEach((m, i) => {
     let a = Math.max(0, m.t), b = Math.min(total, mk[i + 1]?.t ?? total);
@@ -443,6 +467,29 @@ export function songsOf(markers: { t: number; label: string }[], total: number, 
   return out;
 }
 /** Les retouches d'un morceau de maquette : entrée nette, sortie en fondu. */
-export const songEdits = (edits: Edit[], s: SongSpan): Edit[] => [...edits, { type: 'fadeIn', a: s.a, b: s.a + 0.15 }, { type: 'fadeOut', a: Math.max(s.a, s.b - 2), b: s.b }];
+export const songEdits = (edits: Edit[], s: SongSpan, excerpt = false): Edit[] => [...edits, { type: 'fadeIn', a: s.a, b: s.a + (excerpt ? 1.2 : 0.15) }, { type: 'fadeOut', a: Math.max(s.a, s.b - (excerpt ? 3 : 2)), b: s.b }];
+/**
+ * L'extrait d'un morceau : le passage de `len` secondes où ça joue le plus (souvent le refrain).
+ * Le début est calé sur un petit creux tout proche, pour ne pas entrer au milieu d'un mot.
+ */
+export function bestExcerpt(all: Uint8Array | null | undefined, bucket: number, s: SongSpan, len: number): SongSpan {
+  if (s.b - s.a <= len + 4 || !all || !all.length) return s;
+  const i0 = Math.floor(s.a / bucket), i1 = Math.min(all.length, Math.floor(s.b / bucket));
+  const w = Math.round(len / bucket);
+  if (i1 - i0 <= w) return s;
+  let sum = 0;
+  for (let i = i0; i < i0 + w; i++) sum += all[i] * all[i];
+  let best = sum, at = i0;
+  for (let i = i0 + 1; i + w <= i1; i++) {
+    sum += all[i + w - 1] * all[i + w - 1] - all[i - 1] * all[i - 1];
+    if (sum > best * 1.001) { best = sum; at = i; }
+  }
+  // le creux le plus bas dans les 2 secondes avant ce point
+  const back = Math.round(2 / bucket);
+  let lo = at;
+  for (let i = Math.max(i0, at - back); i <= at; i++) if (all[i] < all[lo]) lo = i;
+  const a = Math.max(s.a, lo * bucket);
+  return { label: s.label, a, b: Math.min(s.b, a + len) };
+}
 /** Un nom de fichier propre. */
 export const fileSafe = (n: string) => n.replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Morceau';

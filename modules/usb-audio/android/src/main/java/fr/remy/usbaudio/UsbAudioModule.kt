@@ -30,6 +30,8 @@ import kotlin.math.sqrt
 // Enregistrement par la prise USB d'une table de mixage (carte son USB).
 // Tout est fait pour TESTER ce que la tablette accepte : appareils vus, nombre de
 // voies possible, enregistrement de quelques secondes avec un fichier WAV par voie.
+private const val TRASH = ".corbeille"
+
 class UsbAudioModule : Module() {
   private fun ctx(): Context = appContext.reactContext?.applicationContext ?: throw IllegalStateException("pas de contexte")
   private fun am(): AudioManager = ctx().getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -444,6 +446,68 @@ class UsbAudioModule : Module() {
       val ok = d?.deleteRecursively() ?: false
       File(RecFiles.metaDir(ctx()), id + ".json").delete()
       ok
+    }
+
+    // La corbeille : un enregistrement jeté est seulement mis de côté (dossier caché). Rien n'est effacé tant qu'on ne vide pas.
+    Function("sessTrash") { id: String ->
+      try {
+        val d = RecFiles.find(ctx(), id)
+        if (d == null || (recOn && recInfo["id"] == id)) false else {
+          val bin = File(d.parentFile, TRASH).apply { mkdirs() }
+          var to = File(bin, id); var k = 2
+          while (to.exists()) to = File(bin, "$id ($k)").also { k++ }
+          if (!d.renameTo(to)) false else {
+            val keep = File(ctx().filesDir, "rec-trash").apply { mkdirs() }
+            val meta = File(RecFiles.metaDir(ctx()), "$id.json")
+            if (meta.exists()) meta.renameTo(File(keep, to.name + ".json"))
+            File(keep, to.name + ".date").writeText(System.currentTimeMillis().toString())
+            try { android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(d.absolutePath), null, null) } catch (e: Throwable) {}
+            true
+          }
+        }
+      } catch (e: Throwable) { false }
+    }
+    Function("trashList") {
+      val keep = File(ctx().filesDir, "rec-trash")
+      listOf(RecFiles.publicRoot(), RecFiles.privateRoot(ctx())).flatMap { root ->
+        (try { File(root, TRASH).listFiles { f -> f.isDirectory } } catch (e: Throwable) { null } ?: emptyArray()).map { d ->
+          mapOf("id" to d.name, "size" to (d.listFiles()?.sumOf { it.length() } ?: 0L).toDouble(),
+            "at" to (try { File(keep, d.name + ".date").readText().toDouble() } catch (e: Throwable) { d.lastModified().toDouble() }))
+        }
+      }.sortedByDescending { it["at"] as Double }
+    }
+    // Remettre un enregistrement de la corbeille dans la liste : rend son nom (changé si le nom est repris), ou "".
+    Function("trashRestore") { id: String ->
+      try {
+        val d = listOf(RecFiles.publicRoot(), RecFiles.privateRoot(ctx())).map { File(File(it, TRASH), id) }.firstOrNull { it.isDirectory }
+        if (d == null) "" else {
+          val root = d.parentFile!!.parentFile!!
+          val base = id.replace(Regex(" \\(\\d+\\)$"), "")
+          var n = base; var k = 2
+          while (RecFiles.find(ctx(), n) != null) n = "$base ($k)".also { k++ }
+          val to = File(root, n)
+          if (!d.renameTo(to)) "" else {
+            val keep = File(ctx().filesDir, "rec-trash")
+            val meta = File(keep, "$id.json")
+            if (meta.exists()) meta.renameTo(File(RecFiles.metaDir(ctx()), "$n.json"))
+            File(keep, "$id.date").delete()
+            try { android.media.MediaScannerConnection.scanFile(ctx(), (to.listFiles()?.map { it.absolutePath } ?: emptyList()).toTypedArray(), null, null) } catch (e: Throwable) {}
+            n
+          }
+        }
+      } catch (e: Throwable) { "" }
+    }
+    // Effacer pour de bon (après accord) : ces enregistrements de la corbeille, ou toute la corbeille si la liste est vide.
+    Function("trashEmpty") { ids: List<String> ->
+      var n = 0
+      val keep = File(ctx().filesDir, "rec-trash")
+      for (root in listOf(RecFiles.publicRoot(), RecFiles.privateRoot(ctx()))) {
+        for (d in (try { File(root, TRASH).listFiles { f -> f.isDirectory } } catch (e: Throwable) { null } ?: emptyArray())) {
+          if (ids.isNotEmpty() && d.name !in ids) continue
+          if (d.deleteRecursively()) { n++; File(keep, d.name + ".json").delete(); File(keep, d.name + ".date").delete(); File(ctx().filesDir, "rec-peaks/" + d.name.replace(Regex(" \\(\\d+\\)$"), "")).deleteRecursively() }
+        }
+      }
+      n
     }
 
     Function("fileDelete") { path: String -> try { File(path).delete() } catch (e: Throwable) { false } }

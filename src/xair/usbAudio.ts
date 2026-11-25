@@ -26,6 +26,11 @@ export type Native = {
   sessList(): SessEntry[];
   metaSave(id: string, json: string): boolean;
   sessDelete(id: string): boolean;
+  /** la corbeille : mettre de côté, lister, remettre, effacer pour de bon (liste vide = tout) */
+  sessTrash(id: string): boolean;
+  trashList(): { id: string; size: number; at: number }[];
+  trashRestore(id: string): string;
+  trashEmpty(ids: string[]): number;
   sessRename(id: string, name: string): string;
   fileDelete(path: string): boolean;
   mix(o: { tracks: { path: string; trim: number; pan: number; auto: boolean }[]; out: string; from?: number; to?: number }): Promise<MixResult>;
@@ -67,7 +72,7 @@ export type Native = {
 export const usbAudio: Native | null = Platform.OS === 'android' ? requireOptionalNativeModule<Native>('UsbAudio') : null;
 
 /** Ce dont l'enregistreur et l'écran d'écoute ont besoin. Sur le web (démo) : un faux concert, pour essayer l'écran. */
-export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'sessRename' | 'fileDelete' | 'share' | 'peaks' | 'analyze' | 'mixMeasure' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixAlbum' | 'albumDir' | 'sessPack' | 'sessImport' | 'mixCancel' | 'addListener'>;
+export type ListenNative = Pick<Native, 'recStart' | 'recStop' | 'recFree' | 'sessList' | 'metaSave' | 'sessDelete' | 'sessTrash' | 'trashList' | 'trashRestore' | 'trashEmpty' | 'sessRename' | 'fileDelete' | 'share' | 'peaks' | 'analyze' | 'mixMeasure' | 'playerOpen' | 'playerSet' | 'playerPlay' | 'playerSeek' | 'playerClose' | 'mixExport' | 'mixAlbum' | 'albumDir' | 'sessPack' | 'sessImport' | 'mixCancel' | 'addListener'>;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const usbListen: ListenNative | null = usbAudio ?? (Platform.OS === 'web' ? (require('./usbAudioDemo') as { demoUsb: ListenNative }).demoUsb : null);
 

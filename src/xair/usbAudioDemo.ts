@@ -37,6 +37,7 @@ const ID = '2026-11-28 20h30 Concert (démo)';
 const DIR = '/demo/' + ID;
 const files = [...TR.map(([n], k) => `${String(k + 1).padStart(2, '0')} ${n}.wav`), 'Façade (stéréo).wav'];
 const extra: Record<string, string[]> = {};
+const BIN: { id: string; size: number; at: number }[] = [];
 const OTHERS = ['2026-11-28 19h10 Balance (démo)', '2026-11-27 21h02 Répétition (démo)'];
 let meta = JSON.stringify({
   name: ID, startedAt: Date.now() - 3600e3, facade: true, seconds: TOTAL, rate: 48000, holes: 0, maxGapMs: 9,
@@ -72,6 +73,10 @@ export const demoUsb: ListenNative = {
   sessList: (): SessEntry[] => [ID, ...OTHERS].map((id, n) => ({ id, dir: '/demo/' + id, public: true, modified: Date.now() - n * 3600e3, meta: n ? meta.replace(ID, id) : meta, files: [...files, ...(extra['/demo/' + id] ?? [])].map((name) => ({ name, path: `/demo/${id}/${name}`, size: /\.(m4a|mp3)$/.test(name) ? 38e6 : name.startsWith('Façade') ? 460e6 : 230e6 })) })),
   metaSave: (id, json) => { if (id === ID) meta = json; return true; },
   sessDelete: () => false,
+  sessTrash: (id) => { const k = OTHERS.indexOf(id); if (k < 0) return false; OTHERS.splice(k, 1); BIN.push({ id, size: 310e6, at: Date.now() }); return true; },
+  trashList: () => [...BIN],
+  trashRestore: (id) => { const k = BIN.findIndex((b) => b.id === id); if (k < 0) return ''; BIN.splice(k, 1); OTHERS.push(id); return id; },
+  trashEmpty: (ids) => { const n = BIN.length; for (let k = BIN.length - 1; k >= 0; k--) if (!ids.length || ids.includes(BIN[k].id)) BIN.splice(k, 1); return n - BIN.length; },
   sessRename: (id, name) => { const k = OTHERS.indexOf(id); if (k < 0 || !name.trim()) return ''; OTHERS[k] = name.trim(); return OTHERS[k]; },
   fileDelete: (path) => { const d = path.slice(0, path.lastIndexOf('/')); extra[d] = (extra[d] ?? []).filter((n) => `${d}/${n}` !== path); return true; },
   share: async () => true,

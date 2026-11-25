@@ -5,9 +5,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, GestureResponderEvent, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
+import { BAND_COLORS, EqGraph } from '../ui/EqGraph';
+import { formatHz } from '../xair/addresses';
 import { Theme } from '../ui/theme';
 import { Tick } from './RecPrep';
-import { Analysis, Bar, bars, blankIsCut, buildMix, db, loudFactor, parseAnalysis, REV, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
+import { spectrumForGraph, UserBand, userEqDefault, Analysis, Bar, bars, blankIsCut, buildMix, db, loudFactor, parseAnalysis, REV, decodeB64, Edit, emptyMix, engineParams, findBlanks, firstClip, FxKind, keptSeconds, keptSegments, lin, MixState, regionGain, Role, ROLE_NAMES, ROLES } from '../xair/listen';
 import { fmtTime, Marker, parseMeta, RecMeta } from '../xair/recorder';
 import { CH_PALETTE } from '../xair/smartName';
 import { SessEntry, SessFile, usbListen } from '../xair/usbAudio';
@@ -101,6 +103,7 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
   const [mix, setMix] = useState<MixState>({ ...emptyMix(), ...(meta0.mix ?? {}) });
   const [redo, setRedo] = useState<Edit[]>([]);
   const [solo, setSolo] = useState<number | null>(null);
+  const [eqSel, setEqSel] = useState(0); // le point de l'égaliseur qu'on règle
   const [src, setSrc] = useState<'mix' | 'facade'>('mix');
   const [view, setView] = useState<'song' | 'all'>(meta0.markers.length > 1 ? 'song' : 'all');
   const [t, setT] = useState(0);
@@ -302,9 +305,9 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
     setMarkers(next);
     say(`Repère posé à ${fmtTime(t)}`);
   };
-  const del = () => Alert.alert('Supprimer cet enregistrement ?', `${entry.id} · tous ses fichiers seront effacés de la tablette.`, [
+  const del = () => Alert.alert('Mettre à la corbeille ?', `${entry.id}\nRien n’est effacé : tu pourras le remettre depuis la corbeille de tes enregistrements.`, [
     { text: 'Annuler', style: 'cancel' },
-    { text: 'Supprimer', style: 'destructive', onPress: () => { usbListen?.playerClose(); usbListen?.sessDelete(entry.id); onBack(); } },
+    { text: 'À la corbeille', style: 'destructive', onPress: () => { usbListen?.playerClose(); usbListen?.sessTrash(entry.id); onBack(); } },
   ]);
 
   const cutSecs = T - keptSeconds(segs);
@@ -554,48 +557,99 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
           ['eq', 'Égalisation sur mesure', !A ? 'piste pas encore étudiée' : L.eq.length ? L.eq.map((b) => b.why).join(' · ') : mix.off?.[`${key}:eq`] ? 'retirée' : 'rien à corriger : le spectre est équilibré', true],
           ['rev', 'Un peu de salle', 'une réverbération légère, pour que ça ne sonne pas « sec »', (REV[L.role] ?? 0) > 0 && mix.rev !== false],
         ];
+        const ub = mix.ueq?.[key] ?? userEqDefault();
+        const setUb = (k: number, patch: Partial<UserBand>) => setMix((m) => ({ ...m, ueq: { ...m.ueq, [key]: (m.ueq?.[key] ?? userEqDefault()).map((b, i) => (i === k ? { ...b, ...patch } : b)) } }));
+        const sb = ub[eqSel] ?? ub[0];
+        const autoOn = !mix.off?.[`${key}:eq`];
+        const touched = ub.some((b) => Math.abs(b.db) >= 0.25);
+        const check = (on: boolean) => <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: on ? theme.accent : theme.muted, backgroundColor: on ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on && <Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900', lineHeight: 16 }}>✓</Text>}</View>;
+        const pill = (label: string, on: boolean, onPress: () => void) => (
+          <Pressable key={label} onPress={onPress} accessibilityState={{ selected: on }} style={[styles.act, { minHeight: 44, borderWidth: 1.5, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.accent : 'transparent' }]}>
+            <Text style={{ color: on ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{label}</Text>
+          </Pressable>
+        );
+        const colA = (
+          <View style={{ flex: 1, minWidth: 300, gap: 10 }}>
+            <Text style={styles.kick}>C’EST QUEL INSTRUMENT ? (ÇA CHOISIT LES RÉGLAGES AUTOMATIQUES)</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {ROLE_NAMES.map((r: Role) => pill(r, L.role === r, () => setMix((m) => ({ ...m, roles: { ...m.roles, [key]: r }, trims: Object.fromEntries(Object.entries(m.trims).filter(([k2]) => k2 !== key)) }))))}
+            </View>
+            <Text style={styles.kick}>VOLUME DE LA PISTE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {small('−', () => setTrim(x, -1), `Moins de ${x.name}`)}
+              <Text style={{ width: 76, textAlign: 'center', color: theme.text, fontSize: 18, fontWeight: '900' }}>{L.trim > 0 ? '+' : ''}{L.trim} dB</Text>
+              {small('+', () => setTrim(x, 1), `Plus de ${x.name}`)}
+              <Text style={{ flex: 1, color: theme.muted, fontSize: 11 }}>0 dB = le niveau choisi par l’appli pour cet instrument</Text>
+            </View>
+            <Text style={styles.kick}>PLACE À GAUCHE OU À DROITE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {small('◀', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.max(-1, Math.round((L.pan - 0.1) * 10) / 10) } })), 'Plus à gauche')}
+              <Text style={{ width: 76, textAlign: 'center', color: theme.text, fontSize: 15, fontWeight: '800' }}>{Math.abs(L.pan) < 0.05 ? 'centre' : `${Math.round(Math.abs(L.pan) * 100)} % ${L.pan < 0 ? 'G' : 'D'}`}</Text>
+              {small('▶', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.min(1, Math.round((L.pan + 0.1) * 10) / 10) } })), 'Plus à droite')}
+              {Math.abs(L.pan) >= 0.05 && pill('Centre', false, () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: 0 } })))}
+            </View>
+            <Text style={styles.kick}>NETTOYAGE AUTOMATIQUE</Text>
+            {fx.filter((f) => f[3] && f[0] !== 'eq').map(([id, title, sub]) => {
+              const on = !mix.off?.[`${key}:${id}`];
+              return (
+                <Pressable key={id} onPress={() => setMix((m) => ({ ...m, off: { ...m.off, [`${key}:${id}`]: on } }))} accessibilityState={{ checked: on }} style={[styles.fmt, { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}>
+                  {check(on)}
+                  <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{title}</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text></View>
+                </Pressable>
+              );
+            })}
+          </View>
+        );
+        const colB = (
+          <View style={{ flex: 1.25, minWidth: 320, gap: 10 }}>
+            <Text style={styles.kick}>ÉGALISEUR · ATTRAPE UN POINT ET GLISSE-LE</Text>
+            <EqGraph bands={ub} on hpfHz={mix.off?.[`${key}:hp`] ? null : R.hp} selected={eqSel} theme={theme} rta={spectrumForGraph(A)} extra={L.eq.map((b) => ({ type: b.type === 0 ? 1 : b.type === 2 ? 4 : 2, hz: b.f, db: b.db, q: b.q }))}
+              onSelect={setEqSel} onChange={(k, hz, g) => setUb(k, { hz: Math.round(hz), db: g })} />
+            <Text style={{ color: theme.muted, fontSize: 11 }}>En fond : le spectre mesuré de la piste. La courbe montre tout ce qui est appliqué (tes points + l’égalisation automatique). Gauche-droite = grave-aigu, haut-bas = plus ou moins.</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              {ub.map((b, k) => (
+                <Pressable key={k} onPress={() => setEqSel(k)} accessibilityState={{ selected: eqSel === k }} accessibilityLabel={`Point ${k + 1}`} style={[styles.act, { minHeight: 44, borderWidth: 2, borderColor: eqSel === k ? BAND_COLORS[k] : theme.line2, backgroundColor: theme.deep }]}>
+                  <Text style={{ color: BAND_COLORS[k], fontSize: 12, fontWeight: '900' }}>{formatHz(b.hz)}</Text>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{b.db > 0 ? '+' : b.db < 0 ? '−' : ''}{Math.abs(b.db).toFixed(1).replace('.', ',')} dB</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              {small('−', () => setUb(eqSel, { db: Math.max(-15, sb.db - 1) }), 'Baisser ce point de 1 dB')}
+              {small('+', () => setUb(eqSel, { db: Math.min(12, sb.db + 1) }), 'Monter ce point de 1 dB')}
+              {sb.type === 2 && ([['Large', 0.7], ['Moyen', 1.4], ['Étroit', 4]] as const).map(([l, q]) => pill(l, Math.abs(sb.q - q) < 0.4 || (q === 1.4 && sb.q > 0.9 && sb.q < 2.5), () => setUb(eqSel, { q })))}
+              {sb.type !== 2 && <Text style={{ color: theme.muted, fontSize: 11, flex: 1 }}>{sb.type === 1 ? 'Ce point agit sur tout le grave en dessous de lui.' : 'Ce point agit sur tout l’aigu au-dessus de lui.'}</Text>}
+              {Math.abs(sb.db) >= 0.25 && pill('Ce point à plat', false, () => setUb(eqSel, { db: 0 }))}
+              {touched && pill('Tout à plat', false, () => setMix((m) => ({ ...m, ueq: Object.fromEntries(Object.entries(m.ueq ?? {}).filter(([k2]) => k2 !== key)) })))}
+            </View>
+            <Pressable onPress={() => setMix((m) => ({ ...m, off: { ...m.off, [`${key}:eq`]: autoOn } }))} accessibilityState={{ checked: autoOn }} style={[styles.fmt, { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: autoOn ? theme.accent : theme.line2, backgroundColor: autoOn ? theme.deep : 'transparent' }]}>
+              {check(autoOn)}
+              <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>Égalisation automatique</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{fx.find((f) => f[0] === 'eq')?.[2]}{touched ? ' · tes points s’ajoutent par-dessus' : ''}</Text></View>
+            </Pressable>
+          </View>
+        );
         return (
           <Pressable onPress={() => setEdit(null)} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }]}>
-            <Pressable onPress={() => {}} style={[styles.sheet, { width: 520, maxHeight: '94%', padding: 0, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
-             <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 8, height: 28, borderRadius: 4, backgroundColor: x.color }} />
-                <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontSize: 18, fontWeight: '900' }}>{x.name}</Text>
+            <Pressable onPress={() => {}} style={[styles.sheet, { width: wide ? '96%' : '98%', maxWidth: 1180, height: '94%', padding: 0, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: theme.line }}>
+                <View style={{ width: 8, height: 32, borderRadius: 4, backgroundColor: x.color }} />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ color: theme.text, fontSize: 18, fontWeight: '900' }}>{x.name}</Text>
+                  <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11 }}>{L.role} · {fmtTime(t)}</Text>
+                </View>
+                {small(playing ? '❚❚' : '▶', toggle, playing ? 'Pause' : 'Écouter', playing)}
                 {small('Seule', () => setSolo(solo === x.k ? null : x.k), `Écouter ${x.name} seule`, solo === x.k, '#FBBF24')}
+                {small('Avant', () => setRaw(!raw), 'Écouter sans aucun réglage, pour comparer', raw, '#FBBF24')}
+                {edit > 0 && small('‹', () => { setEdit(edit - 1); setEqSel(0); }, 'Piste précédente')}
+                {edit < tracks.length - 1 && small('›', () => { setEdit(edit + 1); setEqSel(0); }, 'Piste suivante')}
               </View>
-              <Text style={styles.kick}>C’EST QUEL INSTRUMENT ? (ÇA RÈGLE LE NETTOYAGE)</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {ROLE_NAMES.map((r: Role) => (
-                  <Pressable key={r} onPress={() => setMix((m) => ({ ...m, roles: { ...m.roles, [key]: r }, trims: Object.fromEntries(Object.entries(m.trims).filter(([k2]) => k2 !== key)) }))} accessibilityState={{ selected: L.role === r }} style={[styles.act, { minHeight: 40, borderWidth: 1.5, borderColor: L.role === r ? theme.accent : theme.line2, backgroundColor: L.role === r ? theme.accent : 'transparent' }]}>
-                    <Text style={{ color: L.role === r ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{r}</Text>
-                  </Pressable>
-                ))}
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 16, flexDirection: wide ? 'row' : 'column', alignItems: 'flex-start' }}>
+                {wide ? <>{colA}{colB}</> : <><View style={{ alignSelf: 'stretch' }}>{colB}</View><View style={{ alignSelf: 'stretch' }}>{colA}</View></>}
+              </ScrollView>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: theme.line }}>
+                <Pressable onPress={() => { const drop = (o?: Record<string, unknown>) => Object.fromEntries(Object.entries(o ?? {}).filter(([k2]) => k2 !== key && !k2.startsWith(`${key}:`))); setMix((m) => ({ ...m, trims: drop(m.trims) as Record<string, number>, roles: drop(m.roles) as Record<string, Role>, pans: drop(m.pans) as Record<string, number>, off: drop(m.off) as Record<string, boolean>, ueq: drop(m.ueq) as Record<string, UserBand[]> })); }} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>↺ Tout remettre en automatique</Text></Pressable>
+                <Pressable onPress={() => setEdit(null)} style={[styles.act, { minHeight: 48, paddingHorizontal: 28, backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 15, fontWeight: '900' }}>OK</Text></Pressable>
               </View>
-              <Text style={styles.kick}>NETTOYAGE</Text>
-              {fx.filter((f) => f[3]).map(([id, title, sub]) => {
-                const on = !mix.off?.[`${key}:${id}`];
-                return (
-                  <Pressable key={id} onPress={() => setMix((m) => ({ ...m, off: { ...m.off, [`${key}:${id}`]: on } }))} accessibilityState={{ checked: on }} style={[styles.fmt, { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: on ? theme.accent : theme.line2, backgroundColor: on ? theme.deep : 'transparent' }]}>
-                    <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: on ? theme.accent : theme.muted, backgroundColor: on ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{on && <Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900', lineHeight: 16 }}>✓</Text>}</View>
-                    <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{title}</Text><Text style={{ color: theme.muted, fontSize: 11 }}>{sub}</Text></View>
-                  </Pressable>
-                );
-              })}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <Text style={[styles.kick, { marginRight: 4 }]}>NIVEAU</Text>
-                {small('−', () => setTrim(x, -1), `Moins de ${x.name}`)}
-                <Text style={{ width: 50, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{L.trim > 0 ? '+' : ''}{L.trim} dB</Text>
-                {small('+', () => setTrim(x, 1), `Plus de ${x.name}`)}
-                <Text style={[styles.kick, { marginLeft: 12, marginRight: 4 }]}>GAUCHE · DROITE</Text>
-                {small('◀', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.max(-1, Math.round((L.pan - 0.2) * 10) / 10) } })), 'Plus à gauche')}
-                <Text style={{ width: 64, textAlign: 'center', color: theme.text, fontSize: 13, fontWeight: '800' }}>{Math.abs(L.pan) < 0.05 ? 'centre' : `${Math.round(Math.abs(L.pan) * 100)} % ${L.pan < 0 ? 'G' : 'D'}`}</Text>
-                {small('▶', () => setMix((m) => ({ ...m, pans: { ...m.pans, [key]: Math.min(1, Math.round((L.pan + 0.2) * 10) / 10) } })), 'Plus à droite')}
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Pressable onPress={() => { const drop = (o?: Record<string, unknown>) => Object.fromEntries(Object.entries(o ?? {}).filter(([k2]) => k2 !== key && !k2.startsWith(`${key}:`))); setMix((m) => ({ ...m, trims: drop(m.trims) as Record<string, number>, roles: drop(m.roles) as Record<string, Role>, pans: drop(m.pans) as Record<string, number>, off: drop(m.off) as Record<string, boolean> })); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Revenir à l’automatique</Text></Pressable>
-                <Pressable onPress={() => setEdit(null)} style={[styles.act, { backgroundColor: theme.accent }]}><Text style={{ color: theme.onAccent, fontSize: 14, fontWeight: '900' }}>OK</Text></Pressable>
-              </View>
-             </ScrollView>
             </Pressable>
           </Pressable>
         );

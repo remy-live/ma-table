@@ -122,7 +122,7 @@ class MixEngine(paths: List<String>) {
   class Dyn {
     val hp = Biquad(); var hpF = -1f; var env = 0f; var g = 1f
     // égalisation sur mesure
-    val eq = Array(6) { Biquad() }; var eqN = 0; var eqSig: FloatArray? = null
+    val eq = Array(12) { Biquad() }; var eqN = 0; var eqSig: FloatArray? = null
     // petit retard (5 ms) : le traitement « voit venir » les attaques et s'ouvre avant elles
     val delay = FloatArray(LOOK); var di = 0
     // anti-repisse : tenue après une frappe, puis fermeture douce

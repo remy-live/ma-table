@@ -175,11 +175,23 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
   const del = () => {
     const ids = list.filter((e) => picked[e.id]).map((e) => e.id);
     if (!ids.length) return;
-    Alert.alert(`Supprimer ${ids.length} enregistrement${ids.length > 1 ? 's' : ''} ?`, 'Tous leurs fichiers seront effacés de la tablette.', [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Supprimer', style: 'destructive', onPress: () => { stop(); ids.forEach((id) => { usbListen?.sessDelete(id); delete cache[id]; }); setPicked({}); setSorting(false); reload(); } },
-    ]);
+    // rien n'est effacé : ils vont dans la corbeille, d'où on peut les remettre
+    stop();
+    const failed = ids.filter((id) => { delete cache[id]; return !usbListen?.sessTrash(id); });
+    setPicked({}); setSorting(false);
+    setMsg(failed.length ? `Impossible de mettre à la corbeille : ${failed.join(', ')}` : `${ids.length} enregistrement${ids.length > 1 ? 's' : ''} dans la corbeille. Rien n’est effacé tant que tu ne la vides pas.`);
+    reload();
   };
+  const [bin, setBin] = useState<{ id: string; size: number; at: number }[]>([]);
+  const [binOpen, setBinOpen] = useState(false);
+  const readBin = () => { try { setBin(usbListen?.trashList() ?? []); } catch { setBin([]); } };
+  useEffect(readBin, [list]);
+  const binSize = bin.reduce((n, b) => n + b.size, 0);
+  const restore = (id: string) => { const n = usbListen?.trashRestore(id); setMsg(n ? `« ${n} » est revenu dans la liste.` : 'Impossible de le remettre.'); reload(); };
+  const erase = (ids: string[]) => Alert.alert(ids.length ? 'Effacer pour de bon ?' : 'Vider la corbeille ?', `${ids.length ? `« ${ids[0]} »` : `${bin.length} enregistrement${bin.length > 1 ? 's' : ''} · ${gb(binSize)}`}\nLes fichiers seront effacés de la tablette. On ne pourra plus revenir en arrière.`, [
+    { text: 'Non, je garde', style: 'cancel' },
+    { text: 'Oui, effacer', style: 'destructive', onPress: () => { usbListen?.trashEmpty(ids); readBin(); if (bin.length <= (ids.length || bin.length)) setBinOpen(false); } },
+  ]);
 
   const total = list.reduce((a, e) => a + e.files.reduce((x, f) => x + f.size, 0), 0);
   const pickedList = list.filter((e) => picked[e.id]);
@@ -193,6 +205,11 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
         <Pressable onPress={receive} disabled={!!busy} accessibilityLabel="Ouvrir un enregistrement reçu" style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{busy === 'import' ? `Ouverture… ${Math.round(prog * 100)} %` : '📥 Reçu…'}</Text>
         </Pressable>
+        {bin.length > 0 && (
+          <Pressable onPress={() => setBinOpen(!binOpen)} accessibilityLabel={`Corbeille, ${bin.length} enregistrements`} style={[styles.btn, { borderWidth: 1, borderColor: binOpen ? theme.accent : theme.line2 }]}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>🗑 Corbeille · {bin.length}</Text>
+          </Pressable>
+        )}
         {list.length > 0 && (
           <Pressable onPress={() => { stop(); setTape(true); }} disabled={!!busy} style={[styles.btn, { borderWidth: 1.5, borderColor: theme.accent }]}>
             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>🎬 Maquette</Text>
@@ -205,6 +222,25 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
         )}
       </View>
       {!!msg && <Text style={{ color: '#FCD34D', fontSize: 13, marginBottom: 6 }}>{msg}</Text>}
+      {binOpen && bin.length > 0 && (
+        <View style={{ borderWidth: 1, borderColor: theme.line2, borderRadius: 14, padding: 12, gap: 8, marginBottom: 8, backgroundColor: theme.deep }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text style={{ flex: 1, minWidth: 180, color: theme.text, fontSize: 15, fontWeight: '900' }}>🗑 Corbeille · {gb(binSize)}</Text>
+            <Pressable onPress={() => erase([])} style={[styles.btn, { backgroundColor: '#3A1414', borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '900' }}>Vider la corbeille…</Text></Pressable>
+          </View>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Ces enregistrements sont encore sur la tablette. Ils ne sont effacés que si tu le demandes ici.</Text>
+          {bin.map((b) => (
+            <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{b.id}</Text>
+                <Text style={{ color: theme.muted, fontSize: 11 }}>{gb(b.size)} · jeté le {new Date(b.at).toLocaleDateString('fr-FR')}</Text>
+              </View>
+              <Pressable onPress={() => restore(b.id)} style={[styles.btn, { borderWidth: 1, borderColor: theme.line2 }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>↩ Remettre</Text></Pressable>
+              <Pressable onPress={() => erase([b.id])} accessibilityLabel={`Effacer pour de bon ${b.id}`} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '800' }}>Effacer…</Text></Pressable>
+            </View>
+          ))}
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={{ gap: 8, paddingBottom: 150 }}>
         {!list.length && <Text style={{ color: theme.muted, fontSize: 14 }}>Pas encore d’enregistrement.</Text>}
@@ -307,7 +343,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
         <View style={[styles.bar, { bottom: 8, borderColor: '#DC2626', backgroundColor: '#2A1010' }]}>
           <Text style={{ flex: 1, color: '#FCA5A5', fontSize: 14, fontWeight: '800' }}>{pickedList.length ? `${pickedList.length} coché${pickedList.length > 1 ? 's' : ''} · ${gb(pickedList.reduce((a, e) => a + e.files.reduce((x, f) => x + f.size, 0), 0))} à libérer` : 'Coche les enregistrements à supprimer'}</Text>
           <Pressable onPress={() => setPicked(Object.fromEntries(list.filter((e) => e.id !== liveId && (parseMeta(e.meta)?.seconds ?? 9999) < 300 && !e.files.some((f) => isMagic(f.name))).map((e) => [e.id, true])))} style={[styles.btn, { borderWidth: 1, borderColor: '#7F1D1D' }]}><Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Cocher les essais de moins de 5 min</Text></Pressable>
-          <Pressable onPress={del} style={[styles.btn, { backgroundColor: '#DC2626' }]}><Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>Supprimer</Text></Pressable>
+          <Pressable onPress={del} style={[styles.btn, { backgroundColor: '#DC2626' }]}><Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>🗑 À la corbeille</Text></Pressable>
         </View>
       )}
       {tape && <Maquette list={list.filter((e) => e.id !== liveId)} theme={theme} onClose={() => setTape(false)} />}

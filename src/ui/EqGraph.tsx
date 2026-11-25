@@ -21,6 +21,8 @@ interface Props {
   onActivate?: () => void; // on a touché la courbe alors que l'EQ est coupé
   /** spectre en direct (100 bandes, en dB) : ce qui sort vraiment de la voie */
   rta?: Float32Array | null;
+  /** corrections déjà en place (sans poignée) : elles comptent dans la courbe dessinée */
+  extra?: Band[];
 }
 
 export function EqGraph(props: Props) {
@@ -76,7 +78,7 @@ export function EqGraph(props: Props) {
     }),
   ).current;
 
-  const pts = curvePoints(bands, true, props.hpfHz);
+  const pts = curvePoints(props.extra?.length ? [...bands, ...props.extra] : bands, true, props.hpfHz);
   const path = w ? curvePath(pts.map(([x, g]) => [(PAD + x * (w - 2 * PAD)) / w, g]), w, H) : '';
   const area = path ? `${path} L${w - PAD} ${H / 2} L${PAD} ${H / 2} Z` : '';
   const sel = bands[props.selected];

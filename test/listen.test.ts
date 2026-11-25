@@ -137,3 +137,15 @@ test('Balance : spectre de la table → 27 bandes → égalisation (4 bandes au 
   assert.ok(eq.length >= 1 && eq.length <= 4 && eq.some((b) => b.f === 320 && b.db < 0), JSON.stringify(eq));
   assert.deepEqual(spectrumEq('Truc', sum, 3), []);
 });
+
+import { bestExcerpt } from '../src/xair/listen';
+test('Maquette : extrait automatique (le passage le plus fort) et découpe aux silences sans repères', () => {
+  const all = new Uint8Array(1000).fill(60); // 200 s
+  for (let i = 500; i < 650; i++) all[i] = 200; // le refrain : 100 → 130 s
+  all[497] = 20;                                // un petit creux juste avant
+  const x = bestExcerpt(all, 0.2, { label: 'A', a: 0, b: 200 }, 30);
+  assert.ok(Math.abs(x.a - 99.4) < 0.01 && Math.abs(x.b - 129.4) < 0.01, JSON.stringify(x));
+  assert.deepEqual(bestExcerpt(all, 0.2, { label: 'A', a: 0, b: 20 }, 30), { label: 'A', a: 0, b: 20 });
+  const two = new Uint8Array(500).fill(120); for (let i = 200; i < 240; i++) two[i] = 0; // 8 s de silence au milieu
+  assert.deepEqual(songsOf([], 100, two, 0.2).map((s) => s.label), ['Morceau 1', 'Morceau 2']);
+});
