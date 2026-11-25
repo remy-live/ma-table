@@ -1,3 +1,4 @@
+import { LangPicker } from '../i18n/LangPicker';
 import { usbListen } from '../xair/usbAudio';
 import { Icon } from '../ui/NavBar';
 import React, { useEffect, useState } from 'react';
@@ -430,6 +431,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
             <Text style={{ color: theme.muted, fontSize: 14, fontWeight: '800', flex: 1 }}>⚙ Avancé</Text>
             <Text style={{ color: theme.muted, fontSize: 16 }}>{adv ? '▴' : '▾'}</Text>
           </Pressable>
+          {adv && <LangPicker theme={theme} />}
           {adv && advBlock}
         </View>
   );
@@ -537,7 +539,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         {page === 'essayer' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'stretch' }}><View style={{ flex: 1 }}>{tryCard}</View><View style={{ flex: 1 }}>{prepCard}</View></View>}
         {page === 'aide' && helpBlock}
         {page === 'musicien' && <View style={{ maxWidth: 560 }}>{musicianCard}</View>}
-        {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}>{advBlock}</View>}
+        {page === 'avance' && <View style={{ maxWidth: 640, gap: 12 }}><LangPicker theme={theme} />{advBlock}</View>}
       </ScrollView>
     </View>
   );

@@ -1,0 +1,254 @@
+[
+[
+"^Retour\\ ([\\s\\S]+)$",
+"Monitor $1"
+],
+[
+"^Pas\\ de\\ réponse\\ de\\ ([\\s\\S]+?)\\.\\ Vérifie\\ que\\ le\\ téléphone\\ est\\ sur\\ le\\ Wi\\-Fi\\ de\\ la\\ table\\.$",
+"No answer from $1. Check that the phone is on the mixer’s Wi-Fi."
+],
+[
+"^·\\ Wi\\-Fi\\ «\\ ([\\s\\S]+?)\\ »$",
+"· Wi-Fi “$1”"
+],
+[
+"^il\\ y\\ a\\ ([\\s\\S]+?)\\ h$",
+"$1 h ago"
+],
+[
+"^Groupe\\ ([\\s\\S]+)$",
+"Group $1"
+],
+[
+"^Remettre\\ ([\\s\\S]+)$",
+"Unmute $1"
+],
+[
+"^Couper\\ ([\\s\\S]+)$",
+"Mute $1"
+],
+[
+"^Déplier\\ ▸\\ ([\\s\\S]+)$",
+"Unfold ▸ $1"
+],
+[
+"^Voie\\ ([\\s\\S]+)$",
+"Channel $1"
+],
+[
+"^Monter\\ ([\\s\\S]+)$",
+"Raise $1"
+],
+[
+"^Baisser\\ ([\\s\\S]+)$",
+"Lower $1"
+],
+[
+"^seul\\ ([\\s\\S]+?)\\ est\\ ouvert\\ ·\\ touche\\ pour\\ reprendre\\ la\\ musique$",
+"only $1 is open · tap to resume the music"
+],
+[
+"^⚠\\ ([\\s\\S]+?)\\ petites\\ erreurs\\ USB\\ \\(câble\\ \\?\\)\\.$",
+"⚠ $1 small USB errors (cable?)."
+],
+[
+"^«\\ ([\\s\\S]+?)\\ »\\ est\\ revenu\\ dans\\ la\\ liste\\.$",
+"“$1” is back in the list."
+],
+[
+"^Corbeille,\\ ([\\s\\S]+?)\\ enregistrements$",
+"Trash, $1 recordings"
+],
+[
+"^Effacer\\ pour\\ de\\ bon\\ ([\\s\\S]+)$",
+"Erase $1 for good"
+],
+[
+"^Cocher\\ ([\\s\\S]+)$",
+"Tick $1"
+],
+[
+"^Arrêter\\ ([\\s\\S]+)$",
+"Stop $1"
+],
+[
+"^Écouter\\ un\\ aperçu\\ de\\ ([\\s\\S]+)$",
+"Listen to a preview of $1"
+],
+[
+"^Renommer\\ ([\\s\\S]+)$",
+"Rename $1"
+],
+[
+"^Toucher\\ pour\\ écouter\\ ([\\s\\S]+?)\\ à\\ cet\\ endroit$",
+"Tap to listen to $1 at this point"
+],
+[
+"^Ouvrir\\ ([\\s\\S]+?)\\ dans\\ le\\ studio$",
+"Open $1 in the studio"
+],
+[
+"^Je\\ regarde\\ tes\\ enregistrements…\\ ([\\s\\S]+?)\\ /\\ ([\\s\\S]+)$",
+"Looking at your recordings… $1 / $2"
+],
+[
+"^retour\\ ·\\ AUX\\ ([\\s\\S]+)$",
+"monitor · AUX $1"
+],
+[
+"^effet\\ ([\\s\\S]+?)\\ ·\\ envoi\\ de\\ chaque\\ voie$",
+"effect $1 · send from each channel"
+],
+[
+"^Les\\ faders\\ règlent\\ ce\\ qu’entend\\ ([\\s\\S]+?)\\.\\ Changer\\.$",
+"The faders set what $1 hears. Change."
+],
+[
+"^Les\\ faders\\ règlent\\ ce\\ qu’entend\\ ([\\s\\S]+)$",
+"The faders set what $1 hears"
+],
+[
+"^Préparation\\ des\\ ondes…\\ ([\\s\\S]+?)\\ /\\ ([\\s\\S]+)$",
+"Preparing the waveforms… $1 / $2"
+],
+[
+"^Étude\\ des\\ pistes\\ \\(spectre,\\ dynamique\\)…\\ ([\\s\\S]+?)\\ /\\ ([\\s\\S]+)$",
+"Analysing the tracks (spectrum, dynamics)… $1 / $2"
+],
+[
+"^Lecture\\ impossible\\ :\\ ([\\s\\S]+)$",
+"Cannot play: $1"
+],
+[
+"^Morceau\\ ([\\s\\S]+)$",
+"Song $1"
+],
+[
+"^Design\\ ([\\s\\S]+)$",
+"Design $1"
+],
+[
+"^Effet\\ ([\\s\\S]+)$",
+"Effect $1"
+],
+[
+"^Vue\\ ([\\s\\S]+)$",
+"$1 view"
+],
+[
+"^✓\\ Terminé\\ ·\\ ([\\s\\S]+)$",
+"✓ Done · $1"
+],
+[
+"^Entrée\\ de\\ ([\\s\\S]+)$",
+"Input of $1"
+],
+[
+"^Gain\\ de\\ ([\\s\\S]+)$",
+"Gain of $1"
+],
+[
+"^Choisir\\ ([\\s\\S]+)$",
+"Choose $1"
+],
+[
+"^Réglages\\ de\\ ([\\s\\S]+)$",
+"Settings of $1"
+],
+[
+"^Égaliseur\\ de\\ ([\\s\\S]+)$",
+"Equaliser of $1"
+],
+[
+"^Effets\\ de\\ ([\\s\\S]+)$",
+"Effects of $1"
+],
+[
+"^([\\s\\S]+?)\\ v\\.$",
+"$1 ch."
+],
+[
+"^Baisser\\ ([\\s\\S]+?)\\ de\\ 2\\ dB$",
+"Lower $1 by 2 dB"
+],
+[
+"^Monter\\ ([\\s\\S]+?)\\ de\\ 2\\ dB$",
+"Raise $1 by 2 dB"
+],
+[
+"^Arrêter\\ le\\ solo\\ de\\ ([\\s\\S]+)$",
+"Stop the solo of $1"
+],
+[
+"^Écouter\\ ([\\s\\S]+?)\\ seul\\ au\\ casque$",
+"Listen to $1 alone in the headphones"
+],
+[
+"^Effets\\ sur\\ ([\\s\\S]+)$",
+"Effects on $1"
+],
+[
+"^Quantité\\ de\\ ([\\s\\S]+)$",
+"Amount of $1"
+],
+[
+"^Moins\\ de\\ ([\\s\\S]+)$",
+"Less $1"
+],
+[
+"^Plus\\ de\\ ([\\s\\S]+)$",
+"More $1"
+],
+[
+"^Niveau\\ pour\\ ([\\s\\S]+)$",
+"Level for $1"
+],
+[
+"^Moins\\ pour\\ ([\\s\\S]+)$",
+"Less for $1"
+],
+[
+"^Plus\\ pour\\ ([\\s\\S]+)$",
+"More for $1"
+],
+[
+"^Retour\\ de\\ ([\\s\\S]+)$",
+"$1’s monitor"
+],
+[
+"^PRISE (\\d+)$",
+"INPUT $1"
+],
+[
+"^(\\d+) voies$",
+"$1 channels"
+],
+[
+"^Voie (\\d+)$",
+"Channel $1"
+],
+[
+"^Retour (\\d+)$",
+"Monitor $1"
+],
+[
+"^Morceau (\\d+)$",
+"Song $1"
+],
+[
+"^(\\d+) · Morceau (\\d+)$",
+"$1 · Song $2"
+],
+[
+"^(\\d+) enregistrements? · (.+) · dans Musique › Ma table$",
+"$1 recordings · $2 · in Music › Ma table"
+],
+[
+"^(\\d+) pistes?$",
+"$1 tracks"
+],
+[
+"^(\\d+) morceaux?$",
+"$1 songs"
+]
+]

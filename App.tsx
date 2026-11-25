@@ -1,3 +1,4 @@
+import { getLang, initLang, onLang } from './src/i18n';
 import React, { useEffect, useState } from 'react';
 import { onModelChange } from './src/xair/addresses';
 import { installDebugBridge } from './src/debugBridge';
@@ -184,11 +185,14 @@ export default function App() {
   clientRef.current = client;
   useEffect(() => (Platform.OS === 'web' ? installDebugBridge(() => clientRef.current) : undefined), []);
   // démo : changer de table redessine les écrans, sans revenir au début
+  // la langue : relue au lancement ; un changement redessine tout
+  const [, setLangTick] = useState(0);
+  useEffect(() => { initLang(); return onLang(() => setLangTick((n) => n + 1)); }, []);
   const [modelTick, setModelTick] = useState(0);
   useEffect(() => onModelChange(() => setModelTick((t) => t + 1)), []);
   if (!client) {
     return (
-      <>
+      <React.Fragment key={getLang()}>
         <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
         <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={null} onClose={() => setIncoming(null)} />
         <ConnectScreen
@@ -221,7 +225,7 @@ export default function App() {
           }}
         />
         <AlertHost theme={theme} />
-      </>
+      </React.Fragment>
     );
   }
 
@@ -286,7 +290,7 @@ export default function App() {
     </View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
+    <View key={getLang()} style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
       {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} recActive={recOpen} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} onRec={recAvailable() ? () => setRecOpen(true) : undefined} />}
       {!wide && !(navHidden && tab === 'branchements') && (

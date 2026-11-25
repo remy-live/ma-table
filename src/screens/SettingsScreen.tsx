@@ -1,5 +1,6 @@
 // Réglages : le design (20 au choix, avec aperçu vivant), le confort
 // (vibration, largeur des voies), puis la connexion, le réseau et le débogage.
+import { LangPicker } from '../i18n/LangPicker';
 import React, { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { Fader } from '../ui/Fader';
@@ -103,6 +104,7 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
         </View>
         <View style={{ flex: 1, gap: 8 }}>
           <LevelBox theme={theme} prefs={prefs} set={set} compact />
+          <LangPicker theme={theme} />
           <Text style={[styles.kicker, { color: theme.muted }]}>CONFORT</Text>
           <View style={[styles.boxS, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <View style={styles.row}>
@@ -179,6 +181,7 @@ export function SettingsScreen(props: { client: XAirClient; theme: Theme; prefs:
             })}
           </View>
 
+          <LangPicker theme={theme} />
           <Text style={[styles.kicker, { color: theme.muted }]}>CONFORT</Text>
           <View style={[styles.box, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <View style={styles.row}>
