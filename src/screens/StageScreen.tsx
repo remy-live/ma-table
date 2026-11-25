@@ -27,6 +27,9 @@ import { HoldButton } from '../ui/HoldButton';
 import { useLevels } from '../xair/useMeter';
 import { meterIndex } from '../xair/addresses';
 import { StagePlanSheet } from './StagePlanSheet';
+import { Fader } from '../ui/Fader';
+import { chOnPath } from '../xair/addresses';
+import { save } from '../store/persist';
 import { RecCard, RecorderSheet } from './RecorderSheet';
 
 
@@ -55,7 +58,9 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const [toolsOpen, setToolsOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
-  const [levelsView, setLevelsView] = useState(false); // vignettes, ou toutes les voies en barres de niveau
+  const [levelsView, setLevelsViewRaw] = useState(true); // de gros faders (comme une table), ou des vignettes − / +
+  useEffect(() => { load<boolean | null>('concertFaders', null).then((v) => { if (v != null) setLevelsViewRaw(v); }).catch(() => {}); }, []);
+  const setLevelsView = (v: boolean) => { setLevelsViewRaw(v); save('concertFaders', v).catch(() => {}); };
   const [openG, setOpenG] = useState<number[]>([]);
   const [gainCh, setGainCh] = useState<number | null>(null);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
@@ -129,7 +134,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
   const named = Array.from({ length: CH_COUNT }, (_, c) => c + 1).filter((c) => !!String(client.get(chNamePath(c)) ?? ''));
   const viewSwitch = (
     <View style={{ flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 12, padding: 3, gap: 3, backgroundColor: theme.deep }}>
-      {([[false, 'Vignettes'], [true, 'Niveaux']] as const).map(([v, l]) => (
+      {([[true, 'Faders'], [false, 'Vignettes']] as const).map(([v, l]) => (
         <Pressable key={l} onPress={() => setLevelsView(v)} accessibilityState={{ selected: levelsView === v }} style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center', backgroundColor: levelsView === v ? theme.accent : 'transparent' }}>
           <Text style={{ color: levelsView === v ? theme.onAccent : theme.text, fontSize: 13, fontWeight: '800' }}>{l}</Text>
         </Pressable>
@@ -149,6 +154,23 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
     const n = (isFinite(d) && v > 0 ? d : -30) + db;
     client.set(p, f(n < -50 ? 0 : dbToFader(Math.min(10, n))));
   };
+
+  // ---- tablette, vue « Faders » : une tranche par instrument, comme sur une table
+  const [fadH, setFadH] = useState(0);
+  const faderCols = (
+    <View style={{ flex: 1 }} onLayout={(e) => setFadH(e.nativeEvent.layout.height)}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 8, flexGrow: 1 }}>
+        <MasterCol client={client} mix={mix} name={mix.kind === 'main' ? 'Le public' : mixName(mix)} color={mixColor(mix)} theme={theme} live={outLive} h={fadH} locked={locked} />
+        {groups.map((g) => (
+          <React.Fragment key={'fg' + g.k}>
+            <GroupCol client={client} g={g} mix={mix} theme={theme} live={Math.max(0, ...g.members.map(chLive))} h={fadH} locked={locked} onNudge={(d) => nudge(g, d)} open={openG.includes(g.k)} onToggle={() => setOpenG((o) => (o.includes(g.k) ? o.filter((x) => x !== g.k) : [...o, g.k]))} />
+            {openG.includes(g.k) && g.members.map((c) => <ChCol key={'fgm' + c} client={client} ch={c} mix={mix} theme={theme} live={chLive(c)} h={fadH} locked={locked} onNudge={(d) => nudgeCh(c, d)} />)}
+          </React.Fragment>
+        ))}
+        {solos.map((c) => <ChCol key={'f' + c} client={client} ch={c} mix={mix} theme={theme} live={chLive(c)} h={fadH} locked={locked} onNudge={(d) => nudgeCh(c, d)} />)}
+      </ScrollView>
+    </View>
+  );
 
   // ---- tablette : tout sur un écran, sans défiler
   const [gridH, setGridH] = useState(0);
@@ -200,7 +222,7 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
       <View style={[styles.card, { flex: 1, marginHorizontal: 14, backgroundColor: theme.panel, borderColor: mixColor(mix), paddingBottom: 10 }]}>
         {groups.length === 0 && solos.length === 0 && <Text style={{ color: theme.muted, fontSize: 13 }}>Nomme tes voies ou crée des groupes (Table › Groupes) pour les voir ici.</Text>}
         <View style={{ flex: 1 }} onLayout={(e) => { setGridH(e.nativeEvent.layout.height); setGridW(e.nativeEvent.layout.width); }}>
-          {levelsView ? levelCols : fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
+          {levelsView ? faderCols : fits ? <View style={[styles.grid, { gap: 8 }]}>{tileList}</View> : <ScrollView contentContainerStyle={[styles.grid, { gap: 8 }]}>{tileList}</ScrollView>}
         </View>
       </View>
       {/* en bas, toujours au même endroit : les trois gestes d'urgence, puis ma soirée et les outils */}
@@ -390,6 +412,77 @@ function LiveBar({ v, theme }: { v: number; theme: Theme }) {
 const playing = (v?: number) => (v ?? 0) > 0.45;
 
 /** Vue « niveaux » : une colonne par voie, le son qui arrive en barre, le réglage en trait, + et − aux deux bouts. */
+/** Une tranche façon table de mixage : nom, niveau en dB, un vrai fader avec son vumètre, puis − / + et « Couper ». */
+function FaderCol(p: { name: string; tag?: string; color: string; theme: Theme; v: number; live: number; h: number; locked: boolean; on?: boolean; hint?: string;
+  onChange?: (v: number) => void; onNudge: (db: number) => void; onMute?: () => void; foot?: React.ReactNode }) {
+  const { theme } = p;
+  const d = faderToDb(p.v);
+  const off = p.on === false;
+  const fh = Math.max(130, p.h - 196 - (p.foot ? 30 : 0));
+  const lv = Math.max(0, Math.min(1, p.live));
+  const pm = (label: string, db: number) => (
+    <Pressable onPress={() => p.onNudge(db)} accessibilityLabel={`${db > 0 ? 'Monter' : 'Baisser'} ${p.name}`} style={{ flex: 1, minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: theme.line2, backgroundColor: theme.panel, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800', lineHeight: 30 }}>{label}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={{ flex: 1, minWidth: 104, maxWidth: 190, borderRadius: 16, borderWidth: playing(p.live) || p.tag ? 2 : 1, borderColor: off ? '#7F1D1D' : p.color, backgroundColor: off ? '#2A1414' : theme.deep, padding: 8, gap: 6, alignItems: 'center' }}>
+      <View style={{ alignSelf: 'stretch', minHeight: 34, justifyContent: 'center' }}>
+        {!!p.tag && <Text style={{ color: p.color, fontSize: 9, fontWeight: '900', textAlign: 'center', letterSpacing: 0.6 }}>{p.tag}</Text>}
+        <Text numberOfLines={p.tag ? 1 : 2} style={{ color: theme.text, fontSize: 14, fontWeight: '800', textAlign: 'center' }}>{p.name}</Text>
+      </View>
+      <Text style={{ color: off ? '#FCA5A5' : p.color, fontSize: 18, fontWeight: '900' }}>{off ? 'COUPÉ' : !isFinite(d) || p.v <= 0 ? '—' : `${d > 0 ? '+' : ''}${d.toFixed(0)} dB`}</Text>
+      <View style={{ height: fh, justifyContent: 'center' }} pointerEvents={p.locked || !p.onChange ? 'none' : 'auto'}>
+        {p.onChange
+          ? <Fader value={p.v} onChange={p.onChange} color={p.color} theme={theme} height={fh} label={p.name} meter={lv} clip={lv > 0.97} narrow />
+          : (
+            <View style={{ flex: 1, width: 30, borderRadius: 8, backgroundColor: theme.line, overflow: 'hidden', justifyContent: 'flex-end' }}>
+              <View style={{ height: `${Math.round(lv * 100)}%`, backgroundColor: lv > 0.92 ? '#EF4444' : lv > 0.75 ? '#FACC15' : '#22C55E' }} />
+              <View style={{ position: 'absolute', left: 0, right: 0, bottom: `${Math.round(Math.max(0, Math.min(1, p.v)) * 100)}%`, height: 4, backgroundColor: p.color }} />
+            </View>
+          )}
+      </View>
+      <View style={{ alignSelf: 'stretch', flexDirection: 'row', gap: 6 }}>{pm('−', -2)}{pm('+', 2)}</View>
+      {p.onMute ? (
+        <Pressable onPress={p.onMute} disabled={p.locked && !off} accessibilityLabel={off ? `Remettre ${p.name}` : `Couper ${p.name}`} style={{ alignSelf: 'stretch', minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: off ? '#EF4444' : theme.line2, backgroundColor: off ? '#EF4444' : 'transparent', alignItems: 'center', justifyContent: 'center', opacity: p.locked && !off ? 0.4 : 1 }}>
+          <Text style={{ color: off ? '#1A0505' : theme.muted, fontSize: 12, fontWeight: '800' }}>{off ? 'Remettre' : 'Couper'}</Text>
+        </Pressable>
+      ) : <Text numberOfLines={2} style={{ minHeight: 40, color: theme.muted, fontSize: 10, textAlign: 'center' }}>{p.hint ?? ''}</Text>}
+      {p.foot}
+    </View>
+  );
+}
+function MasterCol(props: { client: XAirClient; mix: Target; name: string; color: string; theme: Theme; live: number; h: number; locked: boolean }) {
+  const { client, mix } = props;
+  const path = outPath(mix);
+  const v = Number(useParam<number>(client, path, 0.75));
+  const on = Number(useParam<number>(client, outOnPath(mix), 1)) === 1;
+  const bump = (db: number) => { const cur = faderToDb(v); client.set(path, f(dbToFader(Math.min(10, (isFinite(cur) ? cur : -40) + db)))); };
+  return <FaderCol name={props.name} tag="TOUT" color={props.color} theme={props.theme} v={v} on={on} live={props.live} h={props.h} locked={props.locked} onChange={(x) => client.set(path, f(x))} onNudge={bump} hint={mix.kind === 'main' ? 'le volume général de la salle' : 'tout son retour d’un coup'} />;
+}
+function GroupCol(props: { client: XAirClient; g: Group; mix: Target; theme: Theme; live: number; h: number; locked: boolean; onNudge: (db: number) => void; open: boolean; onToggle: () => void }) {
+  const { client, g, mix, theme } = props;
+  const fader = Number(useParam<number>(client, dcaFaderPath(g.k), 0.75));
+  const on = Number(useParam<number>(client, dcaOnPath(g.k), 1)) === 1;
+  const isMain = mix.kind === 'main';
+  const sends = g.members.map((c) => Number(client.get(chLevelPath(c, mix)) ?? 0)).filter((x) => x > 0);
+  const v = isMain ? fader : sends.length ? sends.reduce((a, b) => a + b, 0) / sends.length : 0;
+  const name = String(useParam<string>(client, dcaNamePath(g.k), '')) || `Groupe ${g.k}`;
+  return (
+    <FaderCol name={name} tag="GROUPE" color={GROUP_COLORS[g.k - 1] ?? '#F59E0B'} theme={theme} v={v} on={isMain ? on : undefined} live={props.live} h={props.h} locked={props.locked}
+      onChange={isMain ? (x) => client.set(dcaFaderPath(g.k), f(x)) : undefined} onNudge={props.onNudge} onMute={isMain ? () => client.set(dcaOnPath(g.k), i(on ? 0 : 1)) : undefined}
+      foot={<Pressable onPress={props.onToggle} accessibilityState={{ expanded: props.open }} style={{ minHeight: 30, justifyContent: 'center' }}><Text style={{ color: GROUP_COLORS[g.k - 1] ?? '#F59E0B', fontSize: 11, fontWeight: '800' }}>{props.open ? '◂ Replier' : `Déplier ▸ ${g.members.length}`}</Text></Pressable>} />
+  );
+}
+function ChCol({ client, ch, mix, theme, live, h, locked, onNudge }: { client: XAirClient; ch: number; mix: Target; theme: Theme; live: number; h: number; locked: boolean; onNudge: (db: number) => void }) {
+  const path = chLevelPath(ch, mix);
+  const v = Number(useParam<number>(client, path, 0));
+  const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
+  const col = chColorOf(Number(useParam<number>(client, `/ch/${String(ch).padStart(2, '0')}/config/color`, 0)), ch);
+  const on = Number(useParam<number>(client, chOnPath(ch), 1)) === 1;
+  const isMain = mix.kind === 'main';
+  return <FaderCol name={name} color={col} theme={theme} v={v} on={isMain ? on : undefined} live={live} h={h} locked={locked} onChange={(x) => client.set(path, f(x))} onNudge={onNudge} onMute={isMain ? () => client.set(chOnPath(ch), i(on ? 0 : 1)) : undefined} />;
+}
 function LevelCol({ client, ch, mix, theme, live, onNudge }: { client: XAirClient; ch: number; mix: Target; theme: Theme; live: number; onNudge: (db: number) => void }) {
   const v = Number(useParam<number>(client, chLevelPath(ch, mix), 0));
   const name = String(useParam<string>(client, chNamePath(ch), '')) || `Voie ${ch}`;
