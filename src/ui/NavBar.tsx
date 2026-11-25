@@ -83,7 +83,7 @@ export function MoreSheet(props: { theme: Theme; visible: boolean; current: Sect
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void; onRec?: () => void }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void; onRec?: () => void; recActive?: boolean }) {
   const { theme, vertical } = props;
   const rec = useRec();
   // écran peu haut (tablette couchée) : les boutons du côté se serrent pour tous tenir
@@ -125,7 +125,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         <Text style={{ color: '#A7F3D0', fontSize: vertical ? 11 : 10, fontWeight: '800' }}>Aide-moi</Text>
       </Pressable>
       {ITEMS.map(([id, label]) => {
-        const on = props.current === id;
+        const on = props.current === id && !props.recActive;
         const dim = props.locked && id !== 'scene';
         const c = on ? theme.accent : dim ? theme.line2 : theme.muted;
         return (
@@ -136,9 +136,10 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
             <Text numberOfLines={1} style={{ color: c, fontSize: vertical ? 11 : 9, fontWeight: on ? '800' : '600' }}>{label}</Text>
           </Pressable>
           {id === 'scene' && props.onRec && vertical && (
-            <Pressable onPress={props.onRec} onLongPress={() => showTip('Enregistrer : chaque voie dans son fichier, par le câble USB. Et tous tes enregistrements : écouter, mixer, maquette.')} accessibilityLabel={rec.on ? 'Enregistrement en cours' : 'Enregistrer'} style={[styles.item, tight && { height: 58 }, rec.on && { backgroundColor: '#3A1414' }]}>
-              <Icon id="rec" color={rec.on || rec.armed ? '#F87171' : theme.muted} size={26} />
-              <Text numberOfLines={1} style={{ color: rec.on || rec.armed ? '#FCA5A5' : theme.muted, fontSize: 11, fontWeight: rec.on ? '800' : '600' }}>{rec.on ? 'En cours' : 'Enregistrer'}</Text>
+            <Pressable onPress={props.onRec} onLongPress={() => showTip('Enregistrer : chaque voie dans son fichier, par le câble USB. Et tous tes enregistrements : écouter, mixer, maquette.')} accessibilityLabel={rec.on ? 'Enregistrement en cours' : 'Enregistrer'} style={[styles.item, tight && { height: 58 }, props.recActive && { backgroundColor: theme.panel }, rec.on && { backgroundColor: '#3A1414' }]}>
+              {props.recActive && <View style={[styles.mark, { backgroundColor: theme.accent }]} />}
+              <Icon id="rec" color={rec.on || rec.armed ? '#F87171' : props.recActive ? theme.accent : theme.muted} size={26} />
+              <Text numberOfLines={1} style={{ color: rec.on || rec.armed ? '#FCA5A5' : props.recActive ? theme.accent : theme.muted, fontSize: 11, fontWeight: rec.on || props.recActive ? '800' : '600' }}>{rec.on ? 'En cours' : 'Enregistrer'}</Text>
             </Pressable>
           )}
           </React.Fragment>

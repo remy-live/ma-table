@@ -134,7 +134,8 @@ export function RecAskName({ onOpen }: { onOpen: () => void }) {
 }
 
 /** `client` absent (écran d'accueil, sans table) : on n'a que « Mes enregistrements ». */
-export function RecorderSheet({ client, theme, visible, onClose }: { client: XAirClient | null; theme: Theme; visible: boolean; onClose: () => void }) {
+/** `inline` : dessiné dans la page, à côté de la colonne d'icônes (tablette), au lieu de couvrir tout l'écran. */
+export function RecorderSheet({ client, theme, visible, onClose, inline }: { client: XAirClient | null; theme: Theme; visible: boolean; onClose: () => void; inline?: boolean }) {
   const st = useRec();
   const [tab, setTab] = useState<'rec' | 'list'>(client ? 'rec' : 'list');
   const [name, setName] = useState(defaultName());
@@ -208,15 +209,14 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
   const toggle = (ch: number) => setSel((s) => (s.includes(ch) ? s.filter((x) => x !== ch) : [...s, ch]));
   const entry = list.find((e) => e.id === open) ?? null;
 
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { backgroundColor: theme.bg, paddingBottom: bottomPad() }]}>
+  const content = (
+      <View style={[styles.root, inline && { paddingTop: 14 }, { backgroundColor: theme.bg, paddingBottom: inline ? 12 : bottomPad() }]}>
         <View style={[styles.head, entry ? { display: 'none' } : null]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]}>{client ? 'Enregistrer le concert' : 'Mes enregistrements'}</Text>
             <Text style={{ color: theme.muted, fontSize: 12 }}>La tablette branchée en USB sur la table · un fichier par voie</Text>
           </View>
-          <CloseX theme={theme} onPress={onClose} />
+          {!inline && <CloseX theme={theme} onPress={onClose} />}
         </View>
 
         {!usbAudio ? (
@@ -324,8 +324,9 @@ export function RecorderSheet({ client, theme, visible, onClose }: { client: XAi
           </>
         )}
       </View>
-    </Modal>
   );
+  if (inline) return visible ? content : null;
+  return <Modal visible={visible} animationType="slide" onRequestClose={onClose}>{content}</Modal>;
 }
 
 const styles = StyleSheet.create({

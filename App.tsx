@@ -173,6 +173,7 @@ export default function App() {
       Alert.alert('🔒 Verrouillé pour le concert', 'Pour ouvrir : dans Concert, reste appuyé sur « Verrouillé » une seconde.');
       return;
     }
+    setRecOpen(false);
     setTab(t);
   };
 
@@ -287,21 +288,22 @@ export default function App() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, flexDirection: wide ? 'row' : 'column', paddingBottom: bottomInset }}>
       <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} />
-      {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} onRec={recAvailable() ? () => setRecOpen(true) : undefined} />}
+      {wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-cote" client={client} theme={theme} current={tab} recActive={recOpen} locked={locked} vertical onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMixes={() => setMixes(true)} onRec={recAvailable() ? () => setRecOpen(true) : undefined} />}
       {!wide && !(navHidden && tab === 'branchements') && (
         <View key="haut" style={{ height: 68, paddingTop: 36, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 5 }}>
           <LinkBadge client={client} theme={theme} small row />
           <KillButton client={client} pill />
         </View>
       )}
-      {wide ? body : <View key="corps-tel" style={{ flex: 1, marginTop: navHidden && tab === 'branchements' ? 0 : -36 }}>{body}</View>}
+      {wide && recOpen ? <View key="rec" style={{ flex: 1 }}><RecorderSheet inline client={client} theme={theme} visible onClose={() => setRecOpen(false)} /></View> : null}
+      {wide ? <View key="corps" style={{ flex: 1, display: recOpen ? 'none' : 'flex' }}>{body}</View> : <View key="corps-tel" style={{ flex: 1, marginTop: navHidden && tab === 'branchements' ? 0 : -36 }}>{body}</View>}
       {!wide && !(navHidden && tab === 'branchements') && <NavBar key="nav-bas" client={client} theme={theme} current={tab} locked={locked} onGo={go} onHelp={() => setHelp(true)} onQuit={disconnect} onMore={() => (locked ? go('table') : setMore(true))} />}
       <MoreSheet theme={theme} visible={more} current={tab} onGo={go} onRec={recAvailable() ? () => setRecOpen(true) : undefined} onMixes={() => setMixes(true)} onQuit={disconnect} onClose={() => setMore(false)} />
       <ShareSheet theme={theme} visible={!!incoming} incoming={incoming} client={client} onClose={() => setIncoming(null)} />
       {/* pendant un enregistrement : la télécommande flotte sur tous les écrans */}
       {!recOpen && <RecPill wide={wide} onOpen={() => setRecOpen(true)} />}
       <RecAskName onOpen={() => setRecOpen(true)} />
-      <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
+      {!wide && <RecorderSheet client={client} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />}
       <HelpSheet client={client} theme={theme} visible={help} onClose={() => setHelp(false)} onSeeWiring={() => go('branchements')} />
       {mixes && <SessionsScreen client={client} theme={theme} visible={mixes} onClose={() => setMixes(false)} />}
       {prep && <PrepBar client={client} theme={theme} bottom={bottomInset} onDone={() => { setPrep(false); client.close(); setClient(null); }} />}

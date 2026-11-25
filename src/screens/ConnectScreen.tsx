@@ -495,26 +495,27 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         <View style={[styles.logo, { width: 48, height: 48, borderRadius: 14, marginBottom: 12, backgroundColor: theme.accent }]}>
           {[0.5, 0.8, 0.35, 0.65].map((h, k) => <View key={k} style={{ width: 5, height: 30 * h, borderRadius: 3, backgroundColor: theme.onAccent }} />)}
         </View>
-        <Pressable onPress={() => setPage('aide')} accessibilityRole="tab" accessibilityState={{ selected: page === 'aide' }} accessibilityLabel="Aide : par où commencer" style={{ width: 84, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10, backgroundColor: '#13261E', borderColor: page === 'aide' ? '#6EE7B7' : '#1F6F4A' }}>
+        <Pressable onPress={() => { setRecOpen(false); setPage('aide'); }} accessibilityRole="tab" accessibilityState={{ selected: page === 'aide' }} accessibilityLabel="Aide : par où commencer" style={{ width: 84, height: 64, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10, backgroundColor: '#13261E', borderColor: page === 'aide' ? '#6EE7B7' : '#1F6F4A' }}>
           <Icon id="aide" color="#6EE7B7" size={26} />
           <Text style={{ color: '#A7F3D0', fontSize: 11, fontWeight: '800' }}>Aide-moi</Text>
         </Pressable>
         {railItems.map(([id, icon, label]) => {
-          const on = id === page;
+          const on = id === 'rec' ? recOpen : id === page && !recOpen;
           const c = on ? theme.accent : theme.muted;
           return (
             <React.Fragment key={id}>
               {id === 'avance' && <View style={{ flex: 1 }} />}
-              <Pressable onPress={() => (id === 'rec' ? setRecOpen(true) : id === 'partager' ? setShare(true) : setPage(id))} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label.replace('\n', ' ')} style={{ width: 88, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: on ? theme.panel : 'transparent' }}>
+              <Pressable onPress={() => { if (id === 'rec') setRecOpen(true); else if (id === 'partager') setShare(true); else { setRecOpen(false); setPage(id); } }} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={label.replace('\n', ' ')} style={{ width: 88, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: on ? theme.panel : 'transparent' }}>
                 {on && <View style={{ position: 'absolute', left: -4, top: 18, width: 4, height: 28, borderRadius: 2, backgroundColor: theme.accent }} />}
                 <Icon id={icon} color={c} size={26} />
-                <Text numberOfLines={2} style={{ color: c, fontSize: 11, lineHeight: 13, textAlign: 'center', fontWeight: on ? '800' : '600' }}>{label}</Text>
+                <Text numberOfLines={2} style={{ color: c, fontSize: label.length > 13 && !label.includes('\n') ? 10 : 11, lineHeight: 13, textAlign: 'center', fontWeight: on ? '800' : '600' }}>{label}</Text>
               </Pressable>
             </React.Fragment>
           );
         })}
       </View>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, paddingTop: 22, gap: 16, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      {recOpen && <View style={{ flex: 1 }}><RecorderSheet inline client={null} theme={theme} visible onClose={() => setRecOpen(false)} /></View>}
+      <ScrollView style={{ flex: 1, display: recOpen ? 'none' : 'flex' }} contentContainerStyle={{ padding: 24, paddingTop: 22, gap: 16, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View>
           <Text style={{ color: theme.text, fontSize: 26, fontWeight: '800' }}>{pageTitle[page][0]}</Text>
           <Text style={{ color: theme.muted, fontSize: 13 }}>{pageTitle[page][1]}</Text>
@@ -569,7 +570,7 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
     </ScrollView>
     )}
       <DebugScreen client={null} theme={theme} visible={dbgOpen} onClose={() => setDbgOpen(false)} />
-      <RecorderSheet client={null} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />
+      {!wide && <RecorderSheet client={null} theme={theme} visible={recOpen} onClose={() => setRecOpen(false)} />}
       <ShareSheet theme={theme} visible={share} onClose={() => setShare(false)} client={null} />
       {auto && (
         <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, zIndex: 50 }}>
