@@ -3,7 +3,8 @@
 import React, { useRef, useState } from 'react';
 import { PanResponder, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
-import { Band, curvePath, curvePoints, hzAt, xOf, yOfDb } from '../xair/eqCurve';
+import { Band, bandGainAt, curvePath, curvePoints, hzAt, xOf, yOfDb } from '../xair/eqCurve';
+import { EQ_TYPES } from '../xair/addresses';
 import { Theme } from './theme';
 
 export const BAND_COLORS = ['#60A5FA', '#34D399', '#FBBF24', '#F472B6'];
@@ -25,12 +26,22 @@ interface Props {
   extra?: Band[];
 }
 
+/** La hauteur de la courbe complète à une fréquence : chaque point est dessiné dessus. */
+function curveAt(p: Props, hz: number): number {
+  let g = 0;
+  if (p.on) for (const b of p.extra?.length ? [...p.bands, ...p.extra] : p.bands) g += bandGainAt(b, hz);
+  if (p.hpfHz) g += bandGainAt({ type: EQ_TYPES.lcut, hz: p.hpfHz, db: 0, q: 1 }, hz);
+  return Math.max(-24, Math.min(18, g));
+}
+/** Combien la courbe bouge, à la fréquence du point, quand son gain bouge de 1 dB (1 pour une cloche, ½ pour un plateau). */
+const weightOf = (b: Band) => Math.max(0.2, Math.abs(bandGainAt({ ...b, db: 1 }, b.hz)));
+
 export function EqGraph(props: Props) {
   const { theme, bands, on } = props;
   const [w, setW] = useState(0);
   const latest = useRef(props);
   latest.current = props;
-  const drag = useRef<{ k: number; hz0: number; db0: number } | null>(null);
+  const drag = useRef<{ k: number; hz0: number; db0: number; w0: number } | null>(null);
   const width = useRef(0);
   width.current = w;
 
@@ -54,14 +65,14 @@ export function EqGraph(props: Props) {
         let bd = 1e9;
         p.bands.forEach((b, k) => {
           const px = PAD + xOf(b.hz) * (W - 2 * PAD);
-          const py = yOfDb(p.on ? b.db : 0, H);
+          const py = yOfDb(curveAt(p, b.hz), H);
           const d = Math.hypot(px - x, py - y);
           if (d < bd) { bd = d; best = k; }
         });
         if (bd > 60) best = p.selected;
         p.onSelect(best);
         if (!p.on) p.onActivate?.();
-        drag.current = { k: best, hz0: p.bands[best].hz, db0: p.bands[best].db };
+        drag.current = { k: best, hz0: p.bands[best].hz, db0: p.bands[best].db, w0: weightOf(p.bands[best]) };
       },
       onPanResponderMove: (_e, g) => {
         const d = drag.current;
@@ -70,7 +81,8 @@ export function EqGraph(props: Props) {
         const x0 = PAD + xOf(d.hz0) * (W - 2 * PAD);
         const nx = Math.max(PAD, Math.min(W - PAD, x0 + g.dx));
         const hz = hzAt((nx - PAD) / (W - 2 * PAD));
-        const db = Math.max(-15, Math.min(15, d.db0 - (g.dy / (H / 2)) * 18));
+        // le point reste sous le doigt : la courbe suit le doigt, le gain de la bande suit d'autant (× 2 pour un plateau)
+        const db = Math.max(-15, Math.min(15, d.db0 - (g.dy / (H / 2)) * 18 / d.w0));
         latest.current.onChange(d.k, hz, Math.round(db * 2) / 2);
       },
       onPanResponderRelease: () => { drag.current = null; },
@@ -119,8 +131,8 @@ export function EqGraph(props: Props) {
             const isSel = k === props.selected;
             return (
               <React.Fragment key={k}>
-                {isSel && <Circle cx={gx(b.hz)} cy={gy(b.db)} r={22} fill={BAND_COLORS[k]} opacity={0.18} />}
-                <Circle cx={gx(b.hz)} cy={gy(b.db)} r={isSel ? 14 : 11} fill={BAND_COLORS[k]} stroke={isSel ? '#FFFFFF' : theme.meterBg} strokeWidth={3} opacity={on ? 1 : 0.6} />
+                {isSel && <Circle cx={gx(b.hz)} cy={gy(curveAt(props, b.hz))} r={22} fill={BAND_COLORS[k]} opacity={0.18} />}
+                <Circle cx={gx(b.hz)} cy={gy(curveAt(props, b.hz))} r={isSel ? 14 : 11} fill={BAND_COLORS[k]} stroke={isSel ? '#FFFFFF' : theme.meterBg} strokeWidth={3} opacity={on ? 1 : 0.6} />
               </React.Fragment>
             );
           })}

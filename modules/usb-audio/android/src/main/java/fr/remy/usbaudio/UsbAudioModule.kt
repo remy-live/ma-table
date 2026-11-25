@@ -538,7 +538,7 @@ class UsbAudioModule : Module() {
           promise.resolve(r)
         } catch (e: Throwable) {
           try { out.delete() } catch (e2: Throwable) {}
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         } finally {
           mixing = false
         }
@@ -562,7 +562,7 @@ class UsbAudioModule : Module() {
           val w = Mixer.Wav(f)
           promise.resolve(mapOf("ok" to true, "data" to android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP), "bucket" to Peaks.PKN.toDouble() / w.rate, "seconds" to w.frames.toDouble() / w.rate, "channels" to w.channels))
         } catch (e: Throwable) {
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         }
       }.start()
     }
@@ -571,7 +571,7 @@ class UsbAudioModule : Module() {
     AsyncFunction("analyze") { path: String, promise: Promise ->
       Thread {
         try { promise.resolve(mapOf("ok" to true, "json" to Analyzer.get(ctx(), File(path)))) }
-        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))) }
+        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240))) }
       }.start()
     }
 
@@ -581,7 +581,7 @@ class UsbAudioModule : Module() {
       val paths = (o["paths"] as? List<String>) ?: emptyList()
       Thread {
         try { val e = MixEngine(paths); e.params = mixParams(o); promise.resolve(Analyzer.measure(e, dbl(o["from"]), dbl(o["to"]))) }
-        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200))) }
+        catch (e: Throwable) { promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240))) }
       }.start()
     }
 
@@ -621,11 +621,11 @@ class UsbAudioModule : Module() {
             val now = System.currentTimeMillis()
             if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
           }
-          try { android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(out.absolutePath), null, null) } catch (e2: Throwable) {}
+          try { android.media.MediaScannerConnection.scanFile(ctx(), arrayOf(Exporter.actual(out).absolutePath), null, null) } catch (e2: Throwable) {}
           promise.resolve(r)
         } catch (e: Throwable) {
           try { out.delete() } catch (e2: Throwable) {}
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         } finally {
           mixing = false
         }
@@ -649,15 +649,15 @@ class UsbAudioModule : Module() {
             Exporter.Song({ MixEngine((s["paths"] as? List<String>) ?: emptyList()).also { it.params = mixParams(s) } }, out, dbl(s["from"]), dbl(s["to"]))
           }
           var last = 0L
-          val secs = Exporter.album(songs, full, dbl(o["gap"], 1.5)) { p ->
+          val secs = Exporter.album(songs, full, dbl(o["gap"], 1.5), dbl(o["xfade"])) { p ->
             val now = System.currentTimeMillis()
             if (now - last > 200 || p >= 1.0) { last = now; sendEvent("onMix", mapOf("p" to p)) }
           }
-          val made = (songs.mapNotNull { it.out?.absolutePath } + listOfNotNull(full?.absolutePath)).toTypedArray()
+          val made = (songs.mapNotNull { it.out?.let { f -> Exporter.actual(f).absolutePath } } + listOfNotNull(full?.let { Exporter.actual(it).absolutePath })).toTypedArray()
           try { android.media.MediaScannerConnection.scanFile(ctx(), made, null, null) } catch (e2: Throwable) {}
-          promise.resolve(mapOf("ok" to true, "seconds" to secs, "path" to (full?.absolutePath ?: made.firstOrNull())))
+          promise.resolve(mapOf("ok" to true, "seconds" to secs, "path" to (full?.let { Exporter.actual(it).absolutePath } ?: made.firstOrNull()), "note" to Exporter.note))
         } catch (e: Throwable) {
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         } finally { mixing = false }
       }.start()
     }
@@ -681,7 +681,7 @@ class UsbAudioModule : Module() {
           }
           promise.resolve(mapOf("ok" to true, "path" to out.absolutePath, "size" to out.length().toDouble()))
         } catch (e: Throwable) {
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         } finally { mixing = false }
       }.start()
     }
@@ -698,7 +698,7 @@ class UsbAudioModule : Module() {
           }
           promise.resolve(mapOf("ok" to true, "id" to id))
         } catch (e: Throwable) {
-          promise.resolve(mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName).take(200)))
+          promise.resolve(mapOf("ok" to false, "error" to (e.javaClass.simpleName + " : " + (e.message ?: "")).take(240)))
         } finally { try { src.delete() } catch (e: Throwable) {} }
       }.start()
     }

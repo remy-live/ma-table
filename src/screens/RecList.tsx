@@ -159,7 +159,7 @@ export function RecList({ list, theme, liveId, wide, onOpen, reload, askRename, 
     reload();
     const left = again ? [] : blanksOf(d);
     setOffer(left.length ? { id: e.id, blanks: left } : null);
-    setMsg(again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : chaque piste étudiée et égalisée, niveaux, finition.');
+    setMsg((again ? 'Mix refait sans les blancs.' : 'Mix magique prêt : chaque piste étudiée et égalisée, niveaux, finition.') + (r.note ? ` ${r.note}` : ''));
   };
   const rename = () => {
     if (!ren || !usbListen) return;

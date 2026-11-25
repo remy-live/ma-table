@@ -512,63 +512,134 @@ class Mp3Sink(out: File, rate: Int) : Sink {
 
 object Exporter {
   @Volatile var cancel = false
+  /** Ce qu'il faut dire à la personne après l'export (ex. : MP3 impossible, fait en M4A). */
+  @Volatile var note: String? = null
+  private val moved = java.util.concurrent.ConcurrentHashMap<String, File>()
+  /** Le fichier réellement écrit (il change de nom si le MP3 a dû être remplacé par du M4A). */
+  fun actual(f: File): File = moved[f.absolutePath] ?: f
 
-  /** Le format suit le nom du fichier : .mp3, .m4a, sinon WAV. */
+  /** Le format suit le nom du fichier : .mp3, .m4a, sinon WAV. Si le MP3 est impossible, on fait du M4A plutôt que d'échouer. */
   fun sink(out: File, rate: Int): Sink = when {
-    out.name.endsWith(".mp3") -> Mp3Sink(out, rate)
+    out.name.endsWith(".mp3") -> try { Mp3Sink(out, rate) } catch (t: Throwable) {
+      val alt = File(out.parentFile, out.name.removeSuffix(".mp3") + ".m4a")
+      note = "MP3 impossible ici (" + ((t.cause ?: t).message ?: t.javaClass.simpleName).take(120) + ") : fichier fait en M4A."
+      moved[out.absolutePath] = alt
+      try { out.delete() } catch (e: Throwable) {}
+      AacWriter(alt, rate)
+    }
     out.name.endsWith(".m4a") -> AacWriter(out, rate)
     else -> WavSink(out, rate)
   }
 
   /** Le mix (avec toutes les retouches) de `from` à `to` secondes → un fichier. */
   fun run(engine: MixEngine, out: File, fromSec: Double, toSec: Double, progress: (Double) -> Unit): Map<String, Any?> {
-    val r = album(listOf(Song({ engine }, out, fromSec, toSec)), null, 0.0, progress)
-    return mapOf("ok" to true, "path" to out.absolutePath, "seconds" to r)
+    val r = album(listOf(Song({ engine }, out, fromSec, toSec)), null, 0.0, 0.0, progress)
+    return mapOf("ok" to true, "path" to actual(out).absolutePath, "seconds" to r, "note" to note)
   }
 
   class Song(val make: () -> MixEngine, val out: File?, val from: Double, val to: Double)
 
-  /** Plusieurs morceaux à la suite : un fichier par morceau (si demandé) et/ou un seul fichier avec tout, séparés par un silence. Rend la durée totale. */
-  fun album(songs: List<Song>, full: File?, gapSec: Double, progress: (Double) -> Unit): Double {
+  /**
+   * Plusieurs morceaux à la suite : un fichier par morceau (si demandé) et/ou un seul fichier avec tout.
+   * Dans le fichier complet, les morceaux sont séparés par un silence (`gapSec`), ou se chevauchent en fondu enchaîné (`xfadeSec`).
+   * Rend la durée totale.
+   */
+  fun album(songs: List<Song>, full: File?, gapSec: Double, xfadeSec: Double, progress: (Double) -> Unit): Double {
     cancel = false
+    note = null
+    moved.clear()
     val pcm = ByteArray(MixEngine.BLOCK * 4)
+    val outB = ByteArray(MixEngine.BLOCK * 4)
     var all: Sink? = null
     var one: Sink? = null
     var engine: MixEngine? = null
     var total = 0L
     var rate = 48000
     val made = ArrayList<File>()
+    // fondu enchaîné : on retient la fin de chaque morceau, puis on l'ajoute au début du suivant
+    var xf = 0
+    var fifo = ShortArray(0); var fHead = 0; var fN = 0
+    var tail = ShortArray(0); var tailN = 0; var tailPos = 0
+    fun s16(b: ByteArray, k: Int) = (b[k].toInt() and 0xff) or (b[k + 1].toInt() shl 8)
+    fun feedAll(src: ByteArray, frames: Int) {
+      val a = all ?: return
+      if (xf <= 0) { a.write(src, frames * 4); return }
+      var o = 0
+      for (i in 0 until frames) {
+        var l = s16(src, 4 * i); var r = s16(src, 4 * i + 2)
+        if (tailPos < tailN) { l = (l + tail[2 * tailPos]).coerceIn(-32768, 32767); r = (r + tail[2 * tailPos + 1]).coerceIn(-32768, 32767); tailPos++ }
+        if (fN == xf) {
+          val pl = fifo[2 * fHead].toInt(); val pr = fifo[2 * fHead + 1].toInt()
+          outB[4 * o] = pl.toByte(); outB[4 * o + 1] = (pl shr 8).toByte(); outB[4 * o + 2] = pr.toByte(); outB[4 * o + 3] = (pr shr 8).toByte(); o++
+          fifo[2 * fHead] = l.toShort(); fifo[2 * fHead + 1] = r.toShort()
+          fHead = (fHead + 1) % xf
+        } else {
+          val idx = (fHead + fN) % xf
+          fifo[2 * idx] = l.toShort(); fifo[2 * idx + 1] = r.toShort(); fN++
+        }
+      }
+      if (o > 0) a.write(outB, o * 4)
+    }
     try {
       for ((n, song) in songs.withIndex()) {
         val e = song.make(); engine = e
-        if (n == 0) { rate = e.rate; if (full != null) { made.add(full); all = sink(full, rate) } }
+        if (n == 0) {
+          rate = e.rate
+          if (full != null) {
+            all = sink(full, rate); made.add(actual(full))
+            xf = if (songs.size > 1) (xfadeSec * rate).toInt().coerceIn(0, rate * 10) else 0
+            if (xf > 0) { fifo = ShortArray(2 * xf); tail = ShortArray(2 * xf) }
+          }
+        }
         else if (e.rate != rate) throw IllegalStateException("les morceaux n’ont pas tous la même cadence")
         val from = max(0L, (song.from * e.rate).toLong())
         val to = if (song.to > 0) min(e.total, (song.to * e.rate).toLong()) else e.total
         if (to <= from) throw IllegalStateException("rien à exporter")
-        if (song.out != null) { made.add(song.out); one = sink(song.out, rate) }
+        if (song.out != null) { one = sink(song.out, rate); made.add(actual(song.out)) }
         var pos = from
         var written = 0L
+        var lastP = 0L
         while (!cancel) {
           val r = e.render(pos, MixEngine.BLOCK, to)
           val got = r[1].toInt()
           if (got <= 0) break
           MixEngine.toPcm(e.outL, e.outR, got, pcm)
           one?.write(pcm, got * 4)
-          all?.write(pcm, got * 4)
+          feedAll(pcm, got)
           written += got
           pos = r[0]
-          if ((written / MixEngine.BLOCK) % 40 == 0L) progress((n + (pos - from).toDouble() / (to - from)) / songs.size)
+          if (written - lastP > rate / 2) { lastP = written; progress((n + (pos - from).toDouble() / (to - from)) / songs.size) }
         }
         if (cancel) throw IllegalStateException("annulé")
         if (written == 0L) throw IllegalStateException("rien à exporter (tout est coupé ?)")
         total += written
         one?.finish(); one = null
         e.close(); engine = null
-        if (all != null && n < songs.size - 1 && gapSec > 0) {
-          java.util.Arrays.fill(pcm, 0)
-          var left = (gapSec * rate).toLong()
-          while (left > 0) { val k = min(left, MixEngine.BLOCK.toLong()).toInt(); all.write(pcm, k * 4); left -= k }
+        if (all != null) {
+          if (xf > 0) {
+            // ce qui reste de la fin du morceau d'avant (morceau très court)
+            java.util.Arrays.fill(pcm, 0)
+            while (tailPos < tailN) feedAll(pcm, min(tailN - tailPos, MixEngine.BLOCK))
+            if (n < songs.size - 1) {
+              for (j in 0 until fN) { val idx = (fHead + j) % xf; tail[2 * j] = fifo[2 * idx]; tail[2 * j + 1] = fifo[2 * idx + 1] }
+              tailN = fN; tailPos = 0; fN = 0; fHead = 0
+              total -= tailN
+            } else {
+              var o = 0
+              for (j in 0 until fN) {
+                val idx = (fHead + j) % xf
+                val pl = fifo[2 * idx].toInt(); val pr = fifo[2 * idx + 1].toInt()
+                outB[4 * o] = pl.toByte(); outB[4 * o + 1] = (pl shr 8).toByte(); outB[4 * o + 2] = pr.toByte(); outB[4 * o + 3] = (pr shr 8).toByte(); o++
+                if (o == MixEngine.BLOCK) { all?.write(outB, o * 4); o = 0 }
+              }
+              if (o > 0) all?.write(outB, o * 4)
+              fN = 0
+            }
+          } else if (n < songs.size - 1 && gapSec > 0) {
+            java.util.Arrays.fill(pcm, 0)
+            var left = (gapSec * rate).toLong()
+            while (left > 0) { val k = min(left, MixEngine.BLOCK.toLong()).toInt(); all?.write(pcm, k * 4); left -= k }
+          }
         }
       }
       all?.finish(); all = null

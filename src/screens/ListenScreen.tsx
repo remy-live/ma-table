@@ -296,7 +296,8 @@ export function ListenScreen({ entry, theme, onBack }: { entry: SessEntry; theme
     refresh();
     setSharing(null);
     const ok = await usbListen.share(r.path).catch(() => false);
-    say(ok ? `« ${out.split('/').pop()} » est prêt` : `« ${out.split('/').pop()} » est dans Musique › Ma table`);
+    const fname = r.path.split('/').pop();
+    say((ok ? `« ${fname} » est prêt` : `« ${fname} » est dans Musique › Ma table`) + (r.note ? ` · ${r.note}` : ''));
   };
 
   const addMarker = () => {

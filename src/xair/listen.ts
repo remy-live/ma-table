@@ -467,7 +467,11 @@ export function songsOf(markers: { t: number; label: string }[], total: number, 
   return out;
 }
 /** Les retouches d'un morceau de maquette : entrée nette, sortie en fondu. */
-export const songEdits = (edits: Edit[], s: SongSpan, excerpt = false): Edit[] => [...edits, { type: 'fadeIn', a: s.a, b: s.a + (excerpt ? 1.2 : 0.15) }, { type: 'fadeOut', a: Math.max(s.a, s.b - (excerpt ? 3 : 2)), b: s.b }];
+export const songEdits = (edits: Edit[], s: SongSpan, excerpt = false, xfade = 0): Edit[] => {
+  // en fondu enchaîné, l'entrée et la sortie durent le temps du fondu
+  const fin = xfade > 0 ? xfade : excerpt ? 1.2 : 0.15, fout = xfade > 0 ? xfade : excerpt ? 3 : 2;
+  return [...edits, { type: 'fadeIn', a: s.a, b: Math.min(s.b, s.a + fin) }, { type: 'fadeOut', a: Math.max(s.a, s.b - fout), b: s.b }];
+};
 /**
  * L'extrait d'un morceau : le passage de `len` secondes où ça joue le plus (souvent le refrain).
  * Le début est calé sur un petit creux tout proche, pour ne pas entrer au milieu d'un mot.

@@ -14,7 +14,7 @@ export interface RecSummary { id: string; dir: string; frames: number; seconds: 
 export interface RecEvent { t?: number; peaks?: number[]; clips?: number[]; usbErrors?: number; writeErrors?: number; alive?: boolean; free?: number; ended?: boolean; summary?: RecSummary; error?: string }
 export interface SessFile { name: string; path: string; size: number }
 export interface SessEntry { id: string; dir: string; public: boolean; modified: number; meta: string; files: SessFile[] }
-export interface MixResult { ok: boolean; error?: string; path?: string; gains?: (number | null)[]; peakDb?: number; seconds?: number }
+export interface MixResult { ok: boolean; error?: string; path?: string; note?: string | null; gains?: (number | null)[]; peakDb?: number; seconds?: number }
 
 export interface EngineParams { gains: number[]; pans: number[]; master: number; kept: number[]; regs: { a: number; b: number; g: number; k: number }[]; fades: { a: number; b: number; rising: boolean }[]; hp?: number[]; thr?: number[]; slope?: number[]; makeup?: number[]; gate?: number[]; eq?: boolean; glue?: boolean; limit?: boolean; teq?: number[][]; rev?: number[]; key?: number[]; duck?: number[]; duckThr?: number; duckGain?: number }
 
@@ -45,7 +45,7 @@ export type Native = {
   playerClose(): boolean;
   mixExport(o: EngineParams & { paths: string[]; out: string; from?: number; to?: number }): Promise<MixResult>;
   /** plusieurs morceaux à la suite : un fichier par morceau (out) et/ou un seul fichier (full) */
-  mixAlbum(o: { songs: (EngineParams & { paths: string[]; out?: string; from: number; to: number })[]; full?: string; gap?: number }): Promise<MixResult>;
+  mixAlbum(o: { songs: (EngineParams & { paths: string[]; out?: string; from: number; to: number })[]; full?: string; gap?: number; xfade?: number }): Promise<MixResult>;
   albumDir(name: string): string;
   /** tout un enregistrement (pistes + notes) dans un seul fichier à envoyer */
   sessPack(o: { paths: string[]; notes: string; name: string; from?: number; to?: number }): Promise<{ ok: boolean; error?: string; path?: string; size?: number }>;
