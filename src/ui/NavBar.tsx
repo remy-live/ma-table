@@ -1,7 +1,8 @@
 // Navigation : barre à gauche sur tablette, en bas sur téléphone.
 // Cinq sections claires + le bouton « Aide-moi » (assistants).
+import { useRec } from '../screens/RecorderSheet';
 import React from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { HELP, showTip } from './tip';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { Theme } from './theme';
@@ -20,10 +21,11 @@ const ITEMS: [Section, string][] = [
   ['reglages', 'Réglages'],
 ];
 
-function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mixages'; color: string; size?: number }) {
+function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mixages' | 'rec'; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
+      {id === 'rec' && (<><Circle cx={12} cy={12} r={9} {...p} /><Circle cx={12} cy={12} r={4.5} {...p} fill={color} /></>)}
       {id === 'mixages' && (<><Rect x={4} y={4} width={16} height={16} rx={3} {...p} /><Line x1={8} y1={9} x2={16} y2={9} {...p} /><Line x1={8} y1={13} x2={16} y2={13} {...p} /><Line x1={8} y1={17} x2={12} y2={17} {...p} /></>)}
       {id === 'table' && (<><Line x1={6} y1={4} x2={6} y2={20} {...p} /><Line x1={12} y1={4} x2={12} y2={20} {...p} /><Line x1={18} y1={4} x2={18} y2={20} {...p} /><Rect x={3.5} y={12} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={9.5} y={7} width={5} height={3} rx={1} {...p} fill={color} /><Rect x={15.5} y={14} width={5} height={3} rx={1} {...p} fill={color} /></>)}
       {id === 'effets' && (<><Path d="M3 17h2l2-6 3 10 3-14 3 8 2-3h3" {...p} /></>)}
@@ -37,17 +39,19 @@ function Icon({ id, color, size = 24 }: { id: Section | 'aide' | 'quitter' | 'mi
 }
 
 /** « Plus » (téléphone) : ce qui ne tient pas dans les quatre onglets. */
-export function MoreSheet(props: { theme: Theme; visible: boolean; current: Section; onGo: (s: Section) => void; onMixes: () => void; onQuit: () => void; onClose: () => void }) {
+export function MoreSheet(props: { theme: Theme; visible: boolean; current: Section; onGo: (s: Section) => void; onRec?: () => void; onMixes: () => void; onQuit: () => void; onClose: () => void }) {
   const { theme } = props;
-  const rows: [Section | 'mixages' | 'quitter', string, string][] = [
+  const rows: [Section | 'mixages' | 'quitter' | 'rec', string, string][] = [
+    ...(props.onRec ? [['rec', 'Enregistrer', 'Enregistrer la répétition ou le concert · mes enregistrements'] as ['rec', string, string]] : []),
     ['effets', 'Effets', 'Réverbe, écho… et qui les utilise'],
     ['branchements', 'Branchements', 'Qui entend quoi : câbles, bulles, scène'],
     ['mixages', 'Mes mixages', 'Nouveau mixage, modèles, reprendre un ancien'],
     ['reglages', 'Réglages', 'Mode simple, les mots, l’apparence, la connexion'],
     ['quitter', 'Quitter la table', 'Revenir à l’accueil (la table garde son mix)'],
   ];
-  const press = (id: Section | 'mixages' | 'quitter') => {
+  const press = (id: Section | 'mixages' | 'quitter' | 'rec') => {
     props.onClose();
+    if (id === 'rec') { props.onRec?.(); return; }
     if (id === 'mixages') props.onMixes();
     else if (id === 'quitter') Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }]);
     else props.onGo(id);
@@ -76,8 +80,11 @@ export function MoreSheet(props: { theme: Theme; visible: boolean; current: Sect
   );
 }
 
-export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void }) {
+export function NavBar(props: { theme: Theme; current: Section; locked: boolean; vertical?: boolean; onGo: (s: Section) => void; onHelp: () => void; onQuit?: () => void; client?: XAirClient; onMixes?: () => void; onMore?: () => void; onRec?: () => void }) {
   const { theme, vertical } = props;
+  const rec = useRec();
+  // écran peu haut (tablette couchée) : les boutons du côté se serrent pour tous tenir
+  const tight = useWindowDimensions().height < 820;
   const go = (s: Section) => {
     if (props.locked && s !== 'scene') {
       Alert.alert('Mode Concert', 'L’appli est verrouillée. Déverrouille depuis Concert.');
@@ -107,7 +114,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
     );
   }
   return (
-    <View style={[vertical ? styles.rail : styles.bar, { backgroundColor: theme.deep, borderColor: theme.line }]}>
+    <View style={[vertical ? styles.rail : styles.bar, vertical && tight && { paddingTop: 28, gap: 3 }, { backgroundColor: theme.deep, borderColor: theme.line }]}>
       {/* tout en haut, loin de « Quitter » et des onglets */}
       {props.client && <View style={{ marginBottom: 14 }}><KillButton client={props.client} vertical={vertical} /></View>}
       <Pressable onPress={props.onHelp} onLongPress={() => showTip(HELP.aide)} accessibilityLabel="Aide-moi : balance automatique, mode guidé" style={[vertical ? styles.help : styles.helpSmall, { backgroundColor: '#13261E', borderColor: '#1F6F4A' }]}>
@@ -119,15 +126,23 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
         const dim = props.locked && id !== 'scene';
         const c = on ? theme.accent : dim ? theme.line2 : theme.muted;
         return (
-          <Pressable key={id} onPress={() => go(id)} onLongPress={() => showTip((HELP as Record<string, string>)[id === 'scene' ? 'concert' : id] ?? label)} accessibilityRole="tab" accessibilityState={{ selected: on, disabled: dim }} accessibilityLabel={label} style={[vertical ? styles.item : styles.itemSmall, on && { backgroundColor: theme.panel }]}>
+          <React.Fragment key={id}>
+          <Pressable onPress={() => go(id)} onLongPress={() => showTip((HELP as Record<string, string>)[id === 'scene' ? 'concert' : id] ?? label)} accessibilityRole="tab" accessibilityState={{ selected: on, disabled: dim }} accessibilityLabel={label} style={[vertical ? styles.item : styles.itemSmall, vertical && tight && { height: 58 }, on && { backgroundColor: theme.panel }]}>
             {on && vertical && <View style={[styles.mark, { backgroundColor: theme.accent }]} />}
             <Icon id={id} color={c} size={vertical ? 26 : 22} />
             <Text numberOfLines={1} style={{ color: c, fontSize: vertical ? 11 : 9, fontWeight: on ? '800' : '600' }}>{label}</Text>
           </Pressable>
+          {id === 'scene' && props.onRec && vertical && (
+            <Pressable onPress={props.onRec} onLongPress={() => showTip('Enregistrer : chaque voie dans son fichier, par le câble USB. Et tous tes enregistrements : écouter, mixer, maquette.')} accessibilityLabel={rec.on ? 'Enregistrement en cours' : 'Enregistrer'} style={[styles.item, tight && { height: 58 }, rec.on && { backgroundColor: '#3A1414' }]}>
+              <Icon id="rec" color={rec.on || rec.armed ? '#F87171' : theme.muted} size={26} />
+              <Text numberOfLines={1} style={{ color: rec.on || rec.armed ? '#FCA5A5' : theme.muted, fontSize: 11, fontWeight: rec.on ? '800' : '600' }}>{rec.on ? 'En cours' : 'Enregistrer'}</Text>
+            </Pressable>
+          )}
+          </React.Fragment>
         );
       })}
       {props.onMixes && vertical && (
-        <Pressable onPress={props.onMixes} onLongPress={() => showTip('Mes mixages : nouveau mixage avec son nom, modèles (artiste solo, groupe…), reprendre un ancien.')} accessibilityLabel="Mes mixages" style={styles.item}>
+        <Pressable onPress={props.onMixes} onLongPress={() => showTip('Mes mixages : nouveau mixage avec son nom, modèles (artiste solo, groupe…), reprendre un ancien.')} accessibilityLabel="Mes mixages" style={[styles.item, tight && { height: 58 }]}>
           <Icon id="mixages" color={theme.muted} size={26} />
           <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 11, fontWeight: '600' }}>Mixages</Text>
         </Pressable>
@@ -135,7 +150,7 @@ export function NavBar(props: { theme: Theme; current: Section; locked: boolean;
       {props.onQuit && vertical && <View style={{ flex: 1 }} />}
       {props.client && <LinkBadge client={props.client} theme={theme} small={!vertical} />}
       {props.onQuit && (
-        <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall]}>
+        <Pressable onPress={() => Alert.alert('Quitter la table ?', 'La table garde son mix. Tu reviens à l’écran d’accueil pour te reconnecter ou changer de table.', [{ text: 'Rester', style: 'cancel' }, { text: 'Quitter', onPress: props.onQuit }])} onLongPress={() => showTip(HELP.quitter)} accessibilityLabel="Quitter : revenir à l’accueil" style={[vertical ? styles.item : styles.itemSmall, vertical && tight && { height: 58 }]}>
           <Icon id="quitter" color={theme.muted} size={vertical ? 24 : 20} />
           <Text numberOfLines={1} style={{ color: theme.muted, fontSize: vertical ? 11 : 9, fontWeight: '600' }}>Quitter</Text>
         </Pressable>
