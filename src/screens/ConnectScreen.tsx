@@ -1,3 +1,4 @@
+import { usbListen } from '../xair/usbAudio';
 import { Icon } from '../ui/NavBar';
 import React, { useEffect, useState } from 'react';
 import { QrScanner } from '../ui/QrScanner';
@@ -44,6 +45,12 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
   const win = useWindowDimensions();
   const wide = win.width >= 900;
   const [page, setPage] = useState<Page>('table');
+  // le dernier enregistrement, pour le proposer sous la table
+  const [lastRec, setLastRec] = useState<{ name: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!recAvailable() || recOpen) return;
+    try { const l = usbListen?.sessList() ?? []; setLastRec(l.length ? { name: l[0].id, n: l.length } : null); } catch { setLastRec(null); }
+  }, [recOpen]);
   // grand écran : tout tient sans faire défiler (la liste des Wi-Fi prend la place qui reste)
   const netsMax = wide ? Math.max(120, Math.min(340, win.height - 420)) : 340;
   useEffect(() => { load<MyTable | null>('maTable', null).then(setMine); }, []);
@@ -515,6 +522,17 @@ export function ConnectScreen({ theme, onConnected, invite }: { theme: Theme; on
         {busy && <ActivityIndicator color={theme.accent} />}
         {!!error && <Text style={{ color: '#FCA5A5', fontWeight: '700' }}>{error}</Text>}
         {page === 'table' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>{colA}{colB}</View>}
+        {page === 'table' && lastRec && (
+          <Pressable onPress={() => setRecOpen(true)} accessibilityLabel="Ouvrir mes enregistrements" style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.panel, borderColor: theme.line2 }]}>
+            <Icon id="rec" color={theme.muted} size={28} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.kicker, { color: theme.muted }]}>DERNIER ENREGISTREMENT</Text>
+              <Text numberOfLines={1} style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{lastRec.name}</Text>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>{lastRec.n} enregistrement{lastRec.n > 1 ? 's' : ''} · écouter, mixer, faire une maquette</Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 20 }}>›</Text>
+          </Pressable>
+        )}
         {page === 'essayer' && <View style={{ flexDirection: 'row', gap: 18, alignItems: 'stretch' }}><View style={{ flex: 1 }}>{tryCard}</View><View style={{ flex: 1 }}>{prepCard}</View></View>}
         {page === 'aide' && helpBlock}
         {page === 'musicien' && <View style={{ maxWidth: 560 }}>{musicianCard}</View>}

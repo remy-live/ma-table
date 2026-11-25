@@ -166,10 +166,10 @@ export function SpeakButton({ client, theme, locked }: { client: XAirClient; the
   const on = isSpeaking();
   const named = Array.from({ length: CH_COUNT }, (_, k) => k + 1).map((c) => ({ c, name: String(client.get(chNamePath(c)) ?? '').trim() })).filter((x) => x.name);
   const ask = async () => {
-    const last = await load<number[] | null>('speakKeep', null).catch(() => null);
+    // par défaut : le micro de la voix. Sans voie « voix », on reprend le dernier choix.
     const voices = named.filter((x) => guessRole(x.name) === 'Voix').map((x) => x.c);
-    const start = (last ?? []).filter((c) => named.some((x) => x.c === c));
-    setKeep(start.length ? start : voices.slice(0, 1));
+    const last = voices.length ? [] : ((await load<number[] | null>('speakKeep', null).catch(() => null)) ?? []).filter((c) => named.some((x) => x.c === c));
+    setKeep(voices.length ? voices.slice(0, 1) : last);
     setOpen(true);
   };
   const names = speakKept().map((c) => String(client.get(chNamePath(c)) ?? '') || `Voie ${c}`).join(', ');

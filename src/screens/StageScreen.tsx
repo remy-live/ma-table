@@ -9,7 +9,7 @@ import { GROUP_COLORS } from './GroupsSheet';
 import { Btn, Card, ScreenHeader, SEM } from '../ui/kit';
 import { Current, current, safetyBackup, saveCurrentSession } from '../store/sessions';
 import { SessionsScreen } from './SessionsScreen';
-import { MIX_COLORS } from './MixPicker';
+import { MIX_COLORS, MixChips } from './MixPicker';
 import { useAnyTick } from '../ui/useTick';
 import { BUS_COUNT, busNamePath, CH_COUNT, chDcaPath, chLevelPath, chNamePath, dcaFaderPath, dcaNamePath, dcaOnPath, inDca, outOnPath, outPath, Target, targetId } from '../xair/addresses';
 import { Group, moveMembers, snapshot as sendSnap } from '../xair/groups';
@@ -205,17 +205,8 @@ export function StageScreen(props: { client: XAirClient; theme: Theme; locked: b
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900' }}>Concert</Text>
         <Text style={{ color: theme.muted, fontSize: 13, fontWeight: '800', marginLeft: 6 }}>Je règle pour</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
-          {mixes.map((t, k) => {
-            const on = targetId(t) === targetId(mix);
-            const c = MIX_COLORS[k] ?? theme.text;
-            return (
-              <Pressable key={targetId(t)} onPress={() => setMix(t)} accessibilityState={{ selected: on }} style={[styles.mixS, { minHeight: 44, paddingHorizontal: 14 }, on ? { backgroundColor: c, borderColor: c } : { backgroundColor: theme.deep, borderColor: c }]}>
-                <Text numberOfLines={1} style={{ color: on ? '#0B0D10' : theme.text, fontWeight: '800', fontSize: 13 }}>{t.kind === 'main' ? '👥 Le public' : `🎧 ${mixName(t)}`}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {/* les mêmes pastilles que sur l'écran Table */}
+        <View style={{ flex: 1, minWidth: 0 }}><MixChips client={client} target={mix} theme={theme} onPick={setMix} /></View>
         {viewSwitch}{nightBtn}{lockBar}
       </View>
       {/* au milieu : plus fort / moins fort, sur toute la largeur */}
