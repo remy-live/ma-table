@@ -8,7 +8,7 @@ import { showTip } from '../ui/tip';
 import { groupMove, groupTop, linkedCount } from '../xair/groupTrim';
 import { foldCore, linkSide, onSide, unlinkSide } from '../xair/wiring';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { f } from '../osc/osc';
 import { MonoSwitch } from '../ui/MonoSwitch';
@@ -474,11 +474,26 @@ const styles = StyleSheet.create({
 export function TableWiringStandalone({ client, theme, actions, multiCtl }: { client: XAirClient; theme: Theme; actions?: DrawerActions; multiCtl?: MultiCtl }) {
   useAnyTick(client);
   useMono(client); // 1 ou 2 enceintes : les sorties de façade changent
-  useEffect(() => { client.loadPaths(wiringPaths()); }, [client]);
+  // tant que les branchements ne sont pas lus, on n'affiche pas un dessin à moitié vide (des prises sans câbles)
+  const known = () => wiringPaths().every((p) => client.get(p) !== undefined);
+  const [ready, setReady] = useState(known);
+  useEffect(() => {
+    let dead = false;
+    if (ready) { client.loadPaths(wiringPaths()); return; }
+    client.loadPaths(wiringPaths()).finally(() => { if (!dead) setReady(true); });
+    const h = setTimeout(() => { if (!dead) setReady(true); }, 2500); // la table répond mal : on affiche ce qu'on a
+    return () => { dead = true; clearTimeout(h); };
+  }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
   const P = plugs(client);
   const O = outlets(client);
   const W = wires(client);
   const plugColor = (p: Plug) => plugColorOf(client, p, colorOf);
   const outColor = (o: Outlet) => (o.t.kind === 'main' ? MIX_COLORS[0] : MIX_COLORS[(o.t as { n: number }).n] ?? '#9AA3AD');
+  if (!ready) return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+      <ActivityIndicator color={theme.accent} />
+      <Text style={{ color: theme.muted, fontSize: 13 }}>Je lis les branchements de la table…</Text>
+    </View>
+  );
   return <TableWiring client={client} theme={theme} P={P} O={O} W={W} plugColor={plugColor} outColor={outColor} actions={actions} multiCtl={multiCtl} />;
 }

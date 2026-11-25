@@ -82,6 +82,8 @@ function useMixerLabels(client: XAirClient) {
 
 type Item = { kind: 'ch'; ch: number; inOpenGroup: boolean } | { kind: 'group'; g: Group };
 
+let lastStripView: StripView | null = null;
+
 export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidth?: StripWidth; onOpenEffects?: (ch: number) => void }) {
   const { client, theme } = props;
   const { width } = useWindowDimensions();
@@ -158,10 +160,12 @@ export function MixerScreen(props: { client: XAirClient; theme: Theme; stripWidt
   const faderH = Math.max(260, bodyH - 12); // la tranche tient entièrement dans la zone : rien de coupé, tout reste cliquable // hauteur totale d'une tranche ; le fader prend le reste
   const lvl = useLevel();
   const simple = lvl.simple;
-  const [viewRaw, setView] = useState<StripView>('full');
+  // la vue choisie est gardée en mémoire : en revenant sur la Table, elle s'affiche tout de suite (sans passer par « Complète »)
+  const [viewRaw, setViewRaw] = useState<StripView>(() => lastStripView ?? 'full');
+  const setView = (v: StripView | ((o: StripView) => StripView)) => setViewRaw((o) => { const n = typeof v === 'function' ? v(o) : v; lastStripView = n; return n; });
   // mode simple : toujours les tranches, réduites à l'essentiel
   const view: StripView = simple ? 'full' : viewRaw;
-  useEffect(() => { load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []);
+  useEffect(() => { if (lastStripView == null) load<StripView>('vueTable', 'full').then((v) => v && setView(v)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const VIEWS: { id: StripView; label: string; icon: string }[] = [
     { id: 'full', label: 'Complète', icon: '▥' },
     { id: 'compact', label: 'Compacte', icon: '▤' },

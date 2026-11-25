@@ -1,3 +1,4 @@
+import { wiringPaths } from './src/xair/wiring';
 import { getLang, initLang, onLang } from './src/i18n';
 import React, { useEffect, useState } from 'react';
 import { onModelChange } from './src/xair/addresses';
@@ -144,6 +145,13 @@ export default function App() {
   // Invitation reçue alors qu'on pilote déjà la table : on demande.
   // les gestes en 30 s : une fois, au premier lancement
   // premier lancement : le démarrage guidé en 3 étapes (les gestes restent dans Aide-moi)
+  // les branchements (qui va où) sont lus tout de suite après la connexion, en fond :
+  // le câblage de la Table et l'écran Branchements s'affichent alors d'un coup, sans attendre
+  useEffect(() => {
+    if (!client) return;
+    const h = setTimeout(() => { client.loadPaths(wiringPaths()).catch(() => {}); }, 1200);
+    return () => clearTimeout(h);
+  }, [client]);
   useEffect(() => { if (client && !prep) load<boolean>('demarrageVu', false).then((v) => { if (!v) setFirstRun(true); }); }, [client, prep]);
   // historique des saturations de la soirée, tenu tant qu'on est connecté
   useEffect(() => {
