@@ -439,16 +439,17 @@ export class XAirClient {
 
     const before = this.state.get(m.address);
     this.state.set(m.address, m.args[0]);
-    this.emit(m.address);
+    // une simple relecture qui ne change rien ne redessine pas tous les écrans abonnés à « tout »
+    this.emit(m.address, before !== m.args[0]);
     // Un changement venu d'ailleurs (autre téléphone, appli X AIR), pas une simple lecture
     if (before !== undefined && before !== m.args[0] && !this.reading.has(m.address)) this.changeListeners.forEach((cb) => cb(m.address, m.args[0], before, 'autre'));
     this.reading.delete(m.address);
   }
 
-  private emit(path: string) {
+  private emit(path: string, changed = true) {
     const v = this.state.get(path);
     this.listeners.get(path)?.forEach((cb) => cb(v, path));
-    this.listeners.get('*')?.forEach((cb) => cb(v, path));
+    if (changed) this.listeners.get('*')?.forEach((cb) => cb(v, path));
   }
 
   private setStatus(st: Status) {
